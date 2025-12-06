@@ -190,6 +190,28 @@ export function SubwayMap() {
     return trains.find((t) => t.tripId === selectedTrainId) || null;
   }, [selectedTrainId, trains]);
 
+  // Track phase in state so it updates with animation
+  const [selectedTrainPhase, setSelectedTrainPhase] = useState<'BOARDING' | 'ARRIVING' | 'APPROACHING' | null>(null);
+
+  // Poll the phase every 100ms when a train is selected to sync with animation
+  useEffect(() => {
+    if (!selectedTrainId) {
+      setSelectedTrainPhase(null);
+      return;
+    }
+
+    // Initial phase
+    setSelectedTrainPhase(getTrainPhase(selectedTrainId));
+
+    // Poll for phase updates
+    const interval = setInterval(() => {
+      const phase = getTrainPhase(selectedTrainId);
+      setSelectedTrainPhase(phase);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [selectedTrainId, getTrainPhase]);
+
   // Close train panel when train disappears from feed
   useEffect(() => {
     if (selectedTrainId && !selectedTrain) {
@@ -226,7 +248,7 @@ export function SubwayMap() {
       <TrainDetailPanel
         train={selectedTrain}
         onClose={() => setSelectedTrain(null)}
-        phase={selectedTrain ? getTrainPhase(selectedTrain.tripId) : null}
+        phase={selectedTrainPhase}
       />
     </div>
   );

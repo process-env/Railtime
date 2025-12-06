@@ -4,7 +4,6 @@ import { MAP_CONSTANTS } from '@/lib/constants';
 import {
   isParentStation,
   getParentStationId,
-  stationServesAnyRoute,
 } from '@/lib/mta/station-utils';
 import type { Station, TrainPosition } from '@/types/mta';
 
@@ -61,14 +60,10 @@ export function useStationMarkers(
     return ids;
   }, [trains]);
 
-  // Memoize filtered stations using shared utility
+  // Always show all parent stations - route filter only affects trains, not stations
   const filteredStations = useMemo(() => {
-    const parentStations = Object.values(stations).filter(isParentStation);
-
-    if (selectedRouteIds.length === 0) return parentStations;
-
-    return parentStations.filter((s) => stationServesAnyRoute(s, selectedRouteIds));
-  }, [stations, selectedRouteIds]);
+    return Object.values(stations).filter(isParentStation);
+  }, [stations]);
 
   // Cleanup function for removing a marker and its event listeners
   const removeMarker = useCallback((id: string) => {

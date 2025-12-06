@@ -8,9 +8,15 @@ import { MapPin, Train, AlertTriangle } from 'lucide-react';
 import { getRouteColor } from '@/lib/constants';
 import type { Station } from '@/types/mta';
 
+interface TrainStates {
+  atStation: number;
+  arriving: number;
+  enRoute: number;
+}
+
 interface StationCardProps {
   station: Station;
-  trainsApproaching?: number;
+  trainStates?: TrainStates;
   hasAlerts?: boolean;
 }
 
@@ -48,7 +54,7 @@ function getLocationName(station: Station): string {
   return originalName;
 }
 
-export function StationCard({ station, trainsApproaching = 0, hasAlerts = false }: StationCardProps) {
+export function StationCard({ station, trainStates, hasAlerts = false }: StationCardProps) {
   const router = useRouter();
   const routes = station.routes?.split(/[,\s]+/).filter(Boolean) || [];
   const locationName = getLocationName(station);
@@ -85,10 +91,20 @@ export function StationCard({ station, trainsApproaching = 0, hasAlerts = false 
                   </span>
                 </div>
               </div>
-              {trainsApproaching > 0 && (
-                <div className="flex items-center gap-1 text-xs text-green-500 mt-2">
-                  <Train className="h-3 w-3 shrink-0" />
-                  <span className="font-medium">{trainsApproaching} approaching</span>
+              {trainStates && (trainStates.atStation > 0 || trainStates.arriving > 0 || trainStates.enRoute > 0) && (
+                <div className="flex items-center gap-2 text-xs mt-2">
+                  <Train className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <div className="flex items-center gap-2">
+                    {trainStates.atStation > 0 && (
+                      <span className="font-medium text-amber-500">{trainStates.atStation} at station</span>
+                    )}
+                    {trainStates.arriving > 0 && (
+                      <span className="font-medium text-green-500">{trainStates.arriving} arriving</span>
+                    )}
+                    {trainStates.enRoute > 0 && (
+                      <span className="font-medium text-blue-400">{trainStates.enRoute} en route</span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

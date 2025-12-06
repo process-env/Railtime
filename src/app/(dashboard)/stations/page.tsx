@@ -16,23 +16,35 @@ export default function StationsPage() {
 
   // Build lookup maps for derived data
   const stationData = useMemo(() => {
-    // Count trains approaching each station within 5 minutes
-    const APPROACHING_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+    // Time thresholds for train states (matching map behavior)
+    const AT_STATION_THRESHOLD_MS = 30 * 1000; // 30 seconds - at station
+    const ARRIVING_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes - arriving
+    const EN_ROUTE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes - en route
     const now = Date.now();
 
-    const trainsPerStation: Record<string, number> = {};
+    const stationTrainStates: Record<string, { atStation: number; arriving: number; enRoute: number }> = {};
+
     for (const train of trains) {
-      // Check if train is arriving soon (within threshold)
       if (train.eta) {
         const etaTime = new Date(train.eta).getTime();
         const timeUntilArrival = etaTime - now;
 
-        // Only count if arriving within threshold and not in the past
-        if (timeUntilArrival > 0 && timeUntilArrival <= APPROACHING_THRESHOLD_MS) {
+        // Only count if arriving within threshold and not too far in the past
+        if (timeUntilArrival > -AT_STATION_THRESHOLD_MS && timeUntilArrival <= EN_ROUTE_THRESHOLD_MS) {
           const stopId = train.nextStopId;
           const parentId = stopId?.replace(/[NS]$/, '');
           if (parentId) {
-            trainsPerStation[parentId] = (trainsPerStation[parentId] || 0) + 1;
+            if (!stationTrainStates[parentId]) {
+              stationTrainStates[parentId] = { atStation: 0, arriving: 0, enRoute: 0 };
+            }
+
+            if (timeUntilArrival <= AT_STATION_THRESHOLD_MS) {
+              stationTrainStates[parentId].atStation++;
+            } else if (timeUntilArrival <= ARRIVING_THRESHOLD_MS) {
+              stationTrainStates[parentId].arriving++;
+            } else {
+              stationTrainStates[parentId].enRoute++;
+            }
           }
         }
       }
@@ -47,7 +59,7 @@ export default function StationsPage() {
       }
     }
 
-    return { trainsPerStation, stationsWithAlerts };
+    return { stationTrainStates, stationsWithAlerts };
   }, [trains, alerts]);
 
   // Filter to parent stations only and apply search
@@ -113,7 +125,7 @@ export default function StationsPage() {
             <StationCard
               key={station.id}
               station={station}
-              trainsApproaching={stationData.trainsPerStation[station.id] || 0}
+              trainStates={stationData.stationTrainStates[station.id]}
               hasAlerts={stationData.stationsWithAlerts.has(station.id)}
             />
           ))}

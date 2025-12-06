@@ -98,7 +98,7 @@ function TickerSection({ alerts, severity }: TickerSectionProps) {
   return (
     <div
       ref={containerRef}
-      className={cn('relative overflow-hidden py-1.5', colors.bg, colors.textOnBg)}
+      className={cn('relative overflow-hidden py-1.5 flex items-center', colors.bg, colors.textOnBg)}
       onMouseEnter={() => {
         setIsPaused(true);
         controls.stop();
