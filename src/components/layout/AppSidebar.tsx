@@ -76,7 +76,7 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="scrollbar-none">
         {/* Navigation - always visible */}
         <SidebarGroup>
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>

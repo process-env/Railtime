@@ -214,29 +214,57 @@ export function useTrainMarkers(
     // Trains disappear from API feed but are still running - don't cull them prematurely
     const CULL_GRACE_PERIOD_MS = 300000;
 
-    // Remove old markers - but only if trip is at terminal or grace period expired
+    // Remove old markers
+    // - If route filter is active and train's route doesn't match: remove immediately
+    // - If train disappeared from API: apply grace period logic
     trainAnimsRef.current.forEach((anim, tripId) => {
       if (!currentTripIds.has(tripId)) {
-        const timeSinceUpdate = nowMs - (anim.startTime || 0);
-        const atTerminal = TERMINAL_STOPS.has(anim.nextStopName || '');
+        // If route filter is active, check if this train's route is filtered out
+        const routeFilterActive = selectedRouteIds.length > 0;
+        const trainRouteMatchesFilter = selectedRouteIds.includes(anim.routeId?.toUpperCase() || '');
+        const isFilteredOut = routeFilterActive && !trainRouteMatchesFilter;
 
-        if (atTerminal || timeSinceUpdate > CULL_GRACE_PERIOD_MS) {
+        if (isFilteredOut) {
+          // User filtered this route out - remove immediately
           anim.popup.remove();
           anim.marker.remove();
           trainAnimsRef.current.delete(tripId);
+        } else {
+          // Train disappeared from API - apply grace period
+          const timeSinceUpdate = nowMs - (anim.startTime || 0);
+          const atTerminal = TERMINAL_STOPS.has(anim.nextStopName || '');
+
+          if (atTerminal || timeSinceUpdate > CULL_GRACE_PERIOD_MS) {
+            anim.popup.remove();
+            anim.marker.remove();
+            trainAnimsRef.current.delete(tripId);
+          }
         }
       }
     });
 
     trainMotionRef.current.forEach((state, tripId) => {
       if (!currentTripIds.has(tripId)) {
-        const timeSinceUpdate = nowMs - state.lastApiUpdate;
-        const atTerminal = TERMINAL_STOPS.has(state.nextStopId);
+        // If route filter is active, check if this train's route is filtered out
+        const routeFilterActive = selectedRouteIds.length > 0;
+        const trainRouteMatchesFilter = selectedRouteIds.includes(state.routeId?.toUpperCase() || '');
+        const isFilteredOut = routeFilterActive && !trainRouteMatchesFilter;
 
-        if (atTerminal || timeSinceUpdate > CULL_GRACE_PERIOD_MS) {
+        if (isFilteredOut) {
+          // User filtered this route out - remove immediately
           state.popup.remove();
           state.marker.remove();
           trainMotionRef.current.delete(tripId);
+        } else {
+          // Train disappeared from API - apply grace period
+          const timeSinceUpdate = nowMs - state.lastApiUpdate;
+          const atTerminal = TERMINAL_STOPS.has(state.nextStopId);
+
+          if (atTerminal || timeSinceUpdate > CULL_GRACE_PERIOD_MS) {
+            state.popup.remove();
+            state.marker.remove();
+            trainMotionRef.current.delete(tripId);
+          }
         }
       }
     });
