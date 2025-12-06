@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run build:data && next build",
+    "build:data": "npx tsx scripts/build-duration-matrix.ts",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest",

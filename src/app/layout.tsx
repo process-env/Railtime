@@ -25,6 +25,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        {/* Preconnect to map tile server for faster LCP */}
+        <link rel="preconnect" href="https://basemaps.cartocdn.com" />
+        <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
