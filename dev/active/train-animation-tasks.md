@@ -1,96 +1,106 @@
 # Train Animation System - Task List
 
-**Last Updated**: 2025-12-06T14:30:00Z
+**Last Updated**: 2025-12-06T18:00:00Z
 
-## STATUS: BROKEN - CRITICAL BUGS FOUND
+## STATUS: ROOT CAUSE IDENTIFIED - FIX READY
 
-Files exist but are broken. Code review revealed 4 major bugs.
-
----
-
-## COMPLETED (BUT BROKEN)
-
-- [x] Create `src/lib/map/route-durations.ts` - EXISTS, works
-- [x] Create `src/lib/map/alert-speed.ts` - EXISTS but WRONG approach
-- [x] Create `src/lib/map/train-state-machine.ts` - EXISTS but BUGGY
-- [x] Modify useMapAnimation.ts - EXISTS but not synced with state machine
-- [x] Modify useTrainMarkers.ts - EXISTS but wrong speedMultiplier calc
+The zig-zag is caused by dual position updates. Remove the legacy block.
 
 ---
 
-## BUGS TO FIX (Priority 1 - CRITICAL)
+## IMMEDIATE FIX (Do First)
 
-### BUG 1: speedMultiplier Uses Alerts Instead of API Timing
-**File**: `useTrainMarkers.ts:273-274`
+### [ ] Remove Dual Update Block
+**File**: `useTrainMarkers.ts:539-552`
+
+**Remove this entire block:**
 ```typescript
-// WRONG - uses alerts
-existingMotion.speedMultiplier = getRouteSpeedMultiplier(alerts, train.routeId);
-```
-**Fix**:
-```typescript
-const apiDuration = (train.nextTimeMs - train.prevTimeMs) / 1000;
-const scheduledDuration = getSegmentDuration(matrix, ...) || 90;
-const speedMultiplier = apiDuration > 0 ? scheduledDuration / apiDuration : 1.0;
+if (segmentChanged && prevS !== undefined) {
+  const newS = prevS + (nextS - prevS) * apiProgress;
+  state.filter.s = newS;
+  state.filter.v = 0;
+  state.filter.a = 0;
+  state.prevS = prevS;
+  state.nextS = nextS;
+}
 ```
 
-### BUG 2: State Machine Uses Hardcoded 90s Duration
-**File**: `train-state-machine.ts:96-97`
-- `scheduledDuration: 90` is hardcoded
-- GTFS duration is set on TrainMotionState but NEVER passed to state machine
-**Fix**: Pass duration to createTrainAnimationState()
+**Why**: This block directly modifies `filter.s` AFTER the state machine already handled it, causing position conflicts.
 
-### BUG 3: Duplicate State Not Synced
-- `TrainMotionState` has: scheduledDuration, speedMultiplier, segmentStartTime
-- `TrainAnimationState` has: scheduledDuration, speedMultiplier, segmentStartTime
-- Updates to TrainMotionState don't update TrainAnimationState!
-**Fix**: Remove duplicates, use only state machine
-
-### BUG 4: Wrong Thresholds
-**File**: `train-state-machine.ts:66-67`
-- `ARRIVAL_THRESHOLD = 0.95` (should be 0.8)
-- `STATION_THRESHOLD = 0.99` (should be 1.0)
-**Fix**: Change to 0.8 and 1.0
+**After removing**:
+1. Run `npm run build` - should pass
+2. Run `npx vitest run` - should pass
+3. Test in browser for 5+ minutes
+4. Trains should move smoothly, no zig-zag
 
 ---
 
-## TASKS TO COMPLETE
+## COMPLETED ✅
 
-### 1. [ ] Fix train-state-machine.ts
-- [ ] Change ARRIVAL_THRESHOLD to 0.8
-- [ ] Change STATION_THRESHOLD to 1.0
-- [ ] Rename AT_STATION → BOARDING
-- [ ] Remove DEPARTING state entirely
-- [ ] Accept scheduledDuration and speedMultiplier in createTrainAnimationState()
-
-### 2. [ ] Fix useTrainMarkers.ts
-- [ ] Calculate speedMultiplier = scheduledDuration / apiDuration
-- [ ] Pass duration to createTrainAnimationState()
-- [ ] Dispatch SET_DURATION on each API update
-- [ ] Dispatch SET_SPEED_MULTIPLIER on each API update
-
-### 3. [ ] Fix useMapAnimation.ts
-- [ ] Remove duplicate fields from TrainMotionState
-- [ ] Read scheduledDuration/speedMultiplier from animState only
-
-### 4. [ ] Test
-- [ ] Verify trains reach stations
-- [ ] Verify no zig-zag
-- [ ] Verify boarding state caches API updates
+- [x] Create `src/lib/map/route-durations.ts` - builds duration matrix
+- [x] Create `src/lib/map/alert-speed.ts` - speed multiplier from alerts
+- [x] Create `src/lib/map/train-state-machine.ts` - state machine logic
+- [x] Fix speed multiplier compounding (`train-state-machine.ts:319`)
+- [x] Add test for speed multiplier bounds
+- [x] Complete code review (`dev/review/map-components-2024-12/`)
 
 ---
 
-## Key Files
+## AFTER FIX WORKS (Priority Order)
 
-| File | Status |
-|------|--------|
-| `src/lib/map/route-durations.ts` | ✅ Works |
-| `src/lib/map/alert-speed.ts` | ❌ Wrong approach - use API timing |
-| `src/lib/map/train-state-machine.ts` | ❌ Hardcoded 90s, wrong thresholds |
-| `src/components/map/hooks/useMapAnimation.ts` | ❌ Duplicate state |
-| `src/components/map/hooks/useTrainMarkers.ts` | ❌ Wrong speedMultiplier calc |
+### Priority 1: Test Coverage
+- [ ] Create `useTrainMarkers.test.ts`
+- [ ] Create `useMapAnimation.test.ts`
+- [ ] Create `useStationMarkers.test.ts`
+- [ ] Add integration test for full map flow
+
+### Priority 2: Consolidate Animation Systems
+- [ ] Document which system to keep (lerp vs α-β-γ)
+- [ ] Remove unused system
+- [ ] Update variable names for clarity
+
+### Priority 3: Refactor useTrainMarkers
+- [ ] Extract `createMotionState()` to separate file
+- [ ] Extract `updateMotionState()` to separate file
+- [ ] Extract `createPopupHTML()` to separate file
+- [ ] Reduce file from 794 lines to <300
+
+### Priority 4: Extract Constants
+- [ ] Create `map-constants.ts`
+- [ ] Move all magic numbers
+- [ ] Document rationale for each value
 
 ---
 
-## PLAN FILE
+## KEY FILES
 
-See: `C:\Users\User\.claude\plans\nested-plotting-aho.md`
+| File | Status | Notes |
+|------|--------|-------|
+| `useTrainMarkers.ts` | ❌ FIX NEEDED | Remove lines 539-552 |
+| `useMapAnimation.ts` | ✅ Works | Reads from state machine |
+| `train-state-machine.ts` | ✅ Fixed | Speed multiplier bounded |
+| `route-durations.ts` | ✅ Works | Duration lookup |
+| `alert-speed.ts` | ✅ Works | Alert modulation |
+
+---
+
+## VERIFICATION CHECKLIST
+
+After applying fix:
+- [ ] `npm run build` passes
+- [ ] `npx vitest run` passes
+- [ ] Browser: trains move smoothly toward stations
+- [ ] Browser: no zig-zag (watch 5+ minutes)
+- [ ] Browser: trains reach exact station positions
+- [ ] Browser: popup shows correct phase (BOARDING at station)
+
+---
+
+## DOCUMENTATION LOCATIONS
+
+| Document | Location |
+|----------|----------|
+| Root cause analysis | `dev/active/train-animation-context.md` |
+| Code review | `dev/review/map-components-2024-12/` |
+| Main handoff | `dev/HANDOFF.md` |
+| Legacy handoff | `dev/active/handoff-notes.md` |

@@ -1,42 +1,113 @@
 # Train Animation System - Implementation Context
 
-**Last Updated**: 2025-12-06T13:15:00Z
-**Status**: IN PROGRESS - NEW APPROACH (Schedule-Based + Alert Modulation)
+**Last Updated**: 2025-12-06T18:00:00Z
+**Status**: ROOT CAUSE IDENTIFIED - DUAL UPDATE CONFLICT
 
 ## Problem Statement
 
-Trains never actually reach station positions - they teleport before/after but never intersect the station point. This has been a multi-week issue.
+Trains exhibit "zig-zag" behavior - they jump forward, backward, then forward again instead of smooth continuous motion toward stations.
 
-## Root Cause Analysis (Final)
+## Root Cause (FINAL)
 
-The previous approaches failed because:
+**Dual position updates causing conflict:**
 
-### Issue 1: Asymptotic Smooth Factor
-```typescript
-state.filter.s = state.filter.s + 0.1 * (targetS - state.filter.s);
 ```
-With smoothFactor=0.1, each frame reduces distance by 10% - exponential decay that **never reaches zero**. After 100 frames, still 0.00003% away.
+INTENDED FLOW:
+API → useTrainMarkers (dispatch API_UPDATE) → State Machine → Animation Loop → Marker
 
-### Issue 2: API Timing Unreliable
-- `prevTimeMs`/`nextTimeMs` from API can be stale (5-10s latency)
-- Timing doesn't account for delays or service changes
-- Creates mismatch between animation and actual train position
+ACTUAL (BROKEN):
+API → useTrainMarkers → Dispatch API_UPDATE → State Machine
+                     ↓
+         ALSO directly modifies filter.s, prevS, nextS  ← CONFLICT!
+                     ↓
+Animation Loop reads state machine but bounds corrupted → ZIG-ZAG
+```
 
-### Issue 3: No Station Snap
-- Code never explicitly snaps train to station when `progress >= 1.0`
-- Train hovers near station but never exactly at it
+**Location of Root Cause:** `useTrainMarkers.ts:539-552`
 
-## NEW SOLUTION: Schedule-Based Animation + Alert Modulation
+```typescript
+// THIS BLOCK CAUSES ZIG-ZAG - NEEDS TO BE REMOVED:
+if (segmentChanged && prevS !== undefined) {
+  const newS = prevS + (nextS - prevS) * apiProgress;
+  state.filter.s = newS;
+  state.filter.v = 0;
+  state.filter.a = 0;
+  state.prevS = prevS;
+  state.nextS = nextS;
+}
+```
 
-**Plan Location**: `C:\Users\User\.claude\plans\bubbly-skipping-glade.md`
+## Fixes Applied This Session (Separate from zig-zag)
 
-### Core Insight (User's Idea)
-Instead of relying on API timing, use:
-1. **Pre-computed duration matrix** from `stop_times.txt` - known travel time between consecutive stops
-2. **Fixed animation with speed modulation** - animate at baseline speed, adjust based on alerts
-3. **Hybrid sync** - small speed adjustments for minor discrepancies, snap for large ones
+1. **Speed multiplier compounding** - Fixed at `train-state-machine.ts:319`
+   - Changed `state.speedMultiplier * adjustment` to bounded version
+   - Test added: `train-state-machine.test.ts`
 
-### Data Flow
+## Architecture Overview
+
+### Animation Systems (Dual - needs consolidation)
+
+| System | Reference | Purpose |
+|--------|-----------|---------|
+| Legacy | `trainAnimsRef` | Simple lerp interpolation |
+| New | `trainMotionRef` | α-β-γ filter + state machine |
+
+Both run every frame - should consolidate.
+
+### State Machine Phases
+```
+APPROACHING (en route) → ARRIVING (within 200m) → BOARDING (at station) → next segment
+```
+
+### Distance Thresholds
+```typescript
+STATION_SNAP_DISTANCE = 20    // meters → BOARDING
+ARRIVING_DISTANCE = 200       // meters → ARRIVING
+// Otherwise → APPROACHING
+```
+
+### Duration Matrix
+- File: `src/lib/map/route-durations.ts`
+- Built from GTFS `stop_times.txt`
+- Pre-computes travel time between consecutive stops
+
+## Key Files
+
+| File | Lines | Status |
+|------|-------|--------|
+| `useTrainMarkers.ts` | 794 | Contains root cause at lines 539-552 |
+| `useMapAnimation.ts` | 424 | Animation loop - reads state machine |
+| `train-state-machine.ts` | ~200 | State machine - works correctly |
+| `route-durations.ts` | ~200 | Duration lookup - works correctly |
+
+## Test Commands
+
+```bash
+# Run state machine tests
+npx vitest run src/lib/map/train-state-machine.test.ts
+
+# Run all tests
+npx vitest run
+
+# Build check
+npm run build
+```
+
+## What's NOT Done
+
+1. **Remove dual update block** (lines 539-552) - NOT APPLIED
+2. **Test in browser** - Need to watch for 5+ minutes after fix
+3. **Consolidate animation systems** - Future cleanup
+
+## Code Review Completed
+
+Full review at `dev/review/map-components-2024-12/`:
+- Overall score: 5.4/10
+- Critical issues: Zero test coverage, disabled state machine
+- 16+ tasks documented in tasks.md
+
+## Data Flow
+
 ```
 STATIC (load once):
   stop_times.txt + trips.txt → Route Duration Matrix
@@ -48,67 +119,8 @@ DYNAMIC (live):
 
 ANIMATION:
   1. duration = matrix[routeId][prevStop][nextStop]
-  2. speedMult = getRouteSpeedMultiplier(alerts, routeId) // 0.5-1.0
+  2. speedMult = scheduledDuration / apiDuration
   3. adjustedDuration = duration / speedMult
   4. progress = elapsed / adjustedDuration
   5. if (progress >= 1.0) SNAP to station else lerp
 ```
-
-## Files to Create
-
-| File | Purpose |
-|------|---------|
-| `src/lib/map/route-durations.ts` | Build duration matrix from GTFS stop_times.txt |
-| `src/lib/map/alert-speed.ts` | Calculate speed multiplier from alerts |
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/components/map/hooks/useMapAnimation.ts` | Duration-based animation, SNAP at arrival |
-| `src/components/map/hooks/useTrainMarkers.ts` | Track `segmentStartTime`, pass alerts |
-| `src/components/map/SubwayMap.tsx` | Load duration matrix once, pass alerts to hooks |
-
-## Key Decisions This Session
-
-1. **By Route Keying**: Duration matrix keyed by route (not trip) - simpler, one value per stop pair
-2. **Hybrid Sync**: Small speed adjustments for minor API discrepancies, snap for large ones
-3. **Alert Speed Multipliers**:
-   - `Suspension`: 0.5x speed
-   - `Delays`: 0.8x speed
-   - `Service Change`: 0.9x speed
-   - Normal: 1.0x speed
-
-## Existing Infrastructure (Reusable)
-
-- `src/lib/mta/load-stop-times.ts` - Already parses stop_times.txt and trips.txt
-- `src/lib/mta/schedule-lookup.ts` - Has delay calculation logic
-- `src/lib/mta/fetch-alerts.ts` - Already has `filterAlertsByRoutes()` function
-- `src/lib/map/track-index.ts` - Maps stops to arclengths
-- `src/lib/map/arclength.ts` - Converts arclength to lat/lon
-
-## Test Commands
-
-```bash
-cd C:/Users/User/Documents/RND/_dev_/TS/traintracker
-npm run dev
-# Open http://localhost:3000/map
-# Watch trains - should now reach exact station positions
-```
-
-## Current Implementation Status
-
-### COMPLETED:
-1. ✅ Created `src/lib/map/route-durations.ts` - builds duration matrix from GTFS
-2. ✅ Created `src/lib/map/alert-speed.ts` - speed multiplier from alerts
-3. ✅ Modified `src/components/map/hooks/useMapAnimation.ts` - duration-based animation with SNAP
-4. ✅ Modified `src/components/map/hooks/useTrainMarkers.ts` - segment timing + hybrid sync
-5. ✅ Modified `src/components/map/SubwayMap.tsx` - loads matrix, passes alerts
-6. ✅ Build passes with no TypeScript errors
-
-### Key Code Changes:
-- Animation uses `scheduledDuration` from matrix (seconds between stops)
-- Speed multiplied by alerts: 0.5x (suspension), 0.8x (delays), 0.9x (service change)
-- Progress calculated as `elapsed / adjustedDuration`
-- When `progress >= 1.0`, SNAPS to exact station position (no asymptotic decay)
-- Hybrid sync on API updates: >30% discrepancy snaps, <10% ignores

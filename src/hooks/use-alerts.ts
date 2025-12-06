@@ -37,10 +37,11 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
     refetchIntervalInBackground: false, // Pause when page hidden
   });
 
-  const alerts: ServiceAlert[] = query.data?.alerts || [];
+  const rawAlerts = query.data?.alerts;
 
   // Compute active alerts (within active period)
   const activeAlerts = useMemo(() => {
+    const alerts: ServiceAlert[] = rawAlerts || [];
     const now = new Date();
     return alerts.filter((alert) => {
       if (!alert.activePeriods.length) return true;
@@ -52,7 +53,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
         return true;
       });
     });
-  }, [alerts]);
+  }, [rawAlerts]);
 
   // Compute visible alerts (not dismissed)
   const visibleAlerts = useMemo(() => {

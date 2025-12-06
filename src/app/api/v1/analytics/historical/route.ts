@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 /**
  * GET /api/v1/analytics/historical
@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * DISABLED - This endpoint takes 49+ seconds due to schedule lookup
  * Returns empty data immediately for performance
  */
-export async function GET(_request: NextRequest) {
+export async function GET() {
   return NextResponse.json({
     trainHistory: [],
     routeBreakdown: [],

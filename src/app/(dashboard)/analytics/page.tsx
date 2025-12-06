@@ -31,16 +31,17 @@ export default function AnalyticsPage() {
   } = useScheduleAnalytics();
 
   // Calculate active trains per route for route profile
+  const routeActivity = data?.routeActivity;
   const activeTrainsByRoute = useMemo(() => {
-    if (!data?.routeActivity) return {};
-    return data.routeActivity.reduce(
+    if (!routeActivity) return {};
+    return routeActivity.reduce(
       (acc, r) => {
         acc[r.routeId] = r.trainCount;
         return acc;
       },
       {} as Record<string, number>
     );
-  }, [data?.routeActivity]);
+  }, [routeActivity]);
 
   if (error) {
     return (

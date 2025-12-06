@@ -116,7 +116,7 @@ export function update(
   const residual = measurement - predicted.s;
 
   // Apply α-β-γ corrections
-  let s = predicted.s + params.alpha * residual;
+  const s = predicted.s + params.alpha * residual;
   let v = predicted.v + (params.beta / dt) * residual;
   let a = predicted.a + (2 * params.gamma / (dt * dt)) * residual;
 

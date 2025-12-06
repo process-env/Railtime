@@ -44,7 +44,7 @@ export function createMockPrismaClient() {
     headwayStat: createModelMock(),
     $connect: vi.fn(),
     $disconnect: vi.fn(),
-    $transaction: vi.fn(async (fn: Function) => fn(mockPrismaClient)),
+    $transaction: vi.fn(async <T>(fn: (client: ReturnType<typeof createMockPrismaClient>) => Promise<T>) => fn(mockPrismaClient)),
   };
 }
 

@@ -401,7 +401,28 @@ export function useTrainMarkers(
 }
 
 /**
- * Create a new motion-based train state
+ * Creates a new motion-based train state for arclength-based animation.
+ *
+ * This function initializes a train's animation state using the alpha-beta-gamma
+ * filter for smooth position interpolation along the route track. It calculates
+ * the initial arclength position from GTFS schedule data and creates the marker
+ * and popup UI elements.
+ *
+ * @param train - Train position data from MTA API
+ * @param map - MapLibre GL map instance
+ * @param color - Route color for the marker
+ * @param direction - Travel direction ('N' for northbound, 'S' for southbound)
+ * @param nowMs - Current timestamp in milliseconds
+ * @param setSelectedTrain - Callback to set the selected train in UI state
+ * @param durationMatrix - Pre-computed GTFS schedule durations (optional)
+ * @param scheduledDuration - Expected travel time for current segment (seconds)
+ * @param speedMultiplier - Speed adjustment factor (>1 = faster than scheduled)
+ * @returns TrainMotionState for animation, or null if track data unavailable
+ *
+ * @remarks
+ * - Returns null if route track or stop arclengths cannot be resolved
+ * - Falls back to legacy animation system when this returns null
+ * - State machine is currently DISABLED due to BOARDING phase bug
  */
 async function createMotionState(
   train: TrainPosition,
@@ -481,24 +502,7 @@ async function createMotionState(
 
   // DISABLED: State machine causes trains to get stuck in BOARDING phase
   // Using fallback lerp animation instead (see useMapAnimation.ts:220-241)
-  // TODO: Fix state machine BOARDING logic to not require pendingSegment
   const animState = null;
-
-  // Original state machine code (disabled):
-  // const animState = createTrainAnimationState
-  //   ? createTrainAnimationState(
-  //       train.tripId,
-  //       train.routeId,
-  //       train.prevStopId || '',
-  //       train.nextStopId,
-  //       prevS,
-  //       nextS,
-  //       nowMs,
-  //       progress,
-  //       scheduledDuration,
-  //       speedMultiplier
-  //     )
-  //   : null;
 
   // Calculate initial phase from distance
   const initialPhase = getPhaseFromDistance(initialS, nextS);
@@ -536,9 +540,28 @@ async function createMotionState(
 }
 
 /**
- * Update existing motion state with new API data
- * Handles segment changes by QUEUING them instead of immediate snap.
- * This allows the train to complete its current segment and dwell at station.
+ * Updates an existing motion state with new API data.
+ *
+ * This function handles segment transitions gracefully to avoid visual "snapping".
+ * When a train moves to a new segment (different prev/next stop pair), the behavior
+ * depends on whether the train has reached the current station:
+ *
+ * **At station (within 20m)**: Queue the new segment and start dwell timer.
+ * The train will pause briefly before departing to the next station.
+ *
+ * **Not at station**: Update segment immediately to keep the train moving.
+ * This prevents trains from getting stuck mid-segment.
+ *
+ * @param state - Existing motion state to update
+ * @param train - New train position data from MTA API
+ * @param nowMs - Current timestamp in milliseconds
+ *
+ * @remarks
+ * - Dispatches API_UPDATE to state machine if enabled
+ * - Updates filter state, timing data, and display info
+ * - Pending segments are consumed by the animation loop after dwell completes
+ *
+ * @see STATION_SNAP_DISTANCE - 20m threshold for "at station" detection
  */
 async function updateMotionState(
   state: TrainMotionState,
@@ -633,7 +656,23 @@ async function updateMotionState(
 }
 
 /**
- * Create a legacy marker (fallback)
+ * Creates a legacy marker using direct lat/lng animation.
+ *
+ * This is the fallback animation system used when:
+ * - Route track data is not available
+ * - Alpha-beta-gamma system is disabled
+ * - createMotionState() returns null
+ *
+ * Uses simple linear interpolation between API-provided coordinates instead
+ * of arclength-based animation along the route track.
+ *
+ * @param train - Train position data from MTA API
+ * @param map - MapLibre GL map instance
+ * @param color - Route color for the marker
+ * @param direction - Travel direction ('N' for northbound, 'S' for southbound)
+ * @param now - Current timestamp from performance.now()
+ * @param trainAnimsRef - Ref holding all legacy animation states
+ * @param setSelectedTrain - Callback to set the selected train in UI state
  */
 function createLegacyMarker(
   train: TrainPosition,
@@ -701,11 +740,30 @@ function createLegacyMarker(
   });
 }
 
-// Distance thresholds (meters) - same as train-state-machine.ts
-const ARRIVING_DISTANCE = 200;
-const STATION_SNAP_DISTANCE = 20;
+/**
+ * Distance thresholds for train phase detection (in meters).
+ * These match the values in train-state-machine.ts.
+ */
+const ARRIVING_DISTANCE = 200;  // Show "Arriving" when within 200m of station
+const STATION_SNAP_DISTANCE = 20;  // Show "At Station" when within 20m
 
-// Calculate phase from distance
+/**
+ * Determines the current phase of a train based on its distance to the next station.
+ *
+ * @param currentS - Current arclength position of the train (meters from route start)
+ * @param nextS - Arclength position of the next station (meters from route start)
+ * @returns The train phase:
+ *   - 'BOARDING': Within 20m of station (displays as "At Station")
+ *   - 'ARRIVING': Within 200m of station (displays as "Arriving")
+ *   - 'APPROACHING': More than 200m from station (displays as "En Route")
+ *
+ * @example
+ * ```ts
+ * const phase = getPhaseFromDistance(1500, 1510);  // 10m away -> 'BOARDING'
+ * const phase = getPhaseFromDistance(1500, 1650);  // 150m away -> 'ARRIVING'
+ * const phase = getPhaseFromDistance(1500, 2000);  // 500m away -> 'APPROACHING'
+ * ```
+ */
 function getPhaseFromDistance(currentS: number, nextS: number): 'BOARDING' | 'ARRIVING' | 'APPROACHING' {
   const distance = Math.abs(nextS - currentS);
   if (distance <= STATION_SNAP_DISTANCE) return 'BOARDING';
@@ -714,8 +772,26 @@ function getPhaseFromDistance(currentS: number, nextS: number): 'BOARDING' | 'AR
 }
 
 /**
- * Creates HTML for train popup
- * Uses DISTANCE-based phase detection when arclength data is available
+ * Creates HTML content for train popup tooltip.
+ *
+ * Displays train route, destination, next station, and current phase.
+ * Phase is determined using distance-based detection when arclength data
+ * is available, with ETA-based fallback for legacy trains.
+ *
+ * **Phase detection priority:**
+ * 1. Distance-based (preferred): Uses currentS/nextS arclength positions
+ * 2. ETA-based (fallback): Parses train.eta for legacy trains
+ *
+ * **Phase display mapping:**
+ * - BOARDING (≤20m) → "At Station" (amber)
+ * - ARRIVING (≤200m) → "Arriving" (green)
+ * - APPROACHING (>200m) → "En Route · ETA" (light green)
+ *
+ * @param train - Train position data from MTA API
+ * @param color - Route color for visual badge
+ * @param currentS - Current arclength position (meters from route start)
+ * @param nextS - Next station arclength position (meters from route start)
+ * @returns HTML string for MapLibre popup
  */
 function createPopupHTML(train: TrainPosition, color: string, currentS?: number, nextS?: number): string {
   const direction = getDirectionFromStopId(train.nextStopId);
@@ -755,9 +831,6 @@ function createPopupHTML(train: TrainPosition, color: string, currentS?: number,
   }
 
   // Format phase for display
-  const phaseDisplay = derivedPhase === 'BOARDING' ? 'Boarding' :
-                       derivedPhase === 'ARRIVING' ? 'Arriving' :
-                       derivedPhase === 'APPROACHING' ? 'En Route' : '';
   const phaseColor = derivedPhase === 'BOARDING' ? '#f59e0b' :
                      derivedPhase === 'ARRIVING' ? '#22c55e' : '#4ade80';
 

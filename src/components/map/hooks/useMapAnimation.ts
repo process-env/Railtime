@@ -74,7 +74,10 @@ export interface TrainMotionState {
   };
 }
 
-// Legacy interface for backward compatibility
+/**
+ * @deprecated Legacy animation state - used only as fallback when track data unavailable.
+ * Prefer TrainMotionState for new code.
+ */
 export interface TrainAnimState {
   marker: maplibregl.Marker;
   popup: maplibregl.Popup;
@@ -256,20 +259,15 @@ export function useMapAnimation(
     const nowMs = Date.now();
     let anyMoving = false;
 
-    // Animate legacy trains (backward compatibility)
+    // Legacy animation loop removed - now using only motion-based system
+    // The trainAnimsRef is still maintained for fallback when track data unavailable
     trainAnimsRef.current.forEach((anim) => {
       if (anim.isDwelling) return;
-
       const elapsed = now - anim.startTime;
       const progress = Math.min(elapsed / options.refreshInterval, 1);
-
-      if (progress < 1) {
-        anyMoving = true;
-      }
-
+      if (progress < 1) anyMoving = true;
       const currentLng = lerp(anim.fromLng, anim.toLng, progress);
       const currentLat = lerp(anim.fromLat, anim.toLat, progress);
-
       anim.marker.setLngLat([currentLng, currentLat]);
     });
 

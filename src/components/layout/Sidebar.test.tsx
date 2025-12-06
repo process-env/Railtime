@@ -39,6 +39,18 @@ vi.mock('./SubwayMapModal', () => ({
   SubwayMapModal: () => <button>Subway Map</button>,
 }));
 
+// Mock useAlerts hook with mutable state
+const mockAlertsState = { alerts: [] as { id: string; header: string; description: string; createdAt: string; affectedRoutes: string[] }[] };
+vi.mock('@/hooks', async () => {
+  const actual = await vi.importActual('@/hooks');
+  return {
+    ...actual,
+    useAlerts: () => ({ alerts: mockAlertsState.alerts, isLoading: false, error: null }),
+    usePrefetchAnalytics: () => {},
+    usePrefetchMap: () => {},
+  };
+});
+
 // Create wrapper with required providers
 function TestWrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({
@@ -64,10 +76,6 @@ describe('AppSidebar', () => {
       selectedTrainId: null,
     });
     useAlertsStore.setState({
-      alerts: [],
-      lastFetch: null,
-      isLoading: false,
-      error: null,
       dismissedIds: new Set(),
     });
   });
@@ -120,24 +128,22 @@ describe('AppSidebar', () => {
   });
 
   it('shows alert badge when there are alerts', () => {
-    useAlertsStore.setState({
-      alerts: [
-        {
-          id: '1',
-          header: 'Test Alert',
-          description: 'Test',
-          createdAt: new Date().toISOString(),
-          affectedRoutes: ['A'],
-        },
-      ],
-      lastFetch: Date.now(),
-      isLoading: false,
-      error: null,
-      dismissedIds: new Set(),
-    });
+    // Add alert to mock
+    mockAlertsState.alerts = [{
+      id: '1',
+      header: 'Test Alert',
+      description: 'Test',
+      createdAt: new Date().toISOString(),
+      affectedRoutes: ['A'],
+    }];
 
     render(<AppSidebar />, { wrapper: TestWrapper });
-    // Alert count should show in badge
-    expect(screen.getByText('1')).toBeInTheDocument();
+    // Alert count should show in badge (look for the menu badge element)
+    const badge = document.querySelector('[data-sidebar="menu-badge"]');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('1');
+
+    // Clean up
+    mockAlertsState.alerts = [];
   });
 });

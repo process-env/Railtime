@@ -65,7 +65,7 @@ export type TrainAction =
 // Thresholds - use DISTANCE not progress
 const ARRIVING_DISTANCE = 200;       // meters - show "Arriving" when within 200m of station
 const STATION_SNAP_DISTANCE = 20;    // meters - SNAP to station when within 20m
-const DWELL_DURATION_DEFAULT = 2;    // Default dwell time (seconds) - quick transition
+const DWELL_DURATION_DEFAULT = 2;    // Default dwell time (seconds)
 const SYNC_SNAP_THRESHOLD = 0.3;     // Snap if >30% discrepancy
 const SYNC_ADJUST_THRESHOLD = 0.1;   // Adjust speed if 10-30% discrepancy
 
@@ -151,11 +151,12 @@ export function trainAnimationReducer(
 function handleTick(state: TrainAnimationState, nowMs: number): TrainAnimationState {
   switch (state.phase) {
     case 'BOARDING': {
-      // Train at station - check if we have pending segment AND dwell complete
-      if (state.dwellStartTime !== null && state.pendingSegment) {
+      // Train at station - check dwell time and pending segment
+      if (state.dwellStartTime !== null) {
         const dwellElapsed = (nowMs - state.dwellStartTime) / 1000;
-        if (dwellElapsed >= state.dwellDuration) {
-          // Dwell complete AND we have next segment - START MOVING!
+
+        // If we have pending segment AND dwell complete - START MOVING!
+        if (state.pendingSegment && dwellElapsed >= state.dwellDuration) {
           const pending = state.pendingSegment;
           return {
             ...state,
@@ -171,6 +172,7 @@ function handleTick(state: TrainAnimationState, nowMs: number): TrainAnimationSt
             pendingSegment: null,
           };
         }
+
       }
       // Still boarding - stay at exact station position
       return {

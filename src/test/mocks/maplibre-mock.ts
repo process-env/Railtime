@@ -99,12 +99,15 @@ export class MockAttributionControl {
   onRemove = vi.fn();
 }
 
+// Event handler type for map events
+type MapEventHandler = (data?: unknown) => void;
+
 // Mock Map class
 export class MockMap {
   private center: [number, number] = [0, 0];
   private zoom = 10;
   private loaded = false;
-  private eventHandlers: Record<string, Function[]> = {};
+  private eventHandlers: Record<string, MapEventHandler[]> = {};
   private sources: Record<string, unknown> = {};
   private layers: Array<{ id: string; type: string; source: string }> = [];
 
@@ -124,7 +127,7 @@ export class MockMap {
     }, 0);
   }
 
-  on(event: string, handler: Function) {
+  on(event: string, handler: MapEventHandler) {
     if (!this.eventHandlers[event]) {
       this.eventHandlers[event] = [];
     }
@@ -132,7 +135,7 @@ export class MockMap {
     return this;
   }
 
-  off(event: string, handler: Function) {
+  off(event: string, handler: MapEventHandler) {
     if (this.eventHandlers[event]) {
       this.eventHandlers[event] = this.eventHandlers[event].filter(h => h !== handler);
     }
