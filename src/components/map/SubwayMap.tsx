@@ -43,12 +43,22 @@ export function SubwayMap() {
 
   // Duration matrix for schedule-based animation
   const [durationMatrix, setDurationMatrix] = useState<RouteDurationMatrix | null>(null);
+  const matrixLoadedRef = useRef(false);
 
-  // Load duration matrix on mount
+  // Load duration matrix on mount (with guard to prevent duplicate loads)
   useEffect(() => {
-    import('@/lib/map/route-durations').then(({ buildRouteDurationMatrix }) => {
-      buildRouteDurationMatrix().then(setDurationMatrix);
-    });
+    if (matrixLoadedRef.current) return;
+    matrixLoadedRef.current = true;
+
+    let mounted = true;
+    import('@/lib/map/route-durations')
+      .then(({ buildRouteDurationMatrix }) => buildRouteDurationMatrix())
+      .then((matrix) => {
+        if (mounted) setDurationMatrix(matrix);
+      })
+      .catch((err) => console.error('Failed to load duration matrix:', err));
+
+    return () => { mounted = false; };
   }, []);
 
   // Animation hook - enable schedule-based animation
@@ -193,7 +203,8 @@ export function SubwayMap() {
   // Track phase in state so it updates with animation
   const [selectedTrainPhase, setSelectedTrainPhase] = useState<'BOARDING' | 'ARRIVING' | 'APPROACHING' | null>(null);
 
-  // Poll the phase every 100ms when a train is selected to sync with animation
+  // Poll the phase every 500ms when a train is selected to sync with animation
+  // 500ms is smooth enough for visual updates while reducing re-renders by 80%
   useEffect(() => {
     if (!selectedTrainId) {
       setSelectedTrainPhase(null);
@@ -206,8 +217,8 @@ export function SubwayMap() {
     // Poll for phase updates
     const interval = setInterval(() => {
       const phase = getTrainPhase(selectedTrainId);
-      setSelectedTrainPhase(phase);
-    }, 100);
+      setSelectedTrainPhase(prev => prev !== phase ? phase : prev);
+    }, 500);
 
     return () => clearInterval(interval);
   }, [selectedTrainId, getTrainPhase]);
@@ -219,9 +230,22 @@ export function SubwayMap() {
     }
   }, [selectedTrainId, selectedTrain, setSelectedTrain]);
 
+  // Show loading overlay until map and initial data are ready
+  const isInitializing = !mapLoaded || trains.length === 0;
+
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="w-full h-full" />
+
+      {/* Loading overlay - fades out when ready */}
+      {isInitializing && (
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-20 transition-opacity duration-300">
+          <div className="text-center space-y-2">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-sm text-muted-foreground">Loading trains...</p>
+          </div>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="absolute bottom-4 left-4 bg-background/90 backdrop-blur p-3 rounded-lg shadow-lg text-xs">

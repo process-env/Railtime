@@ -25,6 +25,7 @@ interface MarkerData {
   marker: maplibregl.Marker;
   popup: maplibregl.Popup;
   cleanup: () => void;
+  element: HTMLElement; // Cached element reference to avoid DOM queries
 }
 
 /**
@@ -108,11 +109,11 @@ export function useStationMarkers(
       const isArriving = arrivingStationIds.has(station.id);
       const isSelected = station.id === selectedStationId;
 
-      // Update existing marker
+      // Update existing marker using cached element reference
       if (markersRef.current.has(station.id)) {
         const data = markersRef.current.get(station.id);
         if (data) {
-          const el = data.marker.getElement();
+          const el = data.element;
           // Update size based on selection
           el.style.width = isSelected ? '18px' : '12px';
           el.style.height = isSelected ? '18px' : '12px';
@@ -185,7 +186,7 @@ export function useStationMarkers(
         el.removeEventListener('mouseleave', handleMouseLeave);
       };
 
-      markersRef.current.set(station.id, { marker, popup, cleanup });
+      markersRef.current.set(station.id, { marker, popup, cleanup, element: el });
     });
   }, [mapLoaded, map, filteredStations, currentZoom, selectedStationId, setSelectedStation, arrivingStationIds, removeMarker, clearAllMarkers]);
 

@@ -1,8 +1,11 @@
 export { useArrivals } from './use-arrivals';
 export { useTrainPositions } from './use-train-positions';
+export { useTrainPositionsSuspense } from './use-train-positions-suspense';
 export { useAnalytics } from './use-analytics';
 export { useAlerts } from './use-alerts';
 export { useStaticData, useStationsByRoute, useSearchStations } from './use-static-data';
 export { usePrefetchStaticData } from './use-prefetch-static-data';
 export { usePrefetchAnalytics } from './use-prefetch-analytics';
+export { usePrefetchMap } from './use-prefetch-map';
 export { useEquipmentStatus } from './use-equipment-status';
+export { useBackgroundSync } from './use-background-sync';

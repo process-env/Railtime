@@ -75,6 +75,43 @@ async function loadTrackUtils() {
   }
 }
 
+// Terminal stations - module-level constant for performance (avoid recreating Set on each render)
+const TERMINAL_STOPS = new Set([
+  // 1 line
+  '101', '101N', '101S', // Van Cortlandt Park-242 St
+  '142', '142N', '142S', // South Ferry
+  // 2 line
+  '201', '201N', '201S', // Wakefield-241 St
+  '247', '247N', '247S', // Flatbush Av-Brooklyn College
+  // 3 line
+  '301', '301N', '301S', // Harlem-148 St
+  '257', '257N', '257S', // New Lots Av
+  // 4 line
+  '401', '401N', '401S', // Woodlawn
+  '423', '423N', '423S', // Crown Heights-Utica Av
+  // 5 line
+  '501', '501N', '501S', // Eastchester-Dyre Av
+  '416', '416N', '416S', // 180 St (Bronx terminal)
+  // 6 line
+  '601', '601N', '601S', // Pelham Bay Park
+  '640', '640N', '640S', // Brooklyn Bridge-City Hall
+  // 7 line
+  '701', '701N', '701S', // Flushing-Main St
+  '726', '726N', '726S', // 34 St-Hudson Yards
+  // A line
+  'A02', 'A02N', 'A02S', // Inwood-207 St
+  'H11', 'H11N', 'H11S', // Far Rockaway-Mott Av
+  'A65', 'A65N', 'A65S', // Ozone Park-Lefferts Blvd
+  // Other major terminals
+  'G22', 'G22N', 'G22S', // Church Av (G)
+  'G26', 'G26N', 'G26S', // Court Sq (G)
+  'L01', 'L01N', 'L01S', // 8 Av (L)
+  'L29', 'L29N', 'L29S', // Canarsie-Rockaway Pkwy (L)
+]);
+
+// Grace period: keep train visible for 5 minutes after API removes it
+const CULL_GRACE_PERIOD_MS = 300000;
+
 /**
  * Hook to manage train markers with smooth animation
  */
@@ -175,44 +212,6 @@ export function useTrainMarkers(
     const currentTripIds = new Set(filteredTrains.map((t) => t.tripId));
     const now = performance.now();
     const nowMs = Date.now();
-
-    // Terminal stations - only cull trains at these stops
-    const TERMINAL_STOPS = new Set([
-      // 1 line
-      '101', '101N', '101S', // Van Cortlandt Park-242 St
-      '142', '142N', '142S', // South Ferry
-      // 2 line
-      '201', '201N', '201S', // Wakefield-241 St
-      '247', '247N', '247S', // Flatbush Av-Brooklyn College
-      // 3 line
-      '301', '301N', '301S', // Harlem-148 St
-      '257', '257N', '257S', // New Lots Av
-      // 4 line
-      '401', '401N', '401S', // Woodlawn
-      '423', '423N', '423S', // Crown Heights-Utica Av
-      // 5 line
-      '501', '501N', '501S', // Eastchester-Dyre Av
-      '416', '416N', '416S', // 180 St (Bronx terminal)
-      // 6 line
-      '601', '601N', '601S', // Pelham Bay Park
-      '640', '640N', '640S', // Brooklyn Bridge-City Hall
-      // 7 line
-      '701', '701N', '701S', // Flushing-Main St
-      '726', '726N', '726S', // 34 St-Hudson Yards
-      // A line
-      'A02', 'A02N', 'A02S', // Inwood-207 St
-      'H11', 'H11N', 'H11S', // Far Rockaway-Mott Av
-      'A65', 'A65N', 'A65S', // Ozone Park-Lefferts Blvd
-      // Other major terminals
-      'G22', 'G22N', 'G22S', // Church Av (G)
-      'G26', 'G26N', 'G26S', // Court Sq (G)
-      'L01', 'L01N', 'L01S', // 8 Av (L)
-      'L29', 'L29N', 'L29S', // Canarsie-Rockaway Pkwy (L)
-    ]);
-
-    // Grace period: keep train visible for 5 minutes after API removes it
-    // Trains disappear from API feed but are still running - don't cull them prematurely
-    const CULL_GRACE_PERIOD_MS = 300000;
 
     // Remove old markers
     // - If route filter is active and train's route doesn't match: remove immediately

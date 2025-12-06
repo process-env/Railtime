@@ -26,7 +26,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { usePrefetchAnalytics, useAlerts } from '@/hooks';
+import { usePrefetchAnalytics, usePrefetchMap, useAlerts } from '@/hooks';
 import { RouteFilter } from './RouteFilter';
 import { SubwayMapModal } from './SubwayMapModal';
 
@@ -44,6 +44,7 @@ export function AppSidebar() {
   const { alerts } = useAlerts();
   const alertCount = alerts.length;
   const prefetchAnalytics = usePrefetchAnalytics();
+  const prefetchMap = usePrefetchMap();
 
   return (
     <Sidebar collapsible="icon">
@@ -83,7 +84,9 @@ export function AppSidebar() {
           <SidebarMenu>
             {navItems.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              const isPrefetchable = item.href === '/analytics';
+              const prefetchFn = item.href === '/analytics' ? prefetchAnalytics
+                : item.href === '/map' ? prefetchMap
+                : undefined;
               return (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
@@ -93,8 +96,8 @@ export function AppSidebar() {
                   >
                     <Link
                       href={item.href}
-                      onMouseEnter={isPrefetchable ? prefetchAnalytics : undefined}
-                      onFocus={isPrefetchable ? prefetchAnalytics : undefined}
+                      onMouseEnter={prefetchFn}
+                      onFocus={prefetchFn}
                     >
                       <item.icon />
                       <span>{item.label}</span>
