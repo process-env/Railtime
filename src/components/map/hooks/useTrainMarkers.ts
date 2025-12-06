@@ -1,0 +1,767 @@
+/**
+ * useTrainMarkers - Manage train markers with schedule-based animation
+ *
+ * Handles:
+ * - Marker creation/removal based on API data
+ * - Motion state initialization with duration matrix
+ * - Alert-based speed modulation
+ * - Segment change detection and hybrid sync
+ */
+
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
+import maplibregl from 'maplibre-gl';
+import { getRouteColor, MAP_CONSTANTS } from '@/lib/constants';
+import { getDirectionFromStopId, formatEta, getDirectionLabel, getTextColorForBackground } from '@/lib/mta/format';
+import { useUIStore } from '@/stores';
+import type { TrainPosition, ServiceAlert } from '@/types/mta';
+import type { TrainAnimState, TrainMotionState } from './useMapAnimation';
+import type { RouteTrack } from '@/lib/map/track-index';
+import type { RouteDurationMatrix } from '@/lib/map/route-durations';
+
+export interface UseTrainMarkersOptions {
+  trains: TrainPosition[];
+  selectedRouteIds: string[];
+  selectedTrainId: string | null;
+  setSelectedTrain: (tripId: string | null) => void;
+  refreshInterval: number;
+  scheduleAnimation: () => void;
+  useAlphaBetaGamma?: boolean;  // Enable new animation system
+  durationMatrix?: RouteDurationMatrix | null;  // Pre-computed durations
+  alerts?: ServiceAlert[];  // Current service alerts
+}
+
+export interface UseTrainMarkersReturn {
+  visibleTrainCount: number;
+  latestApiDataRef: React.MutableRefObject<Map<string, ApiDataEntry>>;
+  getTrainPhase: (tripId: string) => 'BOARDING' | 'ARRIVING' | 'APPROACHING' | null;
+}
+
+// API data ref type for animation sync
+export interface ApiDataEntry {
+  prevStopId: string;
+  nextStopId: string;
+  prevTimeMs: number;
+  nextTimeMs: number;
+  prevS: number;
+  nextS: number;
+  apiProgress: number;
+}
+
+// Dynamic imports to avoid SSR issues
+let getRouteTrack: ((routeId: string) => Promise<RouteTrack | undefined>) | null = null;
+let getStopArclength: ((routeId: string, stopId: string) => Promise<number | undefined>) | null = null;
+let createFilterState: any = null;
+let getSegmentDuration: any = null;
+let getRouteSpeedMultiplier: any = null;
+let createTrainAnimationState: any = null;
+let trainAnimationReducer: any = null;
+
+async function loadTrackUtils() {
+  if (!getRouteTrack) {
+    const [trackModule, filterModule, durationModule, alertModule, stateMachineModule] = await Promise.all([
+      import('@/lib/map/track-index'),
+      import('@/lib/map/alpha-beta-gamma'),
+      import('@/lib/map/route-durations'),
+      import('@/lib/map/alert-speed'),
+      import('@/lib/map/train-state-machine')
+    ]);
+    getRouteTrack = trackModule.getRouteTrack;
+    getStopArclength = trackModule.getStopArclength;
+    createFilterState = filterModule.createFilterState;
+    getSegmentDuration = durationModule.getSegmentDuration;
+    getRouteSpeedMultiplier = alertModule.getRouteSpeedMultiplier;
+    createTrainAnimationState = stateMachineModule.createTrainAnimationState;
+    trainAnimationReducer = stateMachineModule.trainAnimationReducer;
+  }
+}
+
+/**
+ * Hook to manage train markers with smooth animation
+ */
+export function useTrainMarkers(
+  map: maplibregl.Map | null,
+  mapLoaded: boolean,
+  trainAnimsRef: React.MutableRefObject<Map<string, TrainAnimState>>,
+  trainMotionRef: React.MutableRefObject<Map<string, TrainMotionState>>,
+  lerp: (start: number, end: number, t: number) => number,
+  options: UseTrainMarkersOptions
+): UseTrainMarkersReturn {
+  const {
+    trains,
+    selectedRouteIds,
+    selectedTrainId,
+    setSelectedTrain,
+    refreshInterval,
+    scheduleAnimation,
+    useAlphaBetaGamma = true,  // Default to new system
+    durationMatrix = null,
+    alerts = [],
+  } = options;
+
+  const trackUtilsLoaded = useRef(false);
+  const [, forceUpdate] = useState(0);
+
+  // Ref to hold latest API data for animation loop (no re-render on update)
+  const latestApiDataRef = useRef<Map<string, ApiDataEntry>>(new Map());
+
+  // Load track utilities on mount
+  useEffect(() => {
+    if (useAlphaBetaGamma) {
+      loadTrackUtils().then(() => {
+        trackUtilsLoaded.current = true;
+        forceUpdate(n => n + 1);
+      });
+    }
+  }, [useAlphaBetaGamma]);
+
+  // Update latestApiDataRef whenever trains change (for animation loop to read)
+  useEffect(() => {
+    if (!trackUtilsLoaded.current || !getStopArclength) return;
+
+    const updateApiData = async () => {
+      const nowMs = Date.now();
+
+      for (const train of trains) {
+        // Get arclengths for this train's segment
+        const prevS = train.prevStopId
+          ? await getStopArclength!(train.routeId, train.prevStopId)
+          : undefined;
+        const nextS = await getStopArclength!(train.routeId, train.nextStopId);
+
+        if (prevS === undefined || nextS === undefined) continue;
+
+        // Calculate API-based progress
+        const totalDuration = (train.nextTimeMs || nowMs + 90000) - (train.prevTimeMs || nowMs);
+        const elapsed = nowMs - (train.prevTimeMs || nowMs);
+        const apiProgress = totalDuration > 0 ? Math.max(0, Math.min(1, elapsed / totalDuration)) : 0;
+
+        latestApiDataRef.current.set(train.tripId, {
+          prevStopId: train.prevStopId || '',
+          nextStopId: train.nextStopId,
+          prevTimeMs: train.prevTimeMs || nowMs,
+          nextTimeMs: train.nextTimeMs || nowMs + 90000,
+          prevS,
+          nextS,
+          apiProgress
+        });
+      }
+
+      // Clean up old entries
+      const currentTripIds = new Set(trains.map(t => t.tripId));
+      latestApiDataRef.current.forEach((_, tripId) => {
+        if (!currentTripIds.has(tripId)) {
+          latestApiDataRef.current.delete(tripId);
+        }
+      });
+    };
+
+    updateApiData();
+  }, [trains]);
+
+  // Helper to calculate distance between two points
+  const getDistance = useCallback((lng1: number, lat1: number, lng2: number, lat2: number) => {
+    return Math.sqrt(Math.pow(lng2 - lng1, 2) + Math.pow(lat2 - lat1, 2));
+  }, []);
+
+  // Update train markers
+  useEffect(() => {
+    if (!mapLoaded || !map) return;
+
+    // Filter trains by selected routes
+    const filteredTrains = selectedRouteIds.length > 0
+      ? trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase()))
+      : trains;
+
+    const currentTripIds = new Set(filteredTrains.map((t) => t.tripId));
+    const now = performance.now();
+    const nowMs = Date.now();
+
+    // Terminal stations - only cull trains at these stops
+    const TERMINAL_STOPS = new Set([
+      // 1 line
+      '101', '101N', '101S', // Van Cortlandt Park-242 St
+      '142', '142N', '142S', // South Ferry
+      // 2 line
+      '201', '201N', '201S', // Wakefield-241 St
+      '247', '247N', '247S', // Flatbush Av-Brooklyn College
+      // 3 line
+      '301', '301N', '301S', // Harlem-148 St
+      '257', '257N', '257S', // New Lots Av
+      // 4 line
+      '401', '401N', '401S', // Woodlawn
+      '423', '423N', '423S', // Crown Heights-Utica Av
+      // 5 line
+      '501', '501N', '501S', // Eastchester-Dyre Av
+      '416', '416N', '416S', // 180 St (Bronx terminal)
+      // 6 line
+      '601', '601N', '601S', // Pelham Bay Park
+      '640', '640N', '640S', // Brooklyn Bridge-City Hall
+      // 7 line
+      '701', '701N', '701S', // Flushing-Main St
+      '726', '726N', '726S', // 34 St-Hudson Yards
+      // A line
+      'A02', 'A02N', 'A02S', // Inwood-207 St
+      'H11', 'H11N', 'H11S', // Far Rockaway-Mott Av
+      'A65', 'A65N', 'A65S', // Ozone Park-Lefferts Blvd
+      // Other major terminals
+      'G22', 'G22N', 'G22S', // Church Av (G)
+      'G26', 'G26N', 'G26S', // Court Sq (G)
+      'L01', 'L01N', 'L01S', // 8 Av (L)
+      'L29', 'L29N', 'L29S', // Canarsie-Rockaway Pkwy (L)
+    ]);
+
+    // Grace period: keep train visible for 5 minutes after API removes it
+    // Trains disappear from API feed but are still running - don't cull them prematurely
+    const CULL_GRACE_PERIOD_MS = 300000;
+
+    // Remove old markers - but only if trip is at terminal or grace period expired
+    trainAnimsRef.current.forEach((anim, tripId) => {
+      if (!currentTripIds.has(tripId)) {
+        const timeSinceUpdate = nowMs - (anim.startTime || 0);
+        const atTerminal = TERMINAL_STOPS.has(anim.nextStopName || '');
+
+        if (atTerminal || timeSinceUpdate > CULL_GRACE_PERIOD_MS) {
+          anim.popup.remove();
+          anim.marker.remove();
+          trainAnimsRef.current.delete(tripId);
+        }
+      }
+    });
+
+    trainMotionRef.current.forEach((state, tripId) => {
+      if (!currentTripIds.has(tripId)) {
+        const timeSinceUpdate = nowMs - state.lastApiUpdate;
+        const atTerminal = TERMINAL_STOPS.has(state.nextStopId);
+
+        if (atTerminal || timeSinceUpdate > CULL_GRACE_PERIOD_MS) {
+          state.popup.remove();
+          state.marker.remove();
+          trainMotionRef.current.delete(tripId);
+        }
+      }
+    });
+
+    // Process each train
+    filteredTrains.forEach(async (train) => {
+      const color = getRouteColor(train.routeId);
+      const direction = getDirectionFromStopId(train.nextStopId);
+
+      // Use new motion-based system if enabled and utilities loaded
+      if (useAlphaBetaGamma && trackUtilsLoaded.current && getRouteTrack && getStopArclength) {
+        const existingMotion = trainMotionRef.current.get(train.tripId);
+
+        if (existingMotion) {
+          // Calculate scheduled duration from GTFS matrix
+          let scheduledDuration = 90;
+          if (durationMatrix && getSegmentDuration) {
+            const duration = getSegmentDuration(
+              durationMatrix,
+              train.routeId,
+              existingMotion.prevStopId,
+              existingMotion.nextStopId
+            );
+            if (duration) {
+              scheduledDuration = duration;
+            }
+          }
+
+          // Calculate speed multiplier from API timing (NOT alerts)
+          const apiDuration = ((train.nextTimeMs || nowMs + 90000) - (train.prevTimeMs || nowMs)) / 1000;
+          const speedMultiplier = apiDuration > 0 ? scheduledDuration / apiDuration : 1.0;
+
+          // Update state machine with duration and speed
+          if (existingMotion.animState && trainAnimationReducer) {
+            existingMotion.animState = trainAnimationReducer(existingMotion.animState, {
+              type: 'SET_DURATION',
+              duration: scheduledDuration
+            });
+            existingMotion.animState = trainAnimationReducer(existingMotion.animState, {
+              type: 'SET_SPEED_MULTIPLIER',
+              multiplier: speedMultiplier
+            });
+          }
+
+          // Update motion state with new API data
+          await updateMotionState(existingMotion, train, nowMs);
+
+          // Pass current arclength and next station arclength for distance-based phase
+          existingMotion.popup.setHTML(createPopupHTML(train, color, existingMotion.filter.s, existingMotion.nextS));
+        } else {
+          // Calculate duration and speed for new train
+          let scheduledDuration = 90;
+          if (durationMatrix && getSegmentDuration && train.prevStopId) {
+            const duration = getSegmentDuration(
+              durationMatrix,
+              train.routeId,
+              train.prevStopId,
+              train.nextStopId
+            );
+            if (duration) {
+              scheduledDuration = duration;
+            }
+          }
+
+          const apiDuration = ((train.nextTimeMs || nowMs + 90000) - (train.prevTimeMs || nowMs)) / 1000;
+          const speedMultiplier = apiDuration > 0 ? scheduledDuration / apiDuration : 1.0;
+
+          // Create new motion state with duration and speed
+          const motionState = await createMotionState(
+            train, map, color, direction, nowMs, setSelectedTrain,
+            durationMatrix, scheduledDuration, speedMultiplier
+          );
+          if (motionState) {
+            trainMotionRef.current.set(train.tripId, motionState);
+          } else {
+            // Fallback to legacy if track not found
+            // Make sure we're not duplicating - clean up motion ref if it exists
+            trainMotionRef.current.delete(train.tripId);
+            // Only create legacy marker if it doesn't already exist
+            if (!trainAnimsRef.current.has(train.tripId)) {
+              createLegacyMarker(train, map, color, direction, now, trainAnimsRef, setSelectedTrain);
+            }
+          }
+        }
+      } else {
+        // Use legacy animation system
+        const existingAnim = trainAnimsRef.current.get(train.tripId);
+
+        if (existingAnim) {
+          // Update existing animation
+          const elapsed = now - existingAnim.startTime;
+          const progress = Math.min(elapsed / refreshInterval, 1);
+
+          const currentLng = lerp(existingAnim.fromLng, existingAnim.toLng, progress);
+          const currentLat = lerp(existingAnim.fromLat, existingAnim.toLat, progress);
+
+          const distance = getDistance(currentLng, currentLat, train.lon, train.lat);
+          const isDwelling = distance < MAP_CONSTANTS.DWELLING_THRESHOLD;
+
+          existingAnim.fromLng = currentLng;
+          existingAnim.fromLat = currentLat;
+          existingAnim.toLng = train.lon;
+          existingAnim.toLat = train.lat;
+          existingAnim.startTime = now;
+          existingAnim.isDwelling = isDwelling;
+          existingAnim.nextStopName = train.nextStopName;
+          existingAnim.eta = train.eta;
+          existingAnim.direction = direction;
+
+          existingAnim.popup.setHTML(createPopupHTML(train, color));
+        } else {
+          createLegacyMarker(train, map, color, direction, now, trainAnimsRef, setSelectedTrain);
+        }
+      }
+    });
+
+    // Restart animation loop
+    scheduleAnimation();
+  }, [mapLoaded, map, trains, selectedRouteIds, lerp, getDistance, refreshInterval, selectedTrainId, setSelectedTrain, trainAnimsRef, trainMotionRef, scheduleAnimation, useAlphaBetaGamma, durationMatrix, alerts]);
+
+  // Memoize visible train count
+  const visibleTrainCount = useMemo(() => {
+    if (selectedRouteIds.length === 0) return trains.length;
+    return trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase())).length;
+  }, [trains, selectedRouteIds]);
+
+  // Get current phase for a train from motion state
+  const getTrainPhase = useCallback((tripId: string): 'BOARDING' | 'ARRIVING' | 'APPROACHING' | null => {
+    const motionState = trainMotionRef.current.get(tripId);
+    if (!motionState) return null;
+    return motionState.lastPhase || getPhaseFromDistance(motionState.filter.s, motionState.nextS);
+  }, [trainMotionRef]);
+
+  return { visibleTrainCount, latestApiDataRef, getTrainPhase };
+}
+
+/**
+ * Create a new motion-based train state
+ */
+async function createMotionState(
+  train: TrainPosition,
+  map: maplibregl.Map,
+  color: string,
+  direction: 'N' | 'S' | null,
+  nowMs: number,
+  setSelectedTrain: (tripId: string | null) => void,
+  durationMatrix: RouteDurationMatrix | null,
+  scheduledDuration: number,
+  speedMultiplier: number
+): Promise<TrainMotionState | null> {
+  if (!getRouteTrack || !getStopArclength || !createFilterState) return null;
+
+  // Get track for this route
+  const track = await getRouteTrack(train.routeId);
+  if (!track) return null;
+
+  // Get arclengths for prev and next stops
+  const prevS = train.prevStopId ? await getStopArclength(train.routeId, train.prevStopId) : undefined;
+  const nextS = await getStopArclength(train.routeId, train.nextStopId);
+
+  if (prevS === undefined || nextS === undefined) return null;
+
+  // Calculate initial position from schedule
+  const prevTimeMs = train.prevTimeMs || nowMs - refreshInterval;
+  const nextTimeMs = train.nextTimeMs || nowMs + refreshInterval;
+  const totalTime = nextTimeMs - prevTimeMs;
+  const elapsed = nowMs - prevTimeMs;
+  const progress = totalTime > 0 ? Math.max(0, Math.min(1, elapsed / totalTime)) : 0;
+  const initialS = prevS + (nextS - prevS) * progress;
+
+  // Create marker element
+  const el = document.createElement('div');
+  el.className = 'train-marker';
+  el.style.cssText = `
+    width: 22px;
+    height: 22px;
+    background-color: ${color};
+    border: 2px solid white;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+    color: ${getTextColorForBackground(color)};
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    cursor: pointer;
+  `;
+  el.textContent = train.routeId;
+
+  // Create popup with distance-based phase
+  const popup = new maplibregl.Popup({
+    closeButton: false,
+    closeOnClick: false,
+    offset: MAP_CONSTANTS.POPUP_OFFSET_TRAIN,
+    className: 'train-popup',
+  }).setHTML(createPopupHTML(train, color, initialS, nextS));
+
+  // Create marker
+  const marker = new maplibregl.Marker({ element: el })
+    .setLngLat([train.lon, train.lat])
+    .addTo(map);
+
+  // Event handlers
+  el.addEventListener('mouseenter', () => {
+    marker.setPopup(popup).togglePopup();
+  });
+  el.addEventListener('mouseleave', () => {
+    popup.remove();
+  });
+  el.addEventListener('click', () => {
+    const currentSelectedId = useUIStore.getState().selectedTrainId;
+    setSelectedTrain(train.tripId === currentSelectedId ? null : train.tripId);
+  });
+
+  // DISABLED: State machine causes trains to get stuck in BOARDING phase
+  // Using fallback lerp animation instead (see useMapAnimation.ts:220-241)
+  // TODO: Fix state machine BOARDING logic to not require pendingSegment
+  const animState = null;
+
+  // Original state machine code (disabled):
+  // const animState = createTrainAnimationState
+  //   ? createTrainAnimationState(
+  //       train.tripId,
+  //       train.routeId,
+  //       train.prevStopId || '',
+  //       train.nextStopId,
+  //       prevS,
+  //       nextS,
+  //       nowMs,
+  //       progress,
+  //       scheduledDuration,
+  //       speedMultiplier
+  //     )
+  //   : null;
+
+  // Calculate initial phase from distance
+  const initialPhase = getPhaseFromDistance(initialS, nextS);
+
+  // Using schedule-based animation with duration matrix
+  return {
+    tripId: train.tripId,
+    routeId: train.routeId,
+    marker,
+    popup,
+    track,
+    filter: createFilterState(initialS, 0, 0, nowMs),
+    plan: null,
+    prevStopId: train.prevStopId || '',
+    nextStopId: train.nextStopId,
+    prevTimeMs,
+    nextTimeMs,
+    prevS,
+    nextS,
+    // Schedule-based animation fields (deprecated - use animState)
+    segmentStartTime: nowMs - elapsed,
+    scheduledDuration,
+    speedMultiplier,
+    // State machine
+    animState,
+    nextStopName: train.nextStopName,
+    eta: train.eta,
+    headsign: train.headsign,
+    direction,
+    lastFrameTime: performance.now(),
+    lastApiUpdate: nowMs,
+    // Phase tracking for popup updates during animation
+    lastPhase: initialPhase
+  };
+}
+
+/**
+ * Update existing motion state with new API data
+ * Handles segment changes by QUEUING them instead of immediate snap.
+ * This allows the train to complete its current segment and dwell at station.
+ */
+async function updateMotionState(
+  state: TrainMotionState,
+  train: TrainPosition,
+  nowMs: number
+): Promise<void> {
+  if (!getStopArclength) return;
+
+  // Get new arclengths
+  const prevS = train.prevStopId ? await getStopArclength(train.routeId, train.prevStopId) : state.prevS;
+  const nextS = await getStopArclength(train.routeId, train.nextStopId);
+
+  if (nextS === undefined) return;
+
+  // Calculate API progress
+  const totalTime = (train.nextTimeMs || nowMs + 90000) - (train.prevTimeMs || nowMs);
+  const elapsed = nowMs - (train.prevTimeMs || nowMs);
+  const apiProgress = totalTime > 0 ? Math.max(0, Math.min(1, elapsed / totalTime)) : 0;
+
+  // CRITICAL: Dispatch API_UPDATE to state machine (if using state machine)
+  if (state.animState && trainAnimationReducer && prevS !== undefined) {
+    state.animState = trainAnimationReducer(state.animState, {
+      type: 'API_UPDATE',
+      nowMs,
+      prevStopId: train.prevStopId || '',
+      nextStopId: train.nextStopId,
+      prevS,
+      nextS,
+      apiProgress
+    });
+  }
+
+  // Detect segment change (train moved to new station pair)
+  const segmentChanged =
+    train.prevStopId !== state.prevStopId ||
+    train.nextStopId !== state.nextStopId;
+
+  if (segmentChanged && prevS !== undefined) {
+    // Check if train has already reached current station
+    const distanceToCurrentStation = Math.abs(state.nextS - state.filter.s);
+    const atStation = distanceToCurrentStation <= STATION_SNAP_DISTANCE;
+
+    // Calculate duration from API timing (or use default)
+    const apiDurationMs = (train.nextTimeMs || nowMs + 90000) - (train.prevTimeMs || nowMs);
+    const newScheduledDuration = apiDurationMs > 0 ? apiDurationMs / 1000 : 90;
+
+    if (atStation) {
+      // Train is at station - queue segment and start dwell
+      state.pendingSegment = {
+        prevStopId: train.prevStopId || '',
+        nextStopId: train.nextStopId,
+        prevS: prevS,
+        nextS: nextS,
+        scheduledDuration: newScheduledDuration,
+        nextStopName: train.nextStopName,
+        eta: train.eta,
+      };
+      if (!state.dwellStartTime) {
+        state.dwellStartTime = nowMs;
+      }
+    } else {
+      // Train NOT at station - immediately update segment to keep moving
+      // This prevents trains from getting stuck
+      state.prevStopId = train.prevStopId || '';
+      state.nextStopId = train.nextStopId;
+      state.prevS = prevS;
+      state.nextS = nextS;
+      state.scheduledDuration = newScheduledDuration;
+      state.nextStopName = train.nextStopName;
+      state.eta = train.eta;
+      // Reset timing based on API progress
+      const segmentDurationMs = newScheduledDuration * 1000;
+      const elapsedMs = apiProgress * segmentDurationMs;
+      state.segmentStartTime = nowMs - elapsedMs;
+      // Clear any pending since we just updated directly
+      state.pendingSegment = undefined;
+      state.dwellStartTime = undefined;
+    }
+  }
+
+  // Update display info
+  state.prevTimeMs = train.prevTimeMs || state.prevTimeMs;
+  state.nextTimeMs = train.nextTimeMs || state.nextTimeMs;
+  state.headsign = train.headsign;
+  state.lastApiUpdate = nowMs;
+
+  // Update display data if no pending segment
+  if (!state.pendingSegment) {
+    state.nextStopName = train.nextStopName;
+    state.eta = train.eta;
+  }
+}
+
+/**
+ * Create a legacy marker (fallback)
+ */
+function createLegacyMarker(
+  train: TrainPosition,
+  map: maplibregl.Map,
+  color: string,
+  direction: 'N' | 'S' | null,
+  now: number,
+  trainAnimsRef: React.MutableRefObject<Map<string, TrainAnimState>>,
+  setSelectedTrain: (tripId: string | null) => void
+): void {
+  const el = document.createElement('div');
+  el.className = 'train-marker';
+  el.style.cssText = `
+    width: 22px;
+    height: 22px;
+    background-color: ${color};
+    border: 2px solid white;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+    color: ${getTextColorForBackground(color)};
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    cursor: pointer;
+  `;
+  el.textContent = train.routeId;
+
+  const popup = new maplibregl.Popup({
+    closeButton: false,
+    closeOnClick: false,
+    offset: MAP_CONSTANTS.POPUP_OFFSET_TRAIN,
+    className: 'train-popup',
+  }).setHTML(createPopupHTML(train, color));
+
+  const marker = new maplibregl.Marker({ element: el })
+    .setLngLat([train.lon, train.lat])
+    .addTo(map);
+
+  el.addEventListener('mouseenter', () => {
+    marker.setPopup(popup).togglePopup();
+  });
+  el.addEventListener('mouseleave', () => {
+    popup.remove();
+  });
+  el.addEventListener('click', () => {
+    const currentSelectedId = useUIStore.getState().selectedTrainId;
+    setSelectedTrain(train.tripId === currentSelectedId ? null : train.tripId);
+  });
+
+  trainAnimsRef.current.set(train.tripId, {
+    marker,
+    popup,
+    fromLng: train.lon,
+    fromLat: train.lat,
+    toLng: train.lon,
+    toLat: train.lat,
+    startTime: now,
+    isDwelling: false,
+    routeId: train.routeId,
+    nextStopName: train.nextStopName,
+    eta: train.eta,
+    direction,
+  });
+}
+
+// Distance thresholds (meters) - same as train-state-machine.ts
+const ARRIVING_DISTANCE = 200;
+const STATION_SNAP_DISTANCE = 20;
+
+// Calculate phase from distance
+function getPhaseFromDistance(currentS: number, nextS: number): 'BOARDING' | 'ARRIVING' | 'APPROACHING' {
+  const distance = Math.abs(nextS - currentS);
+  if (distance <= STATION_SNAP_DISTANCE) return 'BOARDING';
+  if (distance <= ARRIVING_DISTANCE) return 'ARRIVING';
+  return 'APPROACHING';
+}
+
+/**
+ * Creates HTML for train popup
+ * Uses DISTANCE-based phase detection when arclength data is available
+ */
+function createPopupHTML(train: TrainPosition, color: string, currentS?: number, nextS?: number): string {
+  const direction = getDirectionFromStopId(train.nextStopId);
+  const destinationLabel = train.headsign || getDirectionLabel(direction);
+
+  // Calculate phase from DISTANCE if available (preferred), otherwise fallback to ETA
+  let derivedPhase: string | undefined;
+
+  if (currentS !== undefined && nextS !== undefined) {
+    // Distance-based phase detection (reliable)
+    const distanceToStation = Math.abs(nextS - currentS);
+    if (distanceToStation <= STATION_SNAP_DISTANCE) {
+      derivedPhase = 'BOARDING';
+    } else if (distanceToStation <= ARRIVING_DISTANCE) {
+      derivedPhase = 'ARRIVING';
+    } else {
+      derivedPhase = 'APPROACHING';
+    }
+  } else if (train.eta) {
+    // Fallback to ETA for legacy trains without arclength data
+    try {
+      const etaDate = new Date(train.eta);
+      if (!isNaN(etaDate.getTime())) {
+        const diffMs = etaDate.getTime() - Date.now();
+        const diffMins = Math.round(diffMs / 60000);
+        if (diffMins <= 0) {
+          derivedPhase = 'BOARDING';
+        } else if (diffMins === 1) {
+          derivedPhase = 'ARRIVING';
+        } else {
+          derivedPhase = 'APPROACHING';
+        }
+      }
+    } catch {
+      derivedPhase = 'APPROACHING';
+    }
+  }
+
+  // Format phase for display
+  const phaseDisplay = derivedPhase === 'BOARDING' ? 'Boarding' :
+                       derivedPhase === 'ARRIVING' ? 'Arriving' :
+                       derivedPhase === 'APPROACHING' ? 'En Route' : '';
+  const phaseColor = derivedPhase === 'BOARDING' ? '#f59e0b' :
+                     derivedPhase === 'ARRIVING' ? '#22c55e' : '#4ade80';
+
+  return `
+    <div style="padding: 8px 12px; background: #1a1a1a; border-radius: 6px; min-width: 160px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <div style="
+          width: 24px;
+          height: 24px;
+          background-color: ${color};
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: bold;
+          color: ${getTextColorForBackground(color)};
+        ">${train.routeId}</div>
+        <span style="color: #888; font-size: 12px;">${destinationLabel}</span>
+      </div>
+      <div style="color: white; font-size: 13px; margin-bottom: 4px;">
+        <strong>Next:</strong> ${train.nextStopName || 'Unknown'}
+      </div>
+      <div style="color: ${phaseColor}; font-size: 13px; font-weight: 600;">
+        ${derivedPhase === 'BOARDING' ? 'At Station' :
+          derivedPhase === 'ARRIVING' ? 'Arriving' :
+          'En Route · ' + formatEta(train.eta)}
+      </div>
+    </div>
+  `;
+}
+
+// Module-level constant for refresh interval fallback
+const refreshInterval = 15000;

@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Static station data (seeded from stops.txt)
+model Station {
+  id           String   @id // e.g., "101", "101N", "101S"
+  name         String // e.g., "Van Cortlandt Park-242 St"
+  lat          Float
+  lon          Float
+  locationType Int      @default(0) // 0=stop, 1=station
+  parentId     String? // Parent station ID
+  routeIds     String[] // Routes serving this station
+
+  // Relations
+  parent   Station?  @relation("StationHierarchy", fields: [parentId], references: [id])
+  children Station[] @relation("StationHierarchy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([name])
+  @@index([routeIds])
+}
+
+// Static route data (seeded from routes.txt)
+model Route {
+  id          String  @id // e.g., "1", "A", "L"
+  shortName   String // e.g., "1", "A", "L"
+  longName    String // e.g., "Broadway - 7 Avenue Local"
+  description String?
+  type        Int     @default(1) // 1=subway, 2=rail
+  color       String? // Hex color, e.g., "EE352E"
+  textColor   String? // Text color for contrast
+  feedGroupId String // e.g., "1234567", "ACE"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([feedGroupId])
+}
+
+// Historical arrival events for analytics
+// Note: stationId is NOT a foreign key - we store raw GTFS-RT stop IDs
+// which may use different ID schemes than the stops.txt file
+model ArrivalEvent {
+  id String @id @default(cuid())
+
+  // Core data
+  stationId String // Raw GTFS-RT stop ID (e.g., "A17N", "415S")
+  routeId   String
+  tripId    String
+  direction String? // "N" or "S"
+
+  // Timing
+  scheduledArrival  DateTime?
+  actualArrival     DateTime?
+  predictedArrival  DateTime // From GTFS-RT
+  recordedAt        DateTime  @default(now()) // When we captured this
+
+  // Delay tracking
+  delaySeconds Int? // Actual - Scheduled
+
+  // Feed metadata
+  feedGroupId   String
+  feedTimestamp DateTime // Feed header timestamp
+
+  createdAt DateTime @default(now())
+
+  @@index([stationId])
+  @@index([routeId])
+  @@index([feedGroupId])
+  @@index([predictedArrival])
+  @@index([recordedAt])
+  @@index([stationId, routeId, recordedAt])
+}
+
+// Feed polling status for monitoring
+model FeedPollLog {
+  id           String  @id @default(cuid())
+  feedGroupId  String
+  status       String // "success", "error", "timeout"
+  entityCount  Int? // Number of entities in feed
+  latencyMs    Int? // How long the fetch took
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([feedGroupId])
+  @@index([createdAt])
+}
+
+// Train position snapshots for tracking movement over time
+model TrainSnapshot {
+  id String @id @default(cuid())
+
+  // Train identification
+  tripId    String
+  routeId   String
+  vehicleId String?
+
+  // Position data
+  lat     Float
+  lon     Float
+  heading Float // Degrees from north (0-360)
+
+  // Next stop info
+  nextStopId   String
+  nextStopName String
+  etaSeconds   Int // Seconds until arrival at next stop
+
+  // Progress tracking
+  prevStopId String? // Last departed stop
+  progress   Float? // 0-1 progress between stops
+
+  // Feed metadata
+  feedGroupId   String
+  feedTimestamp DateTime // Feed header timestamp
+
+  createdAt DateTime @default(now())
+
+  @@index([tripId])
+  @@index([routeId])
+  @@index([feedGroupId])
+  @@index([createdAt])
+  @@index([routeId, createdAt])
+  @@index([nextStopId, createdAt])
+}
+
+// Historical service alerts
+model AlertLog {
+  id String @id @default(cuid())
+
+  // Alert identification
+  alertId   String // Original MTA alert ID
+  alertType String // e.g., "Delays", "Service Change", "Planned Work"
+  severity  String // "info", "warning", "critical"
+
+  // Content
+  headerText      String
+  descriptionText String @db.Text
+
+  // Affected services
+  affectedRoutes String[] // e.g., ["A", "C", "E"]
+  affectedStops  String[] // Station IDs
+
+  // Timing
+  alertStart DateTime?
+  alertEnd   DateTime?
+
+  // Tracking
+  firstSeen DateTime @default(now()) // When we first captured this alert
+  lastSeen  DateTime @default(now()) // Last time alert was active
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([alertId])
+  @@index([alertId])
+  @@index([severity])
+  @@index([isActive])
+  @@index([firstSeen])
+  @@index([affectedRoutes])
+}
+
+// Aggregated headway statistics (computed periodically)
+model HeadwayStat {
+  id String @id @default(cuid())
+
+  // Dimensions
+  routeId   String
+  stationId String
+  direction String // "N" or "S"
+  hourOfDay Int // 0-23
+  dayOfWeek Int // 0-6 (Sunday-Saturday)
+
+  // Aggregation period
+  periodStart DateTime
+  periodEnd   DateTime
+
+  // Statistics
+  avgHeadwaySeconds    Float
+  minHeadwaySeconds    Int
+  maxHeadwaySeconds    Int
+  stdDevHeadwaySeconds Float
+  sampleCount          Int
+
+  createdAt DateTime @default(now())
+
+  @@index([routeId])
+  @@index([stationId])
+  @@index([periodStart])
+  @@index([routeId, stationId, direction, hourOfDay, dayOfWeek])
+}
