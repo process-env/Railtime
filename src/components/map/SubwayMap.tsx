@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useUIStore } from '@/stores';
@@ -21,6 +22,10 @@ export function SubwayMap() {
   const map = useRef<maplibregl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(11);
+  const poiMarkerRef = useRef<maplibregl.Marker | null>(null);
+
+  // URL search params for POI navigation
+  const searchParams = useSearchParams();
 
   // Static data from React Query
   const { stations } = useStaticData();
@@ -194,6 +199,67 @@ export function SubwayMap() {
     });
   }, [selectedStationId, stations]);
 
+  // Handle POI marker from URL params
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    const poiParam = searchParams.get('poi');
+    const poiName = searchParams.get('poiName');
+
+    // Remove existing POI marker
+    if (poiMarkerRef.current) {
+      poiMarkerRef.current.remove();
+      poiMarkerRef.current = null;
+    }
+
+    if (poiParam) {
+      const [lat, lon] = poiParam.split(',').map(Number);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        // Create POI marker element
+        const el = document.createElement('div');
+        el.className = 'poi-marker';
+        el.innerHTML = `
+          <div style="
+            width: 32px;
+            height: 32px;
+            background: #EF4444;
+            border: 3px solid white;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          ">
+            <span style="transform: rotate(45deg); font-size: 14px;">📍</span>
+          </div>
+        `;
+
+        // Create and add the marker
+        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([lon, lat])
+          .addTo(map.current);
+
+        // Add popup with POI name
+        if (poiName) {
+          const popup = new maplibregl.Popup({ offset: 25, closeButton: true })
+            .setHTML(`<div style="padding: 4px 8px; font-weight: 500;">${poiName}</div>`);
+          marker.setPopup(popup);
+          popup.addTo(map.current);
+        }
+
+        poiMarkerRef.current = marker;
+
+        // Fly to POI location
+        map.current.flyTo({
+          center: [lon, lat],
+          zoom: 16,
+          duration: 1000,
+        });
+      }
+    }
+  }, [mapLoaded, searchParams]);
+
   // Find the selected train for the detail panel
   const selectedTrain = useMemo(() => {
     if (!selectedTrainId) return null;
@@ -257,10 +323,16 @@ export function SubwayMap() {
           <div className="w-2 h-2 rounded-full bg-green-400 border-2 border-gray-600 animate-pulse" />
           <span>Train arriving</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-2">
           <div className="w-4 h-4 rounded legend-train-color border border-white" />
           <span>Train</span>
         </div>
+        {searchParams.get('poi') && (
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-red-500 border-2 border-white rounded-full" />
+            <span>Place</span>
+          </div>
+        )}
       </div>
 
       {/* Train count */}
