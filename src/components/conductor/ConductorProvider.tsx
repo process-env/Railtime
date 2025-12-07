@@ -13,10 +13,12 @@ export function ConductorProvider({ children }: ConductorProviderProps) {
   const [status, setStatus] = useState('Click anywhere to start');
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const announcementTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const newsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasStartedRef = useRef(false);
   const trainsRef = useRef(trains);
   const stationsRef = useRef(stations);
+  const isNewsPausedRef = useRef(false); // Pause regular announcements during news
 
   // Keep refs in sync
   useEffect(() => {
@@ -24,17 +26,19 @@ export function ConductorProvider({ children }: ConductorProviderProps) {
     stationsRef.current = stations;
   }, [trains, stations]);
 
-  const playAndSchedule = async (type: string) => {
+  const playAnnouncement = async (type: string) => {
+    // Don't play regular announcements if news is playing
+    if (isNewsPausedRef.current) return;
+
     const currentTrains = trainsRef.current;
     const currentStations = stationsRef.current;
 
     if (currentTrains.length === 0) {
-      timerRef.current = setTimeout(() => playAndSchedule(type), 2000);
+      announcementTimerRef.current = setTimeout(() => playAnnouncement(type), 2000);
       return;
     }
 
     setIsPlaying(true);
-    setStatus('Generating...');
 
     try {
       const randomTrain = currentTrains[Math.floor(Math.random() * currentTrains.length)];
@@ -52,36 +56,97 @@ export function ConductorProvider({ children }: ConductorProviderProps) {
       });
 
       const data = await response.json();
-      setStatus(data.text);
 
-      if (data.audioUrl) {
+      if (data.audioUrl && !isNewsPausedRef.current) {
         const audio = new Audio(data.audioUrl);
         audio.volume = 0.8;
         audioRef.current = audio;
 
         audio.onended = () => {
           setIsPlaying(false);
-          const delay = 15000 + Math.random() * 30000;
-          timerRef.current = setTimeout(() => playAndSchedule('fun_fact'), delay);
+          if (!isNewsPausedRef.current) {
+            const delay = 15000 + Math.random() * 30000;
+            announcementTimerRef.current = setTimeout(() => playAnnouncement('fun_fact'), delay);
+          }
         };
 
         audio.onerror = () => {
           setIsPlaying(false);
-          const delay = 15000 + Math.random() * 30000;
-          timerRef.current = setTimeout(() => playAndSchedule('fun_fact'), delay);
+          if (!isNewsPausedRef.current) {
+            const delay = 15000 + Math.random() * 30000;
+            announcementTimerRef.current = setTimeout(() => playAnnouncement('fun_fact'), delay);
+          }
         };
 
         await audio.play();
       } else {
         setIsPlaying(false);
-        const delay = 15000 + Math.random() * 30000;
-        timerRef.current = setTimeout(() => playAndSchedule('fun_fact'), delay);
+        if (!isNewsPausedRef.current) {
+          const delay = 15000 + Math.random() * 30000;
+          announcementTimerRef.current = setTimeout(() => playAnnouncement('fun_fact'), delay);
+        }
       }
     } catch (error) {
       console.error(error);
       setIsPlaying(false);
-      const delay = 15000 + Math.random() * 30000;
-      timerRef.current = setTimeout(() => playAndSchedule('fun_fact'), delay);
+      if (!isNewsPausedRef.current) {
+        const delay = 15000 + Math.random() * 30000;
+        announcementTimerRef.current = setTimeout(() => playAnnouncement('fun_fact'), delay);
+      }
+    }
+  };
+
+  const playNews = async () => {
+    // Pause regular announcements
+    isNewsPausedRef.current = true;
+    if (announcementTimerRef.current) {
+      clearTimeout(announcementTimerRef.current);
+    }
+    // Stop current audio if playing
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    setIsPlaying(true);
+
+    try {
+      const response = await fetch('/api/v1/conductor/news');
+      const data = await response.json();
+
+      if (data.audioUrl) {
+        const audio = new Audio(data.audioUrl);
+        audio.volume = 0.9; // Slightly louder for news
+        audioRef.current = audio;
+
+        audio.onended = () => {
+          setIsPlaying(false);
+          // Resume regular announcements
+          isNewsPausedRef.current = false;
+          const delay = 5000 + Math.random() * 10000; // Resume after 5-15 sec
+          announcementTimerRef.current = setTimeout(() => playAnnouncement('fun_fact'), delay);
+          // Schedule next news in 10 minutes
+          newsTimerRef.current = setTimeout(playNews, 10 * 60 * 1000);
+        };
+
+        audio.onerror = () => {
+          setIsPlaying(false);
+          isNewsPausedRef.current = false;
+          announcementTimerRef.current = setTimeout(() => playAnnouncement('fun_fact'), 5000);
+          newsTimerRef.current = setTimeout(playNews, 10 * 60 * 1000);
+        };
+
+        await audio.play();
+      } else {
+        setIsPlaying(false);
+        isNewsPausedRef.current = false;
+        newsTimerRef.current = setTimeout(playNews, 10 * 60 * 1000);
+      }
+    } catch (error) {
+      console.error('News error:', error);
+      setIsPlaying(false);
+      isNewsPausedRef.current = false;
+      newsTimerRef.current = setTimeout(playNews, 10 * 60 * 1000);
     }
   };
 
@@ -90,8 +155,11 @@ export function ConductorProvider({ children }: ConductorProviderProps) {
     const startOnInteraction = () => {
       if (!hasStartedRef.current) {
         hasStartedRef.current = true;
-        playAndSchedule('welcome');
-        // Remove listeners after first interaction
+        // Start with welcome announcement
+        playAnnouncement('welcome');
+        // Schedule first news in 1 minute for quick flash, then every 10 min after
+        newsTimerRef.current = setTimeout(playNews, 60 * 1000);
+        // Remove listeners
         document.removeEventListener('click', startOnInteraction);
         document.removeEventListener('keydown', startOnInteraction);
       }
@@ -103,7 +171,8 @@ export function ConductorProvider({ children }: ConductorProviderProps) {
     return () => {
       document.removeEventListener('click', startOnInteraction);
       document.removeEventListener('keydown', startOnInteraction);
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (announcementTimerRef.current) clearTimeout(announcementTimerRef.current);
+      if (newsTimerRef.current) clearTimeout(newsTimerRef.current);
       if (audioRef.current) audioRef.current.pause();
     };
   }, []);
