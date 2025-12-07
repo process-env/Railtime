@@ -9,3 +9,4 @@ export { usePrefetchAnalytics } from './use-prefetch-analytics';
 export { usePrefetchMap } from './use-prefetch-map';
 export { useEquipmentStatus } from './use-equipment-status';
 export { useBackgroundSync } from './use-background-sync';
+export { usePOISearch } from './use-poi-search';

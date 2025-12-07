@@ -3,12 +3,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, RefreshCw, ExternalLink } from 'lucide-react';
+import { ArrowLeft, MapPin, RefreshCw, ExternalLink, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrivalBoard } from '@/components/stations';
+import { POIList } from '@/components/poi';
 import { useStaticData } from '@/hooks';
 import { useUIStore } from '@/stores';
 import { getRouteColor } from '@/lib/constants';
@@ -156,6 +157,19 @@ export default function StationDetailPage() {
           ) : (
             <ArrivalBoard arrivals={arrivals} loading={arrivalsLoading} />
           )}
+        </CardContent>
+      </Card>
+
+      {/* Nearby Places */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Store className="h-5 w-5" />
+            Nearby
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <POIList lat={station.lat} lon={station.lon} radius={300} />
         </CardContent>
       </Card>
     </div>
