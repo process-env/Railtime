@@ -37,11 +37,6 @@ export function createMockPrismaClient() {
   return {
     station: createModelMock(),
     route: createModelMock(),
-    arrivalEvent: createModelMock(),
-    trainSnapshot: createModelMock(),
-    alertLog: createModelMock(),
-    feedPollLog: createModelMock(),
-    headwayStat: createModelMock(),
     $connect: vi.fn(),
     $disconnect: vi.fn(),
     $transaction: vi.fn(async <T>(fn: (client: ReturnType<typeof createMockPrismaClient>) => Promise<T>) => fn(mockPrismaClient)),
@@ -58,11 +53,6 @@ export function resetPrismaMocks(): void {
   const models = [
     'station',
     'route',
-    'arrivalEvent',
-    'trainSnapshot',
-    'alertLog',
-    'feedPollLog',
-    'headwayStat',
   ] as const;
 
   for (const model of models) {
