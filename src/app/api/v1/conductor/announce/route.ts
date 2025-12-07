@@ -3,9 +3,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const ELEVENLABS_API_KEY = process.env.ELEVEN_LABS_KEY || process.env.ELEVENLABS_API_KEY;
-// Use user's custom voice or fallback to "Adam" (built-in premade voice)
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB';
+// OpenAI TTS voices: alloy, echo, fable, onyx, nova, shimmer
+const OPENAI_TTS_VOICE = process.env.OPENAI_TTS_VOICE || 'fable';
 
 // Simple in-memory cache for audio (expires after 5 minutes)
 const audioCache = new Map<string, { text: string; audioUrl: string; expires: number }>();
@@ -376,32 +375,26 @@ Rules:
 }
 
 async function synthesizeSpeech(text: string): Promise<string> {
-  if (!ELEVENLABS_API_KEY) {
-    throw new Error('ElevenLabs API key not configured');
+  if (!OPENAI_API_KEY) {
+    throw new Error('OpenAI API key not configured');
   }
 
-  const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'xi-api-key': ELEVENLABS_API_KEY,
-      },
-      body: JSON.stringify({
-        text,
-        model_id: 'eleven_turbo_v2_5',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-        },
-      }),
-    }
-  );
+  const response = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'tts-1',
+      input: text,
+      voice: OPENAI_TTS_VOICE,
+    }),
+  });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('ElevenLabs API error:', errorText);
+    console.error('OpenAI TTS API error:', errorText);
     throw new Error('Failed to synthesize speech');
   }
 
