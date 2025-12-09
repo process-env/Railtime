@@ -1,0 +1,1489 @@
+{
+  "complexes": [
+    {
+      "id": "times_sq_42",
+      "name": "Times Square - 42nd Street",
+      "stationIds": [
+        "127",
+        "725",
+        "902",
+        "R16",
+        "A27"
+      ],
+      "routes": [
+        "1",
+        "2",
+        "3",
+        "7",
+        "N",
+        "Q",
+        "R",
+        "W",
+        "S",
+        "A",
+        "C",
+        "E"
+      ],
+      "walkTimeSeconds": 240,
+      "type": "in-system"
+    },
+    {
+      "id": "14_st_6_av",
+      "name": "14th Street - Sixth Avenue",
+      "stationIds": [
+        "132",
+        "F14",
+        "L03"
+      ],
+      "routes": [
+        "1",
+        "2",
+        "3",
+        "F",
+        "M",
+        "L"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "fulton_st",
+      "name": "Fulton Street",
+      "stationIds": [
+        "229",
+        "A38",
+        "J27",
+        "M22"
+      ],
+      "routes": [
+        "A",
+        "C",
+        "J",
+        "Z",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "grand_central_42",
+      "name": "Grand Central - 42nd Street",
+      "stationIds": [
+        "631",
+        "723",
+        "901"
+      ],
+      "routes": [
+        "4",
+        "5",
+        "6",
+        "7",
+        "S"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "bryant_park_42",
+      "name": "42nd Street - Bryant Park / Fifth Avenue",
+      "stationIds": [
+        "D16",
+        "723"
+      ],
+      "routes": [
+        "7",
+        "B",
+        "D",
+        "F",
+        "M"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "columbus_circle_59",
+      "name": "59th Street - Columbus Circle",
+      "stationIds": [
+        "125",
+        "A24"
+      ],
+      "routes": [
+        "1",
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "lex_53",
+      "name": "51st/53rd Street - Lexington Avenue",
+      "stationIds": [
+        "629",
+        "E01"
+      ],
+      "routes": [
+        "6",
+        "E",
+        "M"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "jackson_hts_74",
+      "name": "74th Street - Roosevelt Avenue / Jackson Heights",
+      "stationIds": [
+        "710",
+        "G14"
+      ],
+      "routes": [
+        "7",
+        "E",
+        "F",
+        "M",
+        "R"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "yankee_161",
+      "name": "161st Street - Yankee Stadium",
+      "stationIds": [
+        "414",
+        "D11"
+      ],
+      "routes": [
+        "4",
+        "B",
+        "D"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "168_st",
+      "name": "168th Street",
+      "stationIds": [
+        "112",
+        "A09"
+      ],
+      "routes": [
+        "1",
+        "A",
+        "C"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "court_sq",
+      "name": "Court Square",
+      "stationIds": [
+        "718",
+        "719",
+        "F09",
+        "G22"
+      ],
+      "routes": [
+        "7",
+        "E",
+        "M",
+        "G"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "wtc_park_pl",
+      "name": "World Trade Center / Park Place",
+      "stationIds": [
+        "E01",
+        "229"
+      ],
+      "routes": [
+        "E",
+        "2",
+        "3"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "bleecker_bway_lafayette",
+      "name": "Bleecker Street / Broadway-Lafayette",
+      "stationIds": [
+        "637",
+        "D21"
+      ],
+      "routes": [
+        "6",
+        "B",
+        "D",
+        "F",
+        "M"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "union_sq_14",
+      "name": "14th Street - Union Square",
+      "stationIds": [
+        "635",
+        "L01",
+        "R20"
+      ],
+      "routes": [
+        "4",
+        "5",
+        "6",
+        "L",
+        "N",
+        "Q",
+        "R",
+        "W"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "atlantic_barclays",
+      "name": "Atlantic Avenue - Barclays Center",
+      "stationIds": [
+        "235",
+        "D24",
+        "R31"
+      ],
+      "routes": [
+        "2",
+        "3",
+        "4",
+        "5",
+        "B",
+        "D",
+        "N",
+        "Q",
+        "R"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "borough_hall",
+      "name": "Borough Hall / Court Street",
+      "stationIds": [
+        "232",
+        "423",
+        "R28"
+      ],
+      "routes": [
+        "2",
+        "3",
+        "4",
+        "5",
+        "R"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "canal_st",
+      "name": "Canal Street",
+      "stationIds": [
+        "637",
+        "J21",
+        "R23",
+        "Q01"
+      ],
+      "routes": [
+        "6",
+        "J",
+        "Z",
+        "N",
+        "Q",
+        "R",
+        "W"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "chambers_bklyn_bridge",
+      "name": "Chambers Street / Brooklyn Bridge - City Hall",
+      "stationIds": [
+        "640",
+        "M21"
+      ],
+      "routes": [
+        "4",
+        "5",
+        "6",
+        "J",
+        "Z"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "queensboro_plaza",
+      "name": "Queensboro Plaza",
+      "stationIds": [
+        "718",
+        "R09"
+      ],
+      "routes": [
+        "7",
+        "N",
+        "W"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "botanic_garden",
+      "name": "Botanic Garden / Franklin Avenue",
+      "stationIds": [
+        "239",
+        "S01"
+      ],
+      "routes": [
+        "2",
+        "3",
+        "4",
+        "5",
+        "S"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "4_av_9_st",
+      "name": "Fourth Avenue - Ninth Street",
+      "stationIds": [
+        "F20",
+        "R36"
+      ],
+      "routes": [
+        "F",
+        "G",
+        "R"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "14_st_8_av",
+      "name": "14th Street - Eighth Avenue",
+      "stationIds": [
+        "A31",
+        "L02"
+      ],
+      "routes": [
+        "A",
+        "C",
+        "E",
+        "L"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "herald_sq_34",
+      "name": "34th Street - Herald Square",
+      "stationIds": [
+        "D17",
+        "R17"
+      ],
+      "routes": [
+        "B",
+        "D",
+        "F",
+        "M",
+        "N",
+        "Q",
+        "R",
+        "W"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "broadway_junction",
+      "name": "Broadway Junction",
+      "stationIds": [
+        "A51",
+        "J27",
+        "L22"
+      ],
+      "routes": [
+        "A",
+        "C",
+        "J",
+        "Z",
+        "L"
+      ],
+      "walkTimeSeconds": 180,
+      "type": "in-system"
+    },
+    {
+      "id": "essex_delancey",
+      "name": "Delancey Street - Essex Street",
+      "stationIds": [
+        "F15",
+        "M18"
+      ],
+      "routes": [
+        "F",
+        "M",
+        "J",
+        "Z"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "lorimer_metropolitan",
+      "name": "Lorimer Street / Metropolitan Avenue",
+      "stationIds": [
+        "G29",
+        "L10"
+      ],
+      "routes": [
+        "G",
+        "L"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "myrtle_wyckoff",
+      "name": "Myrtle-Wyckoff Avenues",
+      "stationIds": [
+        "L17",
+        "M11"
+      ],
+      "routes": [
+        "L",
+        "M"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "franklin_av_fulton",
+      "name": "Franklin Avenue / Fulton Street",
+      "stationIds": [
+        "A45",
+        "S01"
+      ],
+      "routes": [
+        "A",
+        "C",
+        "S"
+      ],
+      "walkTimeSeconds": 120,
+      "type": "in-system"
+    },
+    {
+      "id": "lex_59_63_oos",
+      "name": "Lexington Avenue 59th/63rd Streets (Out-of-System)",
+      "stationIds": [
+        "629",
+        "R11",
+        "F15"
+      ],
+      "routes": [
+        "4",
+        "5",
+        "6",
+        "N",
+        "R",
+        "W",
+        "F",
+        "Q"
+      ],
+      "walkTimeSeconds": 300,
+      "type": "out-of-system"
+    },
+    {
+      "id": "livonia_junius_oos",
+      "name": "Livonia Avenue / Junius Street (Out-of-System)",
+      "stationIds": [
+        "L27",
+        "253"
+      ],
+      "routes": [
+        "L",
+        "3"
+      ],
+      "walkTimeSeconds": 300,
+      "type": "out-of-system"
+    }
+  ],
+  "transfers": [
+    {
+      "fromStationId": "127",
+      "toStationId": "725",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "725",
+      "toStationId": "127",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "127",
+      "toStationId": "902",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "902",
+      "toStationId": "127",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "127",
+      "toStationId": "R16",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "R16",
+      "toStationId": "127",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "127",
+      "toStationId": "A27",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "A27",
+      "toStationId": "127",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "725",
+      "toStationId": "902",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "902",
+      "toStationId": "725",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "725",
+      "toStationId": "R16",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "R16",
+      "toStationId": "725",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "725",
+      "toStationId": "A27",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "A27",
+      "toStationId": "725",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "902",
+      "toStationId": "R16",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "R16",
+      "toStationId": "902",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "902",
+      "toStationId": "A27",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "A27",
+      "toStationId": "902",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "R16",
+      "toStationId": "A27",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "A27",
+      "toStationId": "R16",
+      "walkTimeSeconds": 240,
+      "type": "in-system",
+      "complexId": "times_sq_42"
+    },
+    {
+      "fromStationId": "132",
+      "toStationId": "F14",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "14_st_6_av"
+    },
+    {
+      "fromStationId": "F14",
+      "toStationId": "132",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "14_st_6_av"
+    },
+    {
+      "fromStationId": "132",
+      "toStationId": "L03",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "14_st_6_av"
+    },
+    {
+      "fromStationId": "L03",
+      "toStationId": "132",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "14_st_6_av"
+    },
+    {
+      "fromStationId": "F14",
+      "toStationId": "L03",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "14_st_6_av"
+    },
+    {
+      "fromStationId": "L03",
+      "toStationId": "F14",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "14_st_6_av"
+    },
+    {
+      "fromStationId": "229",
+      "toStationId": "A38",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "A38",
+      "toStationId": "229",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "229",
+      "toStationId": "J27",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "J27",
+      "toStationId": "229",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "229",
+      "toStationId": "M22",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "M22",
+      "toStationId": "229",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "A38",
+      "toStationId": "J27",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "J27",
+      "toStationId": "A38",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "A38",
+      "toStationId": "M22",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "M22",
+      "toStationId": "A38",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "J27",
+      "toStationId": "M22",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "M22",
+      "toStationId": "J27",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "fulton_st"
+    },
+    {
+      "fromStationId": "631",
+      "toStationId": "723",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "grand_central_42"
+    },
+    {
+      "fromStationId": "723",
+      "toStationId": "631",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "grand_central_42"
+    },
+    {
+      "fromStationId": "631",
+      "toStationId": "901",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "grand_central_42"
+    },
+    {
+      "fromStationId": "901",
+      "toStationId": "631",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "grand_central_42"
+    },
+    {
+      "fromStationId": "723",
+      "toStationId": "901",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "grand_central_42"
+    },
+    {
+      "fromStationId": "901",
+      "toStationId": "723",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "grand_central_42"
+    },
+    {
+      "fromStationId": "D16",
+      "toStationId": "723",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "bryant_park_42"
+    },
+    {
+      "fromStationId": "723",
+      "toStationId": "D16",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "bryant_park_42"
+    },
+    {
+      "fromStationId": "125",
+      "toStationId": "A24",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "columbus_circle_59"
+    },
+    {
+      "fromStationId": "A24",
+      "toStationId": "125",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "columbus_circle_59"
+    },
+    {
+      "fromStationId": "629",
+      "toStationId": "E01",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "lex_53"
+    },
+    {
+      "fromStationId": "E01",
+      "toStationId": "629",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "lex_53"
+    },
+    {
+      "fromStationId": "710",
+      "toStationId": "G14",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "jackson_hts_74"
+    },
+    {
+      "fromStationId": "G14",
+      "toStationId": "710",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "jackson_hts_74"
+    },
+    {
+      "fromStationId": "414",
+      "toStationId": "D11",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "yankee_161"
+    },
+    {
+      "fromStationId": "D11",
+      "toStationId": "414",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "yankee_161"
+    },
+    {
+      "fromStationId": "112",
+      "toStationId": "A09",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "168_st"
+    },
+    {
+      "fromStationId": "A09",
+      "toStationId": "112",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "168_st"
+    },
+    {
+      "fromStationId": "718",
+      "toStationId": "719",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "719",
+      "toStationId": "718",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "718",
+      "toStationId": "F09",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "F09",
+      "toStationId": "718",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "718",
+      "toStationId": "G22",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "G22",
+      "toStationId": "718",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "719",
+      "toStationId": "F09",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "F09",
+      "toStationId": "719",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "719",
+      "toStationId": "G22",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "G22",
+      "toStationId": "719",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "F09",
+      "toStationId": "G22",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "G22",
+      "toStationId": "F09",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "court_sq"
+    },
+    {
+      "fromStationId": "E01",
+      "toStationId": "229",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "wtc_park_pl"
+    },
+    {
+      "fromStationId": "229",
+      "toStationId": "E01",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "wtc_park_pl"
+    },
+    {
+      "fromStationId": "637",
+      "toStationId": "D21",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "bleecker_bway_lafayette"
+    },
+    {
+      "fromStationId": "D21",
+      "toStationId": "637",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "bleecker_bway_lafayette"
+    },
+    {
+      "fromStationId": "635",
+      "toStationId": "L01",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "union_sq_14"
+    },
+    {
+      "fromStationId": "L01",
+      "toStationId": "635",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "union_sq_14"
+    },
+    {
+      "fromStationId": "635",
+      "toStationId": "R20",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "union_sq_14"
+    },
+    {
+      "fromStationId": "R20",
+      "toStationId": "635",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "union_sq_14"
+    },
+    {
+      "fromStationId": "L01",
+      "toStationId": "R20",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "union_sq_14"
+    },
+    {
+      "fromStationId": "R20",
+      "toStationId": "L01",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "union_sq_14"
+    },
+    {
+      "fromStationId": "235",
+      "toStationId": "D24",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "atlantic_barclays"
+    },
+    {
+      "fromStationId": "D24",
+      "toStationId": "235",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "atlantic_barclays"
+    },
+    {
+      "fromStationId": "235",
+      "toStationId": "R31",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "atlantic_barclays"
+    },
+    {
+      "fromStationId": "R31",
+      "toStationId": "235",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "atlantic_barclays"
+    },
+    {
+      "fromStationId": "D24",
+      "toStationId": "R31",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "atlantic_barclays"
+    },
+    {
+      "fromStationId": "R31",
+      "toStationId": "D24",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "atlantic_barclays"
+    },
+    {
+      "fromStationId": "232",
+      "toStationId": "423",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "borough_hall"
+    },
+    {
+      "fromStationId": "423",
+      "toStationId": "232",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "borough_hall"
+    },
+    {
+      "fromStationId": "232",
+      "toStationId": "R28",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "borough_hall"
+    },
+    {
+      "fromStationId": "R28",
+      "toStationId": "232",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "borough_hall"
+    },
+    {
+      "fromStationId": "423",
+      "toStationId": "R28",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "borough_hall"
+    },
+    {
+      "fromStationId": "R28",
+      "toStationId": "423",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "borough_hall"
+    },
+    {
+      "fromStationId": "637",
+      "toStationId": "J21",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "J21",
+      "toStationId": "637",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "637",
+      "toStationId": "R23",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "R23",
+      "toStationId": "637",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "637",
+      "toStationId": "Q01",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "Q01",
+      "toStationId": "637",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "J21",
+      "toStationId": "R23",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "R23",
+      "toStationId": "J21",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "J21",
+      "toStationId": "Q01",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "Q01",
+      "toStationId": "J21",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "R23",
+      "toStationId": "Q01",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "Q01",
+      "toStationId": "R23",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "canal_st"
+    },
+    {
+      "fromStationId": "640",
+      "toStationId": "M21",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "chambers_bklyn_bridge"
+    },
+    {
+      "fromStationId": "M21",
+      "toStationId": "640",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "chambers_bklyn_bridge"
+    },
+    {
+      "fromStationId": "718",
+      "toStationId": "R09",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "queensboro_plaza"
+    },
+    {
+      "fromStationId": "R09",
+      "toStationId": "718",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "queensboro_plaza"
+    },
+    {
+      "fromStationId": "239",
+      "toStationId": "S01",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "botanic_garden"
+    },
+    {
+      "fromStationId": "S01",
+      "toStationId": "239",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "botanic_garden"
+    },
+    {
+      "fromStationId": "F20",
+      "toStationId": "R36",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "4_av_9_st"
+    },
+    {
+      "fromStationId": "R36",
+      "toStationId": "F20",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "4_av_9_st"
+    },
+    {
+      "fromStationId": "A31",
+      "toStationId": "L02",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "14_st_8_av"
+    },
+    {
+      "fromStationId": "L02",
+      "toStationId": "A31",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "14_st_8_av"
+    },
+    {
+      "fromStationId": "D17",
+      "toStationId": "R17",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "herald_sq_34"
+    },
+    {
+      "fromStationId": "R17",
+      "toStationId": "D17",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "herald_sq_34"
+    },
+    {
+      "fromStationId": "A51",
+      "toStationId": "J27",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "broadway_junction"
+    },
+    {
+      "fromStationId": "J27",
+      "toStationId": "A51",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "broadway_junction"
+    },
+    {
+      "fromStationId": "A51",
+      "toStationId": "L22",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "broadway_junction"
+    },
+    {
+      "fromStationId": "L22",
+      "toStationId": "A51",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "broadway_junction"
+    },
+    {
+      "fromStationId": "J27",
+      "toStationId": "L22",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "broadway_junction"
+    },
+    {
+      "fromStationId": "L22",
+      "toStationId": "J27",
+      "walkTimeSeconds": 180,
+      "type": "in-system",
+      "complexId": "broadway_junction"
+    },
+    {
+      "fromStationId": "F15",
+      "toStationId": "M18",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "essex_delancey"
+    },
+    {
+      "fromStationId": "M18",
+      "toStationId": "F15",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "essex_delancey"
+    },
+    {
+      "fromStationId": "G29",
+      "toStationId": "L10",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "lorimer_metropolitan"
+    },
+    {
+      "fromStationId": "L10",
+      "toStationId": "G29",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "lorimer_metropolitan"
+    },
+    {
+      "fromStationId": "L17",
+      "toStationId": "M11",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "myrtle_wyckoff"
+    },
+    {
+      "fromStationId": "M11",
+      "toStationId": "L17",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "myrtle_wyckoff"
+    },
+    {
+      "fromStationId": "A45",
+      "toStationId": "S01",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "franklin_av_fulton"
+    },
+    {
+      "fromStationId": "S01",
+      "toStationId": "A45",
+      "walkTimeSeconds": 120,
+      "type": "in-system",
+      "complexId": "franklin_av_fulton"
+    },
+    {
+      "fromStationId": "629",
+      "toStationId": "R11",
+      "walkTimeSeconds": 300,
+      "type": "out-of-system",
+      "complexId": "lex_59_63_oos"
+    },
+    {
+      "fromStationId": "R11",
+      "toStationId": "629",
+      "walkTimeSeconds": 300,
+      "type": "out-of-system",
+      "complexId": "lex_59_63_oos"
+    },
+    {
+      "fromStationId": "629",
+      "toStationId": "F15",
+      "walkTimeSeconds": 300,
+      "type": "out-of-system",
+      "complexId": "lex_59_63_oos"
+    },
+    {
+      "fromStationId": "F15",
+      "toStationId": "629",
+      "walkTimeSeconds": 300,
+      "type": "out-of-system",
+      "complexId": "lex_59_63_oos"
+    },
+    {
+      "fromStationId": "R11",
+      "toStationId": "F15",
+      "walkTimeSeconds": 300,
+      "type": "out-of-system",
+      "complexId": "lex_59_63_oos"
+    },
+    {
+      "fromStationId": "F15",
+      "toStationId": "R11",
+      "walkTimeSeconds": 300,
+      "type": "out-of-system",
+      "complexId": "lex_59_63_oos"
+    },
+    {
+      "fromStationId": "L27",
+      "toStationId": "253",
+      "walkTimeSeconds": 300,
+      "type": "out-of-system",
+      "complexId": "livonia_junius_oos"
+    },
+    {
+      "fromStationId": "253",
+      "toStationId": "L27",
+      "walkTimeSeconds": 300,
+      "type": "out-of-system",
+      "complexId": "livonia_junius_oos"
+    }
+  ],
+  "meta": {
+    "generatedAt": "2025-12-09T19:26:48.034Z",
+    "complexCount": 30,
+    "transferCount": 136
+  }
+}

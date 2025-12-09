@@ -1,318 +1,98 @@
-# Handoff Notes - Train Animation Fix
+# Handoff Notes - Active Development
 
-**Last Updated**: 2025-12-06T14:30:00Z
-**Status**: CODE REVIEW COMPLETE - 4 CRITICAL BUGS FOUND
+**Last Updated**: 2025-12-09T15:35:00Z
 
-## What Was Being Worked On
+---
 
-Fixing train animation so trains reach stations. Code exists but is broken due to multiple bugs.
+## CURRENT ACTIVE TASK: Trip Advisor Agent
 
-## CRITICAL BUGS FOUND
+**Status**: PLANNING COMPLETE - Ready for Implementation
+**Documentation**: `dev/active/trip-advisor-agent/`
 
-### BUG 1: speedMultiplier Wrong
-- Location: `useTrainMarkers.ts:273-274`
-- Uses `getRouteSpeedMultiplier(alerts, routeId)` - WRONG
-- Should use: `scheduledDuration / apiDuration`
+### What Was Being Worked On
 
-### BUG 2: State Machine Hardcoded 90s
-- Location: `train-state-machine.ts:96-97`
-- `scheduledDuration: 90` never updated from GTFS matrix
-- Fix: Pass duration to createTrainAnimationState()
+Building a Trip Advisor Agent for the NYC Subway tracker that calculates optimal routes between stations using Dijkstra's algorithm.
 
-### BUG 3: Duplicate State Not Synced
-- TrainMotionState has: scheduledDuration, speedMultiplier, segmentStartTime
-- TrainAnimationState has: same fields
-- Updates don't sync between them!
-- Fix: Use ONLY state machine, remove duplicates
+### Exact State When Context Limit Hit
 
-### BUG 4: Wrong Thresholds
-- ARRIVAL_THRESHOLD = 0.95 (should be 0.8)
-- STATION_THRESHOLD = 0.99 (should be 1.0)
+- Plan was just approved by user
+- Todo list created with 12 tasks
+- About to start first task: `scripts/build-transfer-graph.ts`
+- **NO CODE HAS BEEN WRITTEN YET**
 
-## PLAN FILE
+### Key Files Created This Session
 
-**Location**: `C:\Users\User\.claude\plans\nested-plotting-aho.md`
+| File | Purpose |
+|------|---------|
+| `C:\Users\User\.claude\plans\foamy-drifting-bonbon.md` | Full detailed implementation plan |
+| `dev/active/trip-advisor-agent/trip-advisor-agent-context.md` | Current state + decisions |
+| `dev/active/trip-advisor-agent/trip-advisor-agent-tasks.md` | Task checklist |
+| `dev/active/trip-advisor-agent/trip-advisor-agent-plan.md` | Quick reference + transfer data |
 
-Contains full fix plan with code examples.
+### Design Decisions (User Confirmed)
+1. **UI Location**: Sidebar panel
+2. **Real-time Integration**: Yes - adjust for service alerts
+3. **Transfer Data**: Comprehensive - all 30+ complexes
 
-## Files to Create (Copy-Paste Ready)
+### Next Immediate Steps
 
-### 1. `src/lib/map/route-durations.ts`
+1. Create `scripts/build-transfer-graph.ts` with hardcoded transfer data
+2. Validate station IDs against `public/data/stops.txt`
+3. Generate `public/data/transfer-graph.json`
+4. Create `scripts/build-route-segments.ts`
+5. Generate `public/data/route-segments.json`
 
-```typescript
-/**
- * Route Duration Matrix
- * Pre-computes travel time between consecutive stops from GTFS stop_times.txt
- */
-
-// routeId → fromStopId → toStopId → durationSeconds
-export type RouteDurationMatrix = Map<string, Map<string, Map<string, number>>>;
-
-let matrixCache: RouteDurationMatrix | null = null;
-let matrixPromise: Promise<RouteDurationMatrix> | null = null;
-
-/**
- * Parse time string "HH:MM:SS" to seconds from midnight
- */
-function parseTimeToSeconds(timeStr: string): number {
-  const [h, m, s] = timeStr.split(':').map(Number);
-  return h * 3600 + m * 60 + s;
-}
-
-/**
- * Build the route duration matrix from GTFS data
- */
-export async function buildRouteDurationMatrix(): Promise<RouteDurationMatrix> {
-  if (matrixCache) return matrixCache;
-  if (matrixPromise) return matrixPromise;
-
-  matrixPromise = (async () => {
-    // Fetch both files
-    const [tripsRes, stopTimesRes] = await Promise.all([
-      fetch('/data/trips.txt'),
-      fetch('/data/stop_times.txt')
-    ]);
-
-    const tripsText = await tripsRes.text();
-    const stopTimesText = await stopTimesRes.text();
-
-    // Parse trips.txt → Map<tripId, routeId>
-    const tripToRoute = new Map<string, string>();
-    const tripLines = tripsText.split('\n').slice(1); // Skip header
-    for (const line of tripLines) {
-      if (!line.trim()) continue;
-      const [routeId, , tripId] = line.split(',');
-      if (routeId && tripId) {
-        tripToRoute.set(tripId.trim(), routeId.trim());
-      }
-    }
-
-    // Parse stop_times.txt and group by trip
-    // trip_id, stop_id, arrival_time, departure_time, stop_sequence
-    const tripStops = new Map<string, Array<{ stopId: string; arrivalSec: number; seq: number }>>();
-    const stopTimesLines = stopTimesText.split('\n').slice(1);
-    for (const line of stopTimesLines) {
-      if (!line.trim()) continue;
-      const parts = line.split(',');
-      const tripId = parts[0]?.trim();
-      const stopId = parts[1]?.trim();
-      const arrivalTime = parts[2]?.trim();
-      const seq = parseInt(parts[4]?.trim() || '0', 10);
-
-      if (!tripId || !stopId || !arrivalTime) continue;
-
-      const arrivalSec = parseTimeToSeconds(arrivalTime);
-      if (!tripStops.has(tripId)) {
-        tripStops.set(tripId, []);
-      }
-      tripStops.get(tripId)!.push({ stopId, arrivalSec, seq });
-    }
-
-    // Build matrix: for each trip, calculate duration between consecutive stops
-    // Then aggregate by route (average)
-    const routeDurations: Map<string, Map<string, Map<string, number[]>>> = new Map();
-
-    for (const [tripId, stops] of tripStops) {
-      const routeId = tripToRoute.get(tripId);
-      if (!routeId) continue;
-
-      // Sort by sequence
-      stops.sort((a, b) => a.seq - b.seq);
-
-      // Calculate durations between consecutive stops
-      for (let i = 0; i < stops.length - 1; i++) {
-        const from = stops[i];
-        const to = stops[i + 1];
-        const duration = to.arrivalSec - from.arrivalSec;
-
-        // Handle overnight trips (arrival < departure)
-        const adjustedDuration = duration < 0 ? duration + 86400 : duration;
-
-        if (!routeDurations.has(routeId)) {
-          routeDurations.set(routeId, new Map());
-        }
-        const fromMap = routeDurations.get(routeId)!;
-        if (!fromMap.has(from.stopId)) {
-          fromMap.set(from.stopId, new Map());
-        }
-        const toMap = fromMap.get(from.stopId)!;
-        if (!toMap.has(to.stopId)) {
-          toMap.set(to.stopId, []);
-        }
-        toMap.get(to.stopId)!.push(adjustedDuration);
-      }
-    }
-
-    // Average the durations
-    const matrix: RouteDurationMatrix = new Map();
-    for (const [routeId, fromMap] of routeDurations) {
-      matrix.set(routeId, new Map());
-      const routeMatrix = matrix.get(routeId)!;
-      for (const [fromStop, toMap] of fromMap) {
-        routeMatrix.set(fromStop, new Map());
-        const fromMatrix = routeMatrix.get(fromStop)!;
-        for (const [toStop, durations] of toMap) {
-          const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
-          fromMatrix.set(toStop, Math.round(avg));
-        }
-      }
-    }
-
-    matrixCache = matrix;
-    console.log(`[route-durations] Built matrix for ${matrix.size} routes`);
-    return matrix;
-  })();
-
-  return matrixPromise;
-}
-
-/**
- * Get duration between two stops for a route
- * Returns seconds, or undefined if not found
- */
-export function getSegmentDuration(
-  matrix: RouteDurationMatrix,
-  routeId: string,
-  fromStopId: string,
-  toStopId: string
-): number | undefined {
-  // Try exact match
-  const duration = matrix.get(routeId)?.get(fromStopId)?.get(toStopId);
-  if (duration !== undefined) return duration;
-
-  // Try without direction suffix (N/S)
-  const fromBase = fromStopId.replace(/[NS]$/, '');
-  const toBase = toStopId.replace(/[NS]$/, '');
-
-  // Try all combinations
-  for (const from of [fromStopId, fromBase + 'N', fromBase + 'S', fromBase]) {
-    for (const to of [toStopId, toBase + 'N', toBase + 'S', toBase]) {
-      const d = matrix.get(routeId)?.get(from)?.get(to);
-      if (d !== undefined) return d;
-    }
-  }
-
-  return undefined;
-}
-```
-
-### 2. `src/lib/map/alert-speed.ts`
-
-```typescript
-/**
- * Alert-based speed modulation
- * Adjusts animation speed based on active service alerts
- */
-
-import type { ServiceAlert } from '@/types/mta';
-
-/**
- * Get speed multiplier for a route based on active alerts
- * Returns 0.5-1.0 (lower = slower animation for delays)
- */
-export function getRouteSpeedMultiplier(
-  alerts: ServiceAlert[],
-  routeId: string
-): number {
-  const routeAlerts = alerts.filter(a =>
-    a.affectedRoutes.some(r => r.toUpperCase() === routeId.toUpperCase())
-  );
-
-  if (routeAlerts.length === 0) return 1.0;
-
-  // Find most severe alert
-  for (const alert of routeAlerts) {
-    const type = alert.alertType.toLowerCase();
-    if (type.includes('suspension') || type.includes('cancel')) {
-      return 0.5; // Major slowdown
-    }
-  }
-
-  for (const alert of routeAlerts) {
-    const type = alert.alertType.toLowerCase();
-    if (type.includes('delay')) {
-      return 0.8; // Moderate slowdown
-    }
-  }
-
-  for (const alert of routeAlerts) {
-    const type = alert.alertType.toLowerCase();
-    if (type.includes('service change') || type.includes('detour')) {
-      return 0.9; // Minor slowdown
-    }
-  }
-
-  return 1.0; // Normal speed
-}
-```
-
-## Animation Logic Change
-
-**In `useMapAnimation.ts`, replace the animation loop with:**
-
-```typescript
-// Get scheduled duration from matrix
-const scheduledDuration = getSegmentDuration(
-  durationMatrix,
-  state.routeId,
-  state.prevStopId,
-  state.nextStopId
-) || 90; // Default 90 seconds
-
-// Get speed multiplier from alerts
-const speedMultiplier = getRouteSpeedMultiplier(alerts, state.routeId);
-
-// Adjusted duration (slower if delays)
-const adjustedDuration = scheduledDuration / speedMultiplier;
-
-// Calculate progress based on when train entered segment
-const elapsed = (nowMs - state.segmentStartTime) / 1000;
-const progress = Math.min(1.0, elapsed / adjustedDuration);
-
-// Direct lerp - NO smooth factor
-const targetS = state.prevS + (state.nextS - state.prevS) * progress;
-
-// CRITICAL: SNAP to station when arrived
-if (progress >= 1.0) {
-  state.filter.s = state.nextS;  // Exact station position!
-} else {
-  state.filter.s = targetS;
-}
-
-// Convert to lat/lon
-const [lat, lon] = arclengthToLatLon(state.filter.s, state.track);
-state.marker.setLngLat([lon, lat]);
-```
-
-## Commands to Run
+### Commands to Resume
 
 ```bash
 cd C:/Users/User/Documents/RND/_dev_/TS/traintracker
-npm run dev
-# Open http://localhost:3000/map
+
+# Read the context
+cat dev/active/trip-advisor-agent/trip-advisor-agent-context.md
+
+# Read the full plan
+cat C:\Users\User\.claude\plans\foamy-drifting-bonbon.md
 ```
 
-## Key Changes from Previous Approach
+---
 
-| Before | After |
-|--------|-------|
-| Smooth factor 0.1 (never reaches target) | Direct lerp (reaches target) |
-| API timing (stale) | Pre-computed from stop_times.txt |
-| No snap at arrival | SNAP when progress >= 1.0 |
-| No delay handling | Alert-based speed modulation |
+## PREVIOUS TASK: Train Animation Fix
 
-## Why Previous Approach Failed
+**Status**: CODE REVIEW COMPLETE - 4 CRITICAL BUGS FOUND
+**Documentation**: `dev/active/train-animation-fix/`
 
-```typescript
-// BROKEN - asymptotic decay:
-state.filter.s = state.filter.s + 0.1 * (targetS - state.filter.s);
-// After 100 frames: 0.9^100 = 0.000027 of distance remaining
-// NEVER reaches exactly 0!
+### Critical Bugs Found
 
-// FIXED - direct assignment with snap:
-if (progress >= 1.0) {
-  state.filter.s = state.nextS; // EXACTLY at station
-} else {
-  state.filter.s = targetS; // Direct lerp, no smoothing
-}
+1. **BUG 1**: speedMultiplier uses wrong calculation in `useTrainMarkers.ts:273-274`
+2. **BUG 2**: State machine hardcodes 90s in `train-state-machine.ts:96-97`
+3. **BUG 3**: Duplicate state between TrainMotionState and TrainAnimationState
+4. **BUG 4**: Wrong thresholds (0.95 should be 0.8, 0.99 should be 1.0)
+
+### Plan Location
+`C:\Users\User\.claude\plans\nested-plotting-aho.md`
+
+---
+
+## Project Quick Reference
+
+### Key Data Files
+- `public/data/stops.txt` - 243 parent stations, 1,497 total stops
+- `public/data/routes.txt` - 31 transit routes
+- `public/data/stop_times.txt` - 562,335 stop-time entries (35 MB)
+- `public/data/duration-matrix.json` - Pre-computed segment times (6.1 MB)
+- `public/data/stations-enriched.json` - Cross-street enrichment
+
+### Key Source Files
+- `src/lib/mta/station-utils.ts` - Station ID parsing utilities
+- `src/lib/map/route-durations.ts` - Duration matrix loading
+- `scripts/build-duration-matrix.ts` - GTFS parsing pattern
+- `src/stores/ui-store.ts` - Zustand store pattern
+- `src/lib/api/index.ts` - API client
+
+### Development Commands
+```bash
+npm run dev          # Start dev server
+npm run build        # Production build
+npm run test:run     # Run tests
+npx ts-node scripts/build-duration-matrix.ts  # Build GTFS data
 ```

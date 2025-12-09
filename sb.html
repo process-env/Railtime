@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Darrell Robinson - Full-Stack Software Engineer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --black: #000000;
+      --white: #ffffff;
+      --blue: #2563eb;
+      --blue-light: #3b82f6;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-500: #6b7280;
+      --gray-600: #4b5563;
+      --gray-700: #374151;
+      --gray-900: #111827;
+    }
+
+    html {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--white);
+      color: var(--gray-900);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .page {
+      width: 8.5in;
+      min-height: 11in;
+      margin: 0 auto;
+      padding: 0.35in 0.45in;
+      background: var(--white);
+    }
+
+    /* ========== HEADER ========== */
+    .header {
+      text-align: center;
+      margin-bottom: 0.18in;
+    }
+
+    .name {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--black);
+      margin-bottom: 4px;
+    }
+
+    .title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--blue);
+      margin-bottom: 6px;
+    }
+
+    .contact {
+      font-size: 10px;
+      color: var(--gray-600);
+    }
+
+    .contact a {
+      color: var(--gray-600);
+      text-decoration: none;
+    }
+
+    /* ========== SUMMARY BOX ========== */
+    .summary-box {
+      background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+      color: var(--white);
+      padding: 12px 16px;
+      border-radius: 6px;
+      margin-bottom: 0.16in;
+    }
+
+    .summary-box p {
+      font-size: 10.5px;
+      line-height: 1.5;
+    }
+
+    .summary-box strong {
+      color: #93c5fd;
+    }
+
+    /* ========== SECTIONS ========== */
+    .section {
+      margin-bottom: 0.14in;
+    }
+
+    .section-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--blue);
+      border-bottom: 2px solid var(--blue);
+      padding-bottom: 3px;
+      margin-bottom: 8px;
+    }
+
+    /* ========== SKILLS ========== */
+    .skills-grid {
+      display: grid;
+      grid-template-columns: 70px 1fr;
+      gap: 3px 12px;
+      font-size: 9.5px;
+    }
+
+    .skill-category {
+      font-weight: 600;
+      color: var(--gray-700);
+    }
+
+    .skill-list {
+      color: var(--gray-600);
+    }
+
+    /* ========== EXPERIENCE ========== */
+    .job {
+      margin-bottom: 10px;
+    }
+
+    .job-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 2px;
+    }
+
+    .job-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--black);
+    }
+
+    .job-date {
+      font-size: 10px;
+      color: var(--gray-500);
+      font-weight: 500;
+    }
+
+    .job-company {
+      font-size: 10px;
+      color: var(--gray-600);
+      font-style: italic;
+      margin-bottom: 4px;
+    }
+
+    .job-bullets {
+      list-style: none;
+      font-size: 9.5px;
+      color: var(--gray-700);
+    }
+
+    .job-bullets li {
+      padding-left: 12px;
+      position: relative;
+      margin-bottom: 2px;
+      line-height: 1.45;
+    }
+
+    .job-bullets li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--blue);
+      font-weight: bold;
+    }
+
+    .job-bullets strong {
+      color: var(--black);
+    }
+
+    .metric {
+      color: var(--blue);
+      font-weight: 600;
+    }
+
+    /* ========== FLAGSHIP PROJECT ========== */
+    .flagship {
+      background: var(--gray-100);
+      border: 1px solid var(--gray-200);
+      border-left: 4px solid var(--blue);
+      border-radius: 0 6px 6px 0;
+      padding: 10px 12px;
+      margin-bottom: 0.14in;
+    }
+
+    .flagship-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 6px;
+    }
+
+    .flagship-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--black);
+    }
+
+    .flagship-subtitle {
+      font-size: 9.5px;
+      color: var(--gray-600);
+    }
+
+    .flagship-url {
+      font-size: 9px;
+      color: var(--blue);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .flagship-tech {
+      font-size: 8.5px;
+      color: var(--gray-500);
+      margin-bottom: 6px;
+    }
+
+    .flagship-metrics {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+
+    .flagship-metric {
+      text-align: center;
+    }
+
+    .flagship-metric-value {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--blue);
+      line-height: 1;
+    }
+
+    .flagship-metric-label {
+      font-size: 7px;
+      color: var(--gray-500);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .flagship-features {
+      margin-bottom: 8px;
+    }
+
+    .flagship-features-title {
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--gray-600);
+      margin-bottom: 4px;
+    }
+
+    .flagship-features-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px 16px;
+    }
+
+    .flagship-feature {
+      font-size: 9px;
+      color: var(--gray-700);
+      padding-left: 10px;
+      position: relative;
+      line-height: 1.4;
+    }
+
+    .flagship-feature::before {
+      content: "▸";
+      position: absolute;
+      left: 0;
+      color: var(--blue);
+      font-size: 8px;
+    }
+
+    .flagship-feature strong {
+      color: var(--black);
+    }
+
+    /* ========== OTHER PROJECTS ========== */
+    .projects-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .project-small {
+      background: var(--gray-100);
+      border-radius: 4px;
+      padding: 8px 10px;
+    }
+
+    .project-small-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 3px;
+    }
+
+    .project-small-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--black);
+    }
+
+    .project-small-url {
+      font-size: 8px;
+      color: var(--blue);
+      text-decoration: none;
+    }
+
+    .project-small-tech {
+      font-size: 8px;
+      color: var(--gray-500);
+      margin-bottom: 3px;
+    }
+
+    .project-small-desc {
+      font-size: 9px;
+      color: var(--gray-600);
+      line-height: 1.4;
+    }
+
+    /* ========== PRINT ========== */
+    @media print {
+      @page {
+        size: letter;
+        margin: 0;
+      }
+
+      body {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .page {
+        width: 100%;
+        min-height: 100%;
+        padding: 0.35in 0.45in;
+      }
+    }
+
+    @media screen {
+      body {
+        background: #d1d5db;
+        padding: 20px;
+      }
+      .page {
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <!-- HEADER -->
+    <header class="header">
+      <h1 class="name">DARRELL ROBINSON</h1>
+      <p class="title">Full-Stack Software Engineer | React/Next.js · Node.js · TypeScript</p>
+      <p class="contact">
+        (914) 772-2116 ·
+        <a href="https://github.com/process-env">github.com/process-env</a> ·
+        <a href="https://linkedin.com/in/darrell-robinson-a12158398">linkedin.com/in/darrell-robinson</a> ·
+        <a href="https://railtime-seven.vercel.app">railtime-seven.vercel.app</a>
+      </p>
+    </header>
+
+    <!-- SUMMARY -->
+    <div class="summary-box">
+      <p>
+        Full-stack engineer with <strong>6 years</strong> building production systems at scale. Recently shipped <strong>RailTime</strong>—a real-time NYC subway tracker with <strong>AI-powered audio announcements</strong>, live train positions across all 27 routes, and <strong>13 REST API endpoints</strong>. Expert in React/Next.js, Node.js, TypeScript, real-time data streaming, and AI integration. Reduced manual work by <strong>85%</strong> through automation and built systems serving <strong>10K+ requests/day</strong>.
+      </p>
+    </div>
+
+    <!-- SKILLS -->
+    <section class="section">
+      <h2 class="section-title">Technical Skills</h2>
+      <div class="skills-grid">
+        <span class="skill-category">Frontend:</span>
+        <span class="skill-list">React 19, Next.js 15/16, TypeScript, Tailwind CSS, shadcn/ui, Zustand, Framer Motion, MapLibre GL</span>
+        <span class="skill-category">Backend:</span>
+        <span class="skill-list">Node.js 22, Express.js, REST APIs, tRPC, WebSocket, Socket.IO, Auth0, JWT, OAuth</span>
+        <span class="skill-category">Database:</span>
+        <span class="skill-list">PostgreSQL, MongoDB, Prisma, Redis, Query Optimization, Migrations</span>
+        <span class="skill-category">Real-Time:</span>
+        <span class="skill-list">GTFS Protocol Buffers, WebSockets, Server-Sent Events, Polling Strategies, State Sync</span>
+        <span class="skill-category">AI/ML:</span>
+        <span class="skill-list">OpenAI GPT-4, Text-to-Speech (TTS), Prompt Engineering, AI Agents, RAG</span>
+        <span class="skill-category">DevOps:</span>
+        <span class="skill-list">Docker, GitHub Actions, CI/CD, Vercel, AWS S3, Linux</span>
+      </div>
+    </section>
+
+    <!-- EXPERIENCE -->
+    <section class="section">
+      <h2 class="section-title">Professional Experience</h2>
+
+      <div class="job">
+        <div class="job-header">
+          <span class="job-title">Full-Stack Software Engineer</span>
+          <span class="job-date">Jan 2019 – 2025</span>
+        </div>
+        <div class="job-company">Benchmark Education Company | New Rochelle, NY</div>
+        <ul class="job-bullets">
+          <li><strong>Architected automation pipelines</strong> processing <span class="metric">1000+ educational assets daily</span>, reducing manual work by <span class="metric">85%</span> and accelerating release cycles by <span class="metric">3x</span></li>
+          <li><strong>Built data-driven content generation system</strong> transforming spreadsheets/JSON into HTML, XML manifests, and CMI5 packages with schema validation reducing QA errors by <span class="metric">70%</span></li>
+          <li><strong>Developed batch media processing pipelines</strong> (Sharp/FFmpeg) handling <span class="metric">500+ images/audio files</span> with consistent metadata, cutting file sizes by <span class="metric">60%</span></li>
+          <li><strong>Created React/Next.js operator dashboards</strong> with role-based access control enabling <span class="metric">15+ non-engineers</span> to safely manage automation workflows</li>
+          <li><strong>Built RESTful APIs</strong> (Node.js/Express) serving <span class="metric">10,000+ requests/day</span> with <span class="metric">sub-200ms response times</span> and integrated Auth0 authentication</li>
+          <li><strong>Established CI/CD pipelines</strong> (GitHub Actions) reducing deployment time to <span class="metric">&lt;10 minutes</span> and mentored junior developers on TypeScript</li>
+        </ul>
+      </div>
+
+      <div class="job">
+        <div class="job-header">
+          <span class="job-title">Freelance Full-Stack Developer</span>
+          <span class="job-date">2016 – Present</span>
+        </div>
+        <div class="job-company">Self-Employed | Remote</div>
+        <ul class="job-bullets">
+          <li><strong>Built custom workflow automation tools</strong> for <span class="metric">5+ clients</span> streamlining content packaging and reducing operational errors by <span class="metric">60%</span></li>
+          <li><strong>Developed lightweight admin interfaces</strong> for batch operations, audit logging, and file management with TypeScript and comprehensive testing</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- FLAGSHIP PROJECT -->
+    <div class="flagship">
+      <div class="flagship-header">
+        <div>
+          <div class="flagship-title">RailTime — NYC Subway Tracker</div>
+          <div class="flagship-subtitle">Real-Time Transit Dashboard with AI-Powered Audio Conductor</div>
+          <div class="flagship-tech">Next.js 16 · React 19 · TypeScript · Zustand · GTFS Protocol Buffers · MapLibre GL · OpenAI GPT-4 · TTS · PostgreSQL</div>
+        </div>
+        <a href="https://railtime-seven.vercel.app" class="flagship-url">railtime-seven.vercel.app →</a>
+      </div>
+
+      <div class="flagship-metrics">
+        <div class="flagship-metric">
+          <div class="flagship-metric-value">27</div>
+          <div class="flagship-metric-label">Subway Lines</div>
+        </div>
+        <div class="flagship-metric">
+          <div class="flagship-metric-value">8</div>
+          <div class="flagship-metric-label">Live GTFS Feeds</div>
+        </div>
+        <div class="flagship-metric">
+          <div class="flagship-metric-value">13</div>
+          <div class="flagship-metric-label">API Endpoints</div>
+        </div>
+        <div class="flagship-metric">
+          <div class="flagship-metric-value">400+</div>
+          <div class="flagship-metric-label">Stations</div>
+        </div>
+        <div class="flagship-metric">
+          <div class="flagship-metric-value">Live</div>
+          <div class="flagship-metric-label">Train Positions</div>
+        </div>
+        <div class="flagship-metric">
+          <div class="flagship-metric-value">AI</div>
+          <div class="flagship-metric-label">Audio Agent</div>
+        </div>
+      </div>
+
+      <div class="flagship-features">
+        <div class="flagship-features-title">Core Features & Technical Achievements</div>
+        <div class="flagship-features-grid">
+          <div class="flagship-feature"><strong>AI Conductor Agent</strong> — GPT-4 generates contextual announcements (arrivals, weather, news, subway facts) with OpenAI TTS audio playback</div>
+          <div class="flagship-feature"><strong>Real-Time GTFS Decoding</strong> — Processes 8 concurrent MTA Protocol Buffer feeds with sub-second state synchronization</div>
+          <div class="flagship-feature"><strong>Interactive Map</strong> — MapLibre GL visualization showing live train positions, station markers, and route filtering by line</div>
+          <div class="flagship-feature"><strong>Analytics Dashboard</strong> — Train counts by route, elevator/escalator status, service alerts, and schedule intelligence</div>
+          <div class="flagship-feature"><strong>13 REST Endpoints</strong> — Arrivals, alerts, trains, stops, routes, equipment status, POI, conductor (announce/weather/news)</div>
+          <div class="flagship-feature"><strong>State Architecture</strong> — Zustand stores managing trains, alerts, UI state with React Query for server sync</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OTHER PROJECTS -->
+    <section class="section">
+      <h2 class="section-title">Additional Projects</h2>
+      <div class="projects-row">
+        <div class="project-small">
+          <div class="project-small-header">
+            <span class="project-small-title">Watch the RIGHT Hook</span>
+            <a href="https://watch-the-right-hook.vercel.app" class="project-small-url">watch-the-right-hook.vercel.app →</a>
+          </div>
+          <div class="project-small-tech">Next.js 16 · MDX · Sandpack · Tailwind CSS</div>
+          <p class="project-small-desc">Comprehensive React Hooks technical reference — 25 chapters across 10 parts covering useState to custom hooks. Live Sandpack code playgrounds for hands-on learning. Demonstrates deep React expertise and technical writing ability.</p>
+        </div>
+        <div class="project-small">
+          <div class="project-small-header">
+            <span class="project-small-title">AI Podcast Maker</span>
+            <a href="https://podcastr-seven-neon.vercel.app" class="project-small-url">podcastr-seven-neon.vercel.app →</a>
+          </div>
+          <div class="project-small-tech">Next.js · OpenAI Whisper · GPT-4 · Clerk Auth · Convex</div>
+          <p class="project-small-desc">Audio transcription with OpenAI Whisper and GPT-4 semantic summarization. Real-time collaboration via Convex database sync. Clerk OAuth authentication with session management.</p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</body>
+</html>

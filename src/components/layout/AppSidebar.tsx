@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -8,6 +9,7 @@ import {
   Train,
   Bell,
   X,
+  Navigation,
 } from 'lucide-react';
 
 import {
@@ -25,10 +27,17 @@ import {
   SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { usePrefetchAnalytics, usePrefetchMap, useAlerts } from '@/hooks';
 import { RouteFilter } from './RouteFilter';
 import { SubwayMapModal } from './SubwayMapModal';
+import { TripPlannerPanel } from '@/components/trip-planner';
 
 const navItems = [
   { href: '/map', label: 'Live Map', icon: Map },
@@ -45,6 +54,7 @@ export function AppSidebar() {
   const alertCount = alerts.length;
   const prefetchAnalytics = usePrefetchAnalytics();
   const prefetchMap = usePrefetchMap();
+  const [tripPlannerOpen, setTripPlannerOpen] = useState(false);
 
   return (
     <Sidebar collapsible="icon">
@@ -114,6 +124,22 @@ export function AppSidebar() {
           </SidebarMenu>
         </SidebarGroup>
 
+        {/* Trip Planner */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Tools</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => setTripPlannerOpen(true)}
+                tooltip="Trip Planner"
+              >
+                <Navigation />
+                <span>Trip Planner</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
         {/* Route Filters - only show on map page */}
         {pathname === '/map' && (
           <SidebarGroup>
@@ -134,6 +160,19 @@ export function AppSidebar() {
       </SidebarFooter>
 
       <SidebarRail />
+
+      {/* Trip Planner Sheet */}
+      <Sheet open={tripPlannerOpen} onOpenChange={setTripPlannerOpen}>
+        <SheetContent
+          side="left"
+          className="w-[400px] p-0 sm:max-w-[400px] bg-sidebar border-sidebar-border"
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>Trip Planner</SheetTitle>
+          </SheetHeader>
+          <TripPlannerPanel className="h-full" />
+        </SheetContent>
+      </Sheet>
     </Sidebar>
   );
 }
