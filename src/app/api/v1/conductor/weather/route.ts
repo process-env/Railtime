@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // NYC coordinates
 const NYC_LAT = 40.7128;
-const NYC_LON = -74.0060;
+const NYC_LON = -74.006;
 
 interface WeatherData {
   current: {
@@ -35,45 +35,56 @@ async function fetchWeather(): Promise<WeatherData> {
   const data = await response.json();
 
   const weatherCodes: Record<number, string> = {
-    0: 'clear skies',
-    1: 'mostly clear',
-    2: 'partly cloudy',
-    3: 'overcast',
-    45: 'foggy',
-    48: 'freezing fog',
-    51: 'light drizzle',
-    53: 'drizzle',
-    55: 'heavy drizzle',
-    61: 'light rain',
-    63: 'rain',
-    65: 'heavy rain',
-    66: 'freezing rain',
-    67: 'heavy freezing rain',
-    71: 'light snow',
-    73: 'snow',
-    75: 'heavy snow',
-    77: 'snow grains',
-    80: 'light showers',
-    81: 'showers',
-    82: 'heavy showers',
-    85: 'light snow showers',
-    86: 'heavy snow showers',
-    95: 'thunderstorms',
-    96: 'thunderstorms with hail',
-    99: 'severe thunderstorms',
+    0: "clear skies",
+    1: "mostly clear",
+    2: "partly cloudy",
+    3: "overcast",
+    45: "foggy",
+    48: "freezing fog",
+    51: "light drizzle",
+    53: "drizzle",
+    55: "heavy drizzle",
+    61: "light rain",
+    63: "rain",
+    65: "heavy rain",
+    66: "freezing rain",
+    67: "heavy freezing rain",
+    71: "light snow",
+    73: "snow",
+    75: "heavy snow",
+    77: "snow grains",
+    80: "light showers",
+    81: "showers",
+    82: "heavy showers",
+    85: "light snow showers",
+    86: "heavy snow showers",
+    95: "thunderstorms",
+    96: "thunderstorms with hail",
+    99: "severe thunderstorms",
   };
 
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const days = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
 
-  const forecast = data.daily.time.slice(1, 6).map((date: string, i: number) => {
-    const d = new Date(date);
-    return {
-      day: days[d.getDay()],
-      high: Math.round(data.daily.temperature_2m_max[i + 1]),
-      low: Math.round(data.daily.temperature_2m_min[i + 1]),
-      description: weatherCodes[data.daily.weather_code[i + 1]] || 'variable conditions',
-    };
-  });
+  const forecast = data.daily.time
+    .slice(1, 6)
+    .map((date: string, i: number) => {
+      const d = new Date(date);
+      return {
+        day: days[d.getDay()],
+        high: Math.round(data.daily.temperature_2m_max[i + 1]),
+        low: Math.round(data.daily.temperature_2m_min[i + 1]),
+        description:
+          weatherCodes[data.daily.weather_code[i + 1]] || "variable conditions",
+      };
+    });
 
   return {
     current: {
@@ -81,12 +92,14 @@ async function fetchWeather(): Promise<WeatherData> {
       feelsLike: Math.round(data.current.apparent_temperature),
       humidity: data.current.relative_humidity_2m,
       windSpeed: Math.round(data.current.wind_speed_10m),
-      description: weatherCodes[data.current.weather_code] || 'variable conditions',
+      description:
+        weatherCodes[data.current.weather_code] || "variable conditions",
     },
     today: {
       high: Math.round(data.daily.temperature_2m_max[0]),
       low: Math.round(data.daily.temperature_2m_min[0]),
-      description: weatherCodes[data.daily.weather_code[0]] || 'variable conditions',
+      description:
+        weatherCodes[data.daily.weather_code[0]] || "variable conditions",
     },
     forecast,
   };
@@ -98,8 +111,8 @@ async function generateWeatherScript(weather: WeatherData): Promise<string> {
   }
 
   const forecastText = weather.forecast
-    .map(f => `${f.day}: High ${f.high}, Low ${f.low}, ${f.description}`)
-    .join('\n');
+    .map((f) => `${f.day}: High ${f.high}, Low ${f.low}, ${f.description}`)
+    .join("\n");
 
   const prompt = `You are the iconic voice of NYC weather - think Pat Kiernan meets a jazz DJ. Deliver this weather report with New York attitude and style.
 
@@ -126,15 +139,15 @@ Rules:
 - Sound like you're broadcasting from Times Square
 - IMPORTANT: Never use degree symbols or abbreviations. Say "72" not "72 degrees" or "72°F". Just say the number.`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
       max_tokens: 250,
       temperature: 0.8,
     }),
@@ -145,33 +158,36 @@ Rules:
   }
 
   const data = await response.json();
-  return data.choices[0]?.message?.content?.trim() || `It's ${weather.current.temp} degrees in NYC.`;
+  return (
+    data.choices[0]?.message?.content?.trim() ||
+    `It's ${weather.current.temp} degrees in NYC.`
+  );
 }
 
 async function synthesizeWeather(text: string): Promise<string> {
   if (!OPENAI_API_KEY) {
-    throw new Error('OpenAI API key not configured');
+    throw new Error("OpenAI API key not configured");
   }
 
-  const response = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
+  const response = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'tts-1',
+      model: "tts-1",
       input: text,
-      voice: 'echo', // Smooth male voice for weather
+      voice: "echo", // Smooth male voice for weather
     }),
   });
 
   if (!response.ok) {
-    throw new Error('Failed to synthesize weather');
+    throw new Error("Failed to synthesize weather");
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer).toString('base64');
+  return Buffer.from(arrayBuffer).toString("base64");
 }
 
 export async function GET(request: NextRequest) {
@@ -186,7 +202,10 @@ export async function GET(request: NextRequest) {
       weather,
     });
   } catch (error) {
-    console.error('Weather generation error:', error);
-    return NextResponse.json({ error: 'Failed to generate weather' }, { status: 500 });
+    console.error("Weather generation error:", error);
+    return NextResponse.json(
+      { error: "Failed to generate weather" },
+      { status: 500 }
+    );
   }
 }
