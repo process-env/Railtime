@@ -1,10 +1,7 @@
 import { useRef, useEffect, useMemo, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import { MAP_CONSTANTS } from '@/lib/constants';
-import {
-  isParentStation,
-  getParentStationId,
-} from '@/lib/mta/station-utils';
+import { isParentStation } from '@/lib/mta/station-utils';
 import type { Station, TrainPosition } from '@/types/mta';
 
 /** Fast approximate distance in meters between two lat/lon points */
@@ -61,27 +58,25 @@ export function useStationMarkers(
   // Store marker data including cleanup functions
   const markersRef = useRef<Map<string, MarkerData>>(new Map());
 
-  // Memoize station IDs with arriving trains (with input validation)
-  const arrivingStationIds = useMemo(() => {
-    const ids = new Set<string>();
-    trains.forEach((train) => {
-      const parentId = getParentStationId(train.nextStopId);
-      if (!parentId) return;
-      const station = stations[parentId];
-      if (!station) return;
-      // Only flash if train is within proximity of the station
-      const dist = approxDistanceM(train.lat, train.lon, station.lat, station.lon);
-      if (dist <= ARRIVING_PROXIMITY_M) {
-        ids.add(parentId);
-      }
-    });
-    return ids;
-  }, [trains, stations]);
-
   // Always show all parent stations - route filter only affects trains, not stations
   const filteredStations = useMemo(() => {
     return Object.values(stations).filter(isParentStation);
   }, [stations]);
+
+  // Pure proximity check — flash station if any train is within range.
+  // No ID matching needed; avoids fragile stop ID format dependencies.
+  const arrivingStationIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const station of filteredStations) {
+      for (const train of trains) {
+        if (approxDistanceM(train.lat, train.lon, station.lat, station.lon) <= ARRIVING_PROXIMITY_M) {
+          ids.add(station.id);
+          break; // One nearby train is enough
+        }
+      }
+    }
+    return ids;
+  }, [trains, filteredStations]);
 
   // Cleanup function for removing a marker and its event listeners
   const removeMarker = useCallback((id: string) => {
