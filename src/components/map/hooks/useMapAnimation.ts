@@ -287,6 +287,7 @@ export function useMapAnimation(
         if (!state.track) return;
 
         anyMoving = true;
+        const frameDtMs = now - state.lastFrameTime;  // Time since last frame (ms)
         state.lastFrameTime = now;
 
         // Check distance to current station
@@ -345,10 +346,16 @@ export function useMapAnimation(
             });
 
             // Get current position from state machine
-            const currentS = getCurrentArclength!(state.animState);
+            const currentS_sm = getCurrentArclength!(state.animState);
+            const targetS_sm = safeArclength(currentS_sm, state.lastRenderedS);
 
-            // Keep filter.s in sync for backwards compatibility
-            state.filter.s = safeArclength(currentS, state.lastRenderedS);
+            // Blend from rendered position toward state machine target
+            const currentRendered = state.lastRenderedS ?? targetS_sm;
+            const blend_sm = 1 - Math.pow(1 - 0.15, Math.max(0.5, frameDtMs / 16.67));
+            state.filter.s = currentRendered + (targetS_sm - currentRendered) * blend_sm;
+            if (Math.abs(state.filter.s - targetS_sm) < 1) {
+              state.filter.s = targetS_sm;
+            }
             state.lastRenderedS = state.filter.s;
 
             // Convert arclength to lat/lon
@@ -359,26 +366,41 @@ export function useMapAnimation(
               state.marker.setLngLat([lon, lat]);
             }
           } else {
-            // Fallback: use legacy animation if state machine not initialized
+            // Fallback: schedule-based animation with smooth blending
             const adjustedDuration = state.scheduledDuration / state.speedMultiplier;
             const elapsed = (nowMs - state.segmentStartTime) / 1000;
             const rawProgress = adjustedDuration > 0 ? elapsed / adjustedDuration : 1;
             const progress = Math.max(0, Math.min(1, rawProgress));
 
-            // Direct lerp toward station - SNAP when progress complete
+            // Calculate target position from schedule
+            let targetS: number;
             if (progress >= 1.0) {
-              state.filter.s = state.nextS;  // SNAP to station
+              targetS = state.nextS;
             } else {
-              state.filter.s = state.prevS + (state.nextS - state.prevS) * progress;
+              targetS = state.prevS + (state.nextS - state.prevS) * progress;
             }
 
-            // Safety clamp
+            // Clamp target to segment bounds
             const minS = Math.min(state.prevS, state.nextS);
             const maxS = Math.max(state.prevS, state.nextS);
-            state.filter.s = Math.max(minS, Math.min(maxS, state.filter.s));
+            targetS = Math.max(minS, Math.min(maxS, targetS));
 
-            // NaN guard — if lerp produced NaN, hold position
-            state.filter.s = safeArclength(state.filter.s, state.lastRenderedS);
+            // NaN guard on target
+            targetS = safeArclength(targetS, state.lastRenderedS);
+
+            // Smooth blend from current rendered position toward target
+            // Prevents teleportation on segment changes while tracking API data
+            const currentS = state.lastRenderedS ?? targetS;
+            const BLEND_SPEED = 0.15;  // Per-frame at 60fps — ~95% correction in 0.5s
+            const dtNorm = Math.max(0.5, frameDtMs / 16.67);  // Normalize to 60fps
+            const blend = 1 - Math.pow(1 - BLEND_SPEED, dtNorm);
+            state.filter.s = currentS + (targetS - currentS) * blend;
+
+            // Snap when very close to avoid asymptotic hover
+            if (Math.abs(state.filter.s - targetS) < 1) {
+              state.filter.s = targetS;
+            }
+
             state.lastRenderedS = state.filter.s;
 
             const [lat, lon] = arclengthToLatLon!(state.filter.s, state.track);
