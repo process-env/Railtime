@@ -574,6 +574,7 @@ async function createMotionState(
     headsign: train.headsign,
     direction,
     lastFrameTime: performance.now(),
+    lastRenderedS: initialS,
     lastApiUpdate: nowMs,
     // Phase tracking for popup updates during animation
     lastPhase: initialPhase
@@ -612,7 +613,10 @@ async function updateMotionState(
   if (!getStopArclength) return;
 
   // Get new arclengths
-  const prevS = train.prevStopId ? await getStopArclength(train.routeId, train.prevStopId) : state.prevS;
+  const resolvedPrevS = train.prevStopId
+    ? await getStopArclength(train.routeId, train.prevStopId)
+    : undefined;
+  const prevS = resolvedPrevS ?? state.prevS;
   const nextS = await getStopArclength(train.routeId, train.nextStopId);
 
   if (nextS === undefined) return;
@@ -651,35 +655,46 @@ async function updateMotionState(
 
     if (atStation) {
       // Train is at station - queue segment and start dwell
-      state.pendingSegment = {
-        prevStopId: train.prevStopId || '',
-        nextStopId: train.nextStopId,
-        prevS: prevS,
-        nextS: nextS,
-        scheduledDuration: newScheduledDuration,
-        nextStopName: train.nextStopName,
-        eta: train.eta,
-      };
-      if (!state.dwellStartTime) {
-        state.dwellStartTime = nowMs;
+      if (Number.isFinite(prevS) && Number.isFinite(nextS)) {
+        state.pendingSegment = {
+          prevStopId: train.prevStopId || '',
+          nextStopId: train.nextStopId,
+          prevS: prevS,
+          nextS: nextS,
+          scheduledDuration: newScheduledDuration,
+          nextStopName: train.nextStopName,
+          eta: train.eta,
+        };
+        if (!state.dwellStartTime) {
+          state.dwellStartTime = nowMs;
+        }
       }
     } else {
       // Train NOT at station - immediately update segment to keep moving
       // This prevents trains from getting stuck
-      state.prevStopId = train.prevStopId || '';
-      state.nextStopId = train.nextStopId;
-      state.prevS = prevS;
-      state.nextS = nextS;
-      state.scheduledDuration = newScheduledDuration;
-      state.nextStopName = train.nextStopName;
-      state.eta = train.eta;
-      // Reset timing based on API progress
-      const segmentDurationMs = newScheduledDuration * 1000;
-      const elapsedMs = apiProgress * segmentDurationMs;
-      state.segmentStartTime = nowMs - elapsedMs;
-      // Clear any pending since we just updated directly
-      state.pendingSegment = undefined;
-      state.dwellStartTime = undefined;
+      if (Number.isFinite(prevS) && Number.isFinite(nextS)) {
+        state.prevStopId = train.prevStopId || '';
+        state.nextStopId = train.nextStopId;
+        state.prevS = prevS;
+        state.nextS = nextS;
+        state.scheduledDuration = newScheduledDuration;
+        state.nextStopName = train.nextStopName;
+        state.eta = train.eta;
+        // Calculate segmentStartTime from current rendered position
+        const segmentRange = nextS - prevS;
+        const segmentDurationMs = newScheduledDuration * 1000;
+        if (Math.abs(segmentRange) > 0 && segmentDurationMs > 0) {
+          const positionInSegment = (state.filter.s - prevS) / segmentRange;
+          const clampedProgress = Math.max(0, Math.min(1, positionInSegment));
+          state.segmentStartTime = nowMs - (clampedProgress * segmentDurationMs);
+        } else {
+          state.segmentStartTime = nowMs;
+        }
+        // Clear any pending since we just updated directly
+        state.pendingSegment = undefined;
+        state.dwellStartTime = undefined;
+      }
+      // else: skip — don't corrupt state with bad arclengths
     }
   }
 

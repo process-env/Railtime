@@ -56,6 +56,7 @@ export interface TrainMotionState {
 
   // Animation state
   lastFrameTime: number;
+  lastRenderedS?: number;  // Last arclength actually rendered — fallback anchor for NaN guard
   lastApiUpdate: number;
 
   // Phase tracking for popup updates
@@ -109,6 +110,13 @@ interface UseMapAnimationReturn {
 const ARRIVING_DISTANCE = 200;
 const STATION_SNAP_DISTANCE = 20;
 const DWELL_DURATION_MS = 2000;  // 2 seconds at station before departing
+
+/** Guard against NaN/Infinity arclength. Returns fallback if invalid. */
+function safeArclength(s: number, fallback: number | undefined): number {
+  if (Number.isFinite(s)) return s;
+  if (fallback !== undefined && Number.isFinite(fallback)) return fallback;
+  return 0;
+}
 
 // Calculate phase from distance
 function getPhaseFromDistance(currentS: number, nextS: number): 'BOARDING' | 'ARRIVING' | 'APPROACHING' {
@@ -288,7 +296,8 @@ export function useMapAnimation(
         // Handle dwell and pending segment transitions
         if (atStation) {
           // Snap to exact station position
-          state.filter.s = state.nextS;
+          state.filter.s = safeArclength(state.nextS, state.lastRenderedS);
+          state.lastRenderedS = state.filter.s;
 
           // Start dwell timer if not already started
           if (!state.dwellStartTime) {
@@ -309,7 +318,8 @@ export function useMapAnimation(
               state.nextStopName = pending.nextStopName;
               state.eta = pending.eta;
               state.segmentStartTime = nowMs;
-              state.filter.s = pending.prevS;  // Start from the station we just left
+              state.filter.s = safeArclength(pending.prevS, state.lastRenderedS);  // Start from the station we just left
+              state.lastRenderedS = state.filter.s;
               state.pendingSegment = undefined;
               state.dwellStartTime = undefined;
             }
@@ -317,7 +327,9 @@ export function useMapAnimation(
 
           // Update marker position at station
           const [lat, lon] = arclengthToLatLon!(state.filter.s, state.track);
-          state.marker.setLngLat([lon, lat]);
+          if (Number.isFinite(lat) && Number.isFinite(lon)) {
+            state.marker.setLngLat([lon, lat]);
+          }
         } else {
           // Not at station - animate toward it
           // Clear dwell timer since we're moving
@@ -336,13 +348,16 @@ export function useMapAnimation(
             const currentS = getCurrentArclength!(state.animState);
 
             // Keep filter.s in sync for backwards compatibility
-            state.filter.s = currentS;
+            state.filter.s = safeArclength(currentS, state.lastRenderedS);
+            state.lastRenderedS = state.filter.s;
 
             // Convert arclength to lat/lon
-            const [lat, lon] = arclengthToLatLon!(currentS, state.track);
+            const [lat, lon] = arclengthToLatLon!(state.filter.s, state.track);
 
             // Update marker position
-            state.marker.setLngLat([lon, lat]);
+            if (Number.isFinite(lat) && Number.isFinite(lon)) {
+              state.marker.setLngLat([lon, lat]);
+            }
           } else {
             // Fallback: use legacy animation if state machine not initialized
             const adjustedDuration = state.scheduledDuration / state.speedMultiplier;
@@ -362,8 +377,14 @@ export function useMapAnimation(
             const maxS = Math.max(state.prevS, state.nextS);
             state.filter.s = Math.max(minS, Math.min(maxS, state.filter.s));
 
+            // NaN guard — if lerp produced NaN, hold position
+            state.filter.s = safeArclength(state.filter.s, state.lastRenderedS);
+            state.lastRenderedS = state.filter.s;
+
             const [lat, lon] = arclengthToLatLon!(state.filter.s, state.track);
-            state.marker.setLngLat([lon, lat]);
+            if (Number.isFinite(lat) && Number.isFinite(lon)) {
+              state.marker.setLngLat([lon, lat]);
+            }
           }
         }
 
