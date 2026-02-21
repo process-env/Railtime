@@ -319,6 +319,7 @@ export function useMapAnimation(
               state.prevS = pending.prevS;
               state.nextS = pending.nextS;
               state.scheduledDuration = pending.scheduledDuration;
+              state.speedMultiplier = 1.0;
               state.nextStopName = pending.nextStopName;
               state.eta = pending.eta;
               state.segmentStartTime = nowMs;
@@ -350,10 +351,17 @@ export function useMapAnimation(
 
             // Get current position from state machine
             const currentS_sm = getCurrentArclength!(state.animState);
-            const targetS_sm = safeArclength(currentS_sm, state.lastRenderedS, state.prevS);
+            let targetS_sm = safeArclength(currentS_sm, state.lastRenderedS, state.prevS);
 
             // Blend from rendered position toward state machine target
             const currentRendered = state.lastRenderedS ?? targetS_sm;
+
+            // Monotonicity: never move backward — a still train is fine, a reversing train is not
+            if (state.prevS <= state.nextS) {
+              targetS_sm = Math.max(targetS_sm, currentRendered);
+            } else {
+              targetS_sm = Math.min(targetS_sm, currentRendered);
+            }
             const blend_sm = 1 - Math.pow(1 - BLEND_SPEED, Math.max(0.5, frameDtMs / 16.67));
             state.filter.s = currentRendered + (targetS_sm - currentRendered) * blend_sm;
             if (Math.abs(state.filter.s - targetS_sm) < 1) {
@@ -397,6 +405,14 @@ export function useMapAnimation(
             // Smooth blend from current rendered position toward target
             // Prevents teleportation on segment changes while tracking API data
             const currentS = state.lastRenderedS ?? targetS;
+
+            // Monotonicity: never move backward — a still train is fine, a reversing train is not
+            if (state.prevS <= state.nextS) {
+              targetS = Math.max(targetS, currentS);
+            } else {
+              targetS = Math.min(targetS, currentS);
+            }
+
             const dtNorm = Math.max(0.5, frameDtMs / 16.67);  // Normalize to 60fps
             const blend = 1 - Math.pow(1 - BLEND_SPEED, dtNorm);
             state.filter.s = currentS + (targetS - currentS) * blend;

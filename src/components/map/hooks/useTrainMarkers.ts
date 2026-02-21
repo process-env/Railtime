@@ -786,6 +786,7 @@ async function updateMotionState(
         state.prevS = prevS;
         state.nextS = nextS;
         state.scheduledDuration = newScheduledDuration;
+        state.speedMultiplier = 1.0;
         state.nextStopName = train.nextStopName;
         state.eta = train.eta;
         // Calculate segmentStartTime from current rendered position
