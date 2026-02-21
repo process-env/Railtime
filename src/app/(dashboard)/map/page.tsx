@@ -24,6 +24,12 @@ const SubwayMap = dynamic(
   }
 );
 
+// Preload duration matrix immediately — runs in parallel with SubwayMap chunk download.
+// buildRouteDurationMatrix dedupes internally, so SubwayMap gets the same promise.
+import('@/lib/map/route-durations').then(({ buildRouteDurationMatrix }) =>
+  buildRouteDurationMatrix()
+);
+
 export default function MapPage() {
   const searchParams = useSearchParams();
   const { setMapView } = useUIStore();
