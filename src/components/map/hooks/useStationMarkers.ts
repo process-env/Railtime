@@ -63,29 +63,20 @@ export function useStationMarkers(
     return Object.values(stations).filter(isParentStation);
   }, [stations]);
 
-  // Proximity + route match: flash station only if a train on one of its
-  // routes is within range. Prevents cross-line false positives at transfer
-  // hubs (e.g., 7 train arriving shouldn't flash the 4/5/6 station dot).
   const arrivingStationIds = useMemo(() => {
     const ids = new Set<string>();
-    // Pre-compute route sets per station to avoid repeated string splitting
-    const stationRouteSets = new Map<string, Set<string>>();
-    for (const station of filteredStations) {
-      const routes = station.routes
-        ? new Set(station.routes.split(/[,\s]+/).map(r => r.toUpperCase()))
-        : new Set<string>();
-      stationRouteSets.set(station.id, routes);
-    }
-    for (const station of filteredStations) {
-      const stationRoutes = stationRouteSets.get(station.id)!;
-      for (const train of trains) {
-        if (
-          stationRoutes.has(train.routeId.toUpperCase()) &&
-          approxDistanceM(train.lat, train.lon, station.lat, station.lon) <= ARRIVING_PROXIMITY_M
-        ) {
-          ids.add(station.id);
-          break;
-        }
+    // Index stations by ID for O(1) lookup
+    const stationById = new Map(filteredStations.map(s => [s.id, s]));
+
+    for (const train of trains) {
+      const parentId = train.nextStopId?.replace(/[NS]$/, '');
+      if (!parentId) continue;
+
+      const station = stationById.get(parentId);
+      if (!station) continue;
+
+      if (approxDistanceM(train.lat, train.lon, station.lat, station.lon) <= ARRIVING_PROXIMITY_M) {
+        ids.add(parentId);
       }
     }
     return ids;
