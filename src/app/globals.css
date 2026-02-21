@@ -251,6 +251,10 @@
   transition: all 0.15s ease;
 }
 
+.train-marker {
+  transition: opacity 300ms ease;
+}
+
 .station-arriving {
   animation: station-pulse 1.5s ease-in-out infinite;
   background-color: #4ade80 !important;

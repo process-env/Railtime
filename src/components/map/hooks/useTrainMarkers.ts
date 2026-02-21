@@ -115,6 +115,16 @@ const TERMINAL_STOPS = new Set([
 // Grace period: keep train visible for 5 minutes after API removes it
 const CULL_GRACE_PERIOD_MS = 300000;
 
+const FADE_DURATION_MS = 300;
+
+interface FadingMarker {
+  marker: maplibregl.Marker;
+  popup: maplibregl.Popup;
+  timeoutId: ReturnType<typeof setTimeout>;
+  motionState?: TrainMotionState;
+  animState?: TrainAnimState;
+}
+
 /**
  * Hook to manage train markers with smooth animation
  */
@@ -146,6 +156,9 @@ export function useTrainMarkers(
 
   // Dedup stability: persist previous poll's winners to prevent flip-flopping
   const dedupWinnersRef = useRef(new Map<string, string>()); // dedupKey → tripId
+
+  // Track markers that are mid-fade-out so we can cancel if train reappears
+  const fadingOutRef = useRef(new Map<string, FadingMarker>());
 
   // Load track utilities on mount
   useEffect(() => {
@@ -204,6 +217,27 @@ export function useTrainMarkers(
   // Helper to calculate distance between two points
   const getDistance = useCallback((lng1: number, lat1: number, lng2: number, lat2: number) => {
     return Math.sqrt(Math.pow(lng2 - lng1, 2) + Math.pow(lat2 - lat1, 2));
+  }, []);
+
+  // Fade out a marker over FADE_DURATION_MS, then remove it from the DOM
+  const fadeOutAndRemove = useCallback((
+    tripId: string,
+    marker: maplibregl.Marker,
+    popup: maplibregl.Popup,
+    motionState?: TrainMotionState,
+    animState?: TrainAnimState
+  ) => {
+    if (fadingOutRef.current.has(tripId)) return; // Already fading
+
+    marker.getElement().style.opacity = '0';
+    popup.remove();
+
+    const timeoutId = setTimeout(() => {
+      marker.remove();
+      fadingOutRef.current.delete(tripId);
+    }, FADE_DURATION_MS);
+
+    fadingOutRef.current.set(tripId, { marker, popup, timeoutId, motionState, animState });
   }, []);
 
   // Update train markers
@@ -276,9 +310,8 @@ export function useTrainMarkers(
         const isFilteredOut = routeFilterActive && !trainRouteMatchesFilter;
 
         if (isFilteredOut) {
-          // User filtered this route out - remove immediately
-          anim.popup.remove();
-          anim.marker.remove();
+          // User filtered this route out - remove with fade
+          fadeOutAndRemove(tripId, anim.marker, anim.popup, undefined, anim);
           trainAnimsRef.current.delete(tripId);
         } else {
           // Train disappeared from API - apply grace period
@@ -286,8 +319,7 @@ export function useTrainMarkers(
           const atTerminal = TERMINAL_STOPS.has(anim.nextStopName || '');
 
           if (atTerminal || timeSinceUpdate > CULL_GRACE_PERIOD_MS) {
-            anim.popup.remove();
-            anim.marker.remove();
+            fadeOutAndRemove(tripId, anim.marker, anim.popup, undefined, anim);
             trainAnimsRef.current.delete(tripId);
           }
         }
@@ -302,9 +334,8 @@ export function useTrainMarkers(
         const isFilteredOut = routeFilterActive && !trainRouteMatchesFilter;
 
         if (isFilteredOut) {
-          // User filtered this route out - remove immediately
-          state.popup.remove();
-          state.marker.remove();
+          // User filtered this route out - remove with fade
+          fadeOutAndRemove(tripId, state.marker, state.popup, state);
           trainMotionRef.current.delete(tripId);
         } else {
           // Train disappeared from API - apply grace period
@@ -312,8 +343,7 @@ export function useTrainMarkers(
           const atTerminal = TERMINAL_STOPS.has(state.nextStopId);
 
           if (atTerminal || timeSinceUpdate > CULL_GRACE_PERIOD_MS) {
-            state.popup.remove();
-            state.marker.remove();
+            fadeOutAndRemove(tripId, state.marker, state.popup, state);
             trainMotionRef.current.delete(tripId);
           }
         }
@@ -322,6 +352,20 @@ export function useTrainMarkers(
 
     // Process each train
     displayTrains.forEach(async (train) => {
+      // If this train is mid-fade-out, cancel the fade and restore it
+      const fading = fadingOutRef.current.get(train.tripId);
+      if (fading) {
+        clearTimeout(fading.timeoutId);
+        fadingOutRef.current.delete(train.tripId);
+        fading.marker.getElement().style.opacity = '1';
+        // Restore to ref maps so the existing-marker check below finds it
+        if (fading.motionState) {
+          trainMotionRef.current.set(train.tripId, fading.motionState);
+        } else if (fading.animState) {
+          trainAnimsRef.current.set(train.tripId, fading.animState);
+        }
+      }
+
       const color = getRouteColor(train.routeId);
       const direction = getDirectionFromStopId(train.nextStopId);
 
@@ -463,7 +507,19 @@ export function useTrainMarkers(
 
     // Restart animation loop
     scheduleAnimation();
-  }, [mapLoaded, map, trains, selectedRouteIds, lerp, getDistance, refreshInterval, selectedTrainId, setSelectedTrain, trainAnimsRef, trainMotionRef, scheduleAnimation, useAlphaBetaGamma, durationMatrix, alerts]);
+  }, [mapLoaded, map, trains, selectedRouteIds, lerp, getDistance, refreshInterval, selectedTrainId, setSelectedTrain, trainAnimsRef, trainMotionRef, scheduleAnimation, useAlphaBetaGamma, durationMatrix, alerts, fadeOutAndRemove]);
+
+  // Cleanup fading markers on unmount to prevent memory leaks from pending timeouts
+  useEffect(() => {
+    const fadingOut = fadingOutRef.current;
+    return () => {
+      fadingOut.forEach(({ timeoutId, marker }) => {
+        clearTimeout(timeoutId);
+        marker.remove();
+      });
+      fadingOut.clear();
+    };
+  }, []);
 
   // Memoize visible train count (subtract deduped trains)
   // Replicates the dedup grouping logic to count exclusions without accessing refs during render
@@ -563,8 +619,10 @@ async function createMotionState(
     color: ${getTextColorForBackground(color)};
     box-shadow: 0 2px 6px rgba(0,0,0,0.4);
     cursor: pointer;
+    opacity: 0;
   `;
   el.textContent = train.routeId;
+  requestAnimationFrame(() => { el.style.opacity = '1'; });
 
   // Create popup with distance-based phase
   const popup = new maplibregl.Popup({
@@ -805,8 +863,10 @@ function createLegacyMarker(
     color: ${getTextColorForBackground(color)};
     box-shadow: 0 2px 6px rgba(0,0,0,0.4);
     cursor: pointer;
+    opacity: 0;
   `;
   el.textContent = train.routeId;
+  requestAnimationFrame(() => { el.style.opacity = '1'; });
 
   const popup = new maplibregl.Popup({
     closeButton: false,
