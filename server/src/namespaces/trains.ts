@@ -21,6 +21,7 @@
 import type { Server, Namespace, Socket } from "socket.io";
 import type { TrainPosition } from "../types.js";
 import { FEED_GROUPS, type FeedUpdateCallback } from "../ingestion/feed-loop.js";
+import { getCachedPositions } from "../lib/cache.js";
 
 let trainsNsp: Namespace | null = null;
 
@@ -38,6 +39,30 @@ export function setupTrainsNamespace(io: Server): FeedUpdateCallback {
     socket.on("subscribe:all", () => {
       socket.join("all-trains");
       console.log(`[/trains] ${socket.id} joined all-trains`);
+
+      // Instantly emit cached positions so the client doesn't wait for the next feed cycle
+      (async () => {
+        try {
+          const results = await Promise.all(
+            FEED_GROUPS.map(async (group) => {
+              const positions = await getCachedPositions(group.id);
+              return { feedGroupId: group.id, positions };
+            })
+          );
+          for (const { feedGroupId, positions } of results) {
+            if (positions?.length) {
+              socket.emit("trains:update", {
+                feedGroupId,
+                trains: positions,
+                updatedAt: new Date().toISOString(),
+                stale: false,
+              });
+            }
+          }
+        } catch (err) {
+          console.error(`[/trains] Failed to send cached positions to ${socket.id}:`, err);
+        }
+      })();
     });
 
     // --- Subscribe to a specific route ---

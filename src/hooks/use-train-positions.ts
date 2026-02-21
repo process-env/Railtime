@@ -15,7 +15,7 @@ interface UseTrainPositionsOptions {
 }
 
 /** Threshold in ms before falling back to polling after socket disconnect */
-const FALLBACK_DELAY_MS = 30_000;
+const FALLBACK_DELAY_MS = 5_000;
 
 export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
   const { refreshInterval = 15000, enabled = true } = options;
