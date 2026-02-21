@@ -118,7 +118,7 @@ async function buildGraph(): Promise<TransitGraph> {
   // Step 1: Add ride edges from route segments
   // For each route, create nodes at each station and edges between consecutive stops
   for (const [routeId, routeData] of Object.entries(segmentsData.routes)) {
-    for (const [_directionId, direction] of Object.entries(routeData.directions)) {
+    for (const [, direction] of Object.entries(routeData.directions)) {
       const { stops, edges: segmentEdges } = direction;
 
       // Create nodes for all stops on this route

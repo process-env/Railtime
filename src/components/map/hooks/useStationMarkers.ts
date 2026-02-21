@@ -39,7 +39,7 @@ export function useStationMarkers(
 ): UseStationMarkersReturn {
   const {
     stations,
-    selectedRouteIds,
+    selectedRouteIds: _selectedRouteIds,
     selectedStationId,
     setSelectedStation,
     currentZoom,

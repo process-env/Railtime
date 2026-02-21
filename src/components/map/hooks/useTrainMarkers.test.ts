@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import type { TrainPosition } from '@/types/mta';
 
 // Mock maplibre-gl
@@ -59,7 +59,7 @@ describe('useTrainMarkers', () => {
   const mockScheduleAnimation = vi.fn();
   const mockSetSelectedTrain = vi.fn();
 
-  const createMockMap = () => ({
+  const _createMockMap = () => ({
     isLoaded: () => true,
     on: vi.fn(),
     off: vi.fn(),

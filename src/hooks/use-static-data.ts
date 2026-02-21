@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { mtaApi } from '@/lib/api';
 import { queryKeys } from '@/lib/api/query-keys';

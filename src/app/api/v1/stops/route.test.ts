@@ -19,7 +19,7 @@ describe('GET /api/v1/stops', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (searchStops as any).mockResolvedValue(mockStops);
+    vi.mocked(searchStops).mockResolvedValue(mockStops);
   });
 
   it('returns all stops when no filters', async () => {
@@ -67,7 +67,7 @@ describe('GET /api/v1/stops', () => {
     const manyStops = Array.from({ length: 150 }, (_, i) =>
       createMockStop({ name: `Stop ${i}` })
     );
-    (searchStops as any).mockResolvedValue(manyStops);
+    vi.mocked(searchStops).mockResolvedValue(manyStops);
 
     const request = new NextRequest('http://localhost/api/v1/stops');
     const response = await GET(request);
@@ -77,7 +77,7 @@ describe('GET /api/v1/stops', () => {
   });
 
   it('returns 500 on search error', async () => {
-    (searchStops as any).mockRejectedValue(new Error('Database error'));
+    vi.mocked(searchStops).mockRejectedValue(new Error('Database error'));
 
     const request = new NextRequest('http://localhost/api/v1/stops');
     const response = await GET(request);
@@ -88,7 +88,7 @@ describe('GET /api/v1/stops', () => {
   });
 
   it('handles empty results', async () => {
-    (searchStops as any).mockResolvedValue([]);
+    vi.mocked(searchStops).mockResolvedValue([]);
 
     const request = new NextRequest('http://localhost/api/v1/stops?query=NonExistent');
     const response = await GET(request);

@@ -53,7 +53,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
       disconnectedAtRef.current = null;
 
       socket.emit('subscribe:all');
-      setSocketActive(true);
+      queueMicrotask(() => setSocketActive(true));
     } else {
       if (disconnectedAtRef.current === null) {
         disconnectedAtRef.current = Date.now();

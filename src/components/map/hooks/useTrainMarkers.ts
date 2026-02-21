@@ -13,10 +13,13 @@ import maplibregl from 'maplibre-gl';
 import { getRouteColor, MAP_CONSTANTS } from '@/lib/constants';
 import { getDirectionFromStopId, formatEta, getDirectionLabel, getTextColorForBackground } from '@/lib/mta/format';
 import { useUIStore } from '@/stores';
+import { calculateTrainOffsets, type TrainWithPosition } from '@/lib/map/cluster-trains';
 import type { TrainPosition, ServiceAlert } from '@/types/mta';
 import type { TrainAnimState, TrainMotionState } from './useMapAnimation';
 import type { RouteTrack } from '@/lib/map/track-index';
 import type { RouteDurationMatrix } from '@/lib/map/route-durations';
+import type { FilterState } from '@/lib/map/alpha-beta-gamma';
+import type { TrainAnimationState, TrainAction } from '@/lib/map/train-state-machine';
 
 export interface UseTrainMarkersOptions {
   trains: TrainPosition[];
@@ -50,11 +53,11 @@ export interface ApiDataEntry {
 // Dynamic imports to avoid SSR issues
 let getRouteTrack: ((routeId: string) => Promise<RouteTrack | undefined>) | null = null;
 let getStopArclength: ((routeId: string, stopId: string) => Promise<number | undefined>) | null = null;
-let createFilterState: any = null;
-let getSegmentDuration: any = null;
-let getRouteSpeedMultiplier: any = null;
-let createTrainAnimationState: any = null;
-let trainAnimationReducer: any = null;
+let createFilterState: ((initialS: number, initialV?: number, initialA?: number, timestamp?: number) => FilterState) | null = null;
+let getSegmentDuration: ((matrix: RouteDurationMatrix, routeId: string, fromStopId: string, toStopId: string) => number | undefined) | null = null;
+let _getRouteSpeedMultiplier: ((alerts: ServiceAlert[], routeId: string) => number) | null = null;
+let _createTrainAnimationState: ((tripId: string, routeId: string, prevStopId: string, nextStopId: string, prevS: number, nextS: number, nowMs: number, initialProgress?: number, scheduledDuration?: number, speedMultiplier?: number) => TrainAnimationState) | null = null;
+let trainAnimationReducer: ((state: TrainAnimationState, action: TrainAction) => TrainAnimationState) | null = null;
 
 async function loadTrackUtils() {
   if (!getRouteTrack) {
@@ -69,8 +72,8 @@ async function loadTrackUtils() {
     getStopArclength = trackModule.getStopArclength;
     createFilterState = filterModule.createFilterState;
     getSegmentDuration = durationModule.getSegmentDuration;
-    getRouteSpeedMultiplier = alertModule.getRouteSpeedMultiplier;
-    createTrainAnimationState = stateMachineModule.createTrainAnimationState;
+    _getRouteSpeedMultiplier = alertModule.getRouteSpeedMultiplier;
+    _createTrainAnimationState = stateMachineModule.createTrainAnimationState;
     trainAnimationReducer = stateMachineModule.trainAnimationReducer;
   }
 }
@@ -209,6 +212,15 @@ export function useTrainMarkers(
       ? trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase()))
       : trains;
 
+    // Calculate clustering offsets for overlapping trains
+    const trainsWithPosition: TrainWithPosition[] = filteredTrains.map(t => ({
+      tripId: t.tripId,
+      lat: t.lat,
+      lon: t.lon,
+      routeId: t.routeId,
+    }));
+    const trainOffsets = calculateTrainOffsets(trainsWithPosition);
+
     const currentTripIds = new Set(filteredTrains.map((t) => t.tripId));
     const now = performance.now();
     const nowMs = Date.now();
@@ -313,6 +325,12 @@ export function useTrainMarkers(
 
           // Pass current arclength and next station arclength for distance-based phase
           existingMotion.popup.setHTML(createPopupHTML(train, color, existingMotion.filter.s, existingMotion.nextS));
+
+          // Apply clustering offset for overlapping trains
+          const offset = trainOffsets.get(train.tripId);
+          if (offset) {
+            existingMotion.marker.setOffset([offset.offsetX, offset.offsetY]);
+          }
         } else {
           // Calculate duration and speed for new train
           let scheduledDuration = 90;
@@ -338,6 +356,11 @@ export function useTrainMarkers(
           );
           if (motionState) {
             trainMotionRef.current.set(train.tripId, motionState);
+            // Apply clustering offset for overlapping trains
+            const offset = trainOffsets.get(train.tripId);
+            if (offset) {
+              motionState.marker.setOffset([offset.offsetX, offset.offsetY]);
+            }
           } else {
             // Fallback to legacy if track not found
             // Make sure we're not duplicating - clean up motion ref if it exists
@@ -345,6 +368,12 @@ export function useTrainMarkers(
             // Only create legacy marker if it doesn't already exist
             if (!trainAnimsRef.current.has(train.tripId)) {
               createLegacyMarker(train, map, color, direction, now, trainAnimsRef, setSelectedTrain);
+              // Apply clustering offset for overlapping trains
+              const legacyAnim = trainAnimsRef.current.get(train.tripId);
+              const offset = trainOffsets.get(train.tripId);
+              if (legacyAnim && offset) {
+                legacyAnim.marker.setOffset([offset.offsetX, offset.offsetY]);
+              }
             }
           }
         }
@@ -374,8 +403,20 @@ export function useTrainMarkers(
           existingAnim.direction = direction;
 
           existingAnim.popup.setHTML(createPopupHTML(train, color));
+
+          // Apply clustering offset for overlapping trains
+          const offset = trainOffsets.get(train.tripId);
+          if (offset) {
+            existingAnim.marker.setOffset([offset.offsetX, offset.offsetY]);
+          }
         } else {
           createLegacyMarker(train, map, color, direction, now, trainAnimsRef, setSelectedTrain);
+          // Apply clustering offset for overlapping trains
+          const legacyAnim = trainAnimsRef.current.get(train.tripId);
+          const offset = trainOffsets.get(train.tripId);
+          if (legacyAnim && offset) {
+            legacyAnim.marker.setOffset([offset.offsetX, offset.offsetY]);
+          }
         }
       }
     });

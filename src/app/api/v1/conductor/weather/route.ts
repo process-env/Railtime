@@ -190,7 +190,7 @@ async function synthesizeWeather(text: string): Promise<string> {
   return Buffer.from(arrayBuffer).toString("base64");
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const weather = await fetchWeather();
     const script = await generateWeatherScript(weather);

@@ -12,9 +12,9 @@
 import { useRef, useCallback, useEffect } from 'react';
 import type maplibregl from 'maplibre-gl';
 import type { RouteTrack } from '@/lib/map/track-index';
-import type { FilterState } from '@/lib/map/alpha-beta-gamma';
+import type { FilterState, FilterParams } from '@/lib/map/alpha-beta-gamma';
 import type { MotionPlan } from '@/lib/map/motion-planner';
-import type { TrainAnimationState } from '@/lib/map/train-state-machine';
+import type { TrainAnimationState, TrainAction } from '@/lib/map/train-state-machine';
 
 export interface TrainMotionState {
   // Identity
@@ -120,12 +120,12 @@ function getPhaseFromDistance(currentS: number, nextS: number): 'BOARDING' | 'AR
 
 // Import motion utilities dynamically to avoid SSR issues
 let arclengthToLatLon: ((s: number, track: RouteTrack) => [number, number]) | null = null;
-let evaluatePlan: ((plan: MotionPlan, time: number) => number) | null = null;
-let predictPosition: ((state: FilterState, targetTime: number, params: any) => number) | null = null;
-let trainAnimationReducer: any = null;
-let getCurrentArclength: any = null;
-let DEFAULT_FILTER_PARAMS: any = null;
-let MOTION_PARAMS: any = null;
+let _evaluatePlan: ((plan: MotionPlan, time: number) => number) | null = null;
+let _predictPosition: ((state: FilterState, targetTime: number, params: FilterParams) => number) | null = null;
+let trainAnimationReducer: ((state: TrainAnimationState, action: TrainAction) => TrainAnimationState) | null = null;
+let getCurrentArclength: ((state: TrainAnimationState) => number) | null = null;
+let _DEFAULT_FILTER_PARAMS: FilterParams | null = null;
+let _MOTION_PARAMS: Record<string, unknown> | null = null;
 let getRouteColor: ((routeId: string) => string) | null = null;
 let getTextColorForBackground: ((color: string) => string) | null = null;
 let getDirectionFromStopId: ((stopId: string) => 'N' | 'S' | null) | null = null;
@@ -144,12 +144,12 @@ async function loadMotionUtils() {
       import('@/lib/mta/format')
     ]);
     arclengthToLatLon = arclengthModule.arclengthToLatLon;
-    evaluatePlan = plannerModule.evaluatePlan;
-    predictPosition = filterModule.predictPosition;
+    _evaluatePlan = plannerModule.evaluatePlan;
+    _predictPosition = filterModule.predictPosition;
     trainAnimationReducer = stateMachineModule.trainAnimationReducer;
     getCurrentArclength = stateMachineModule.getCurrentArclength;
-    DEFAULT_FILTER_PARAMS = filterModule.DEFAULT_FILTER_PARAMS;
-    MOTION_PARAMS = plannerModule.MOTION_PARAMS;
+    _DEFAULT_FILTER_PARAMS = filterModule.DEFAULT_FILTER_PARAMS;
+    _MOTION_PARAMS = plannerModule.MOTION_PARAMS;
     getRouteColor = constantsModule.getRouteColor;
     getTextColorForBackground = formatModule.getTextColorForBackground;
     getDirectionFromStopId = formatModule.getDirectionFromStopId;
@@ -219,6 +219,7 @@ export function useMapAnimation(
   const animationFrameRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
   const motionUtilsLoaded = useRef(false);
+  const animateTrainsRef = useRef<(() => void) | null>(null);
 
   // Load motion utilities on mount
   useEffect(() => {
@@ -325,13 +326,14 @@ export function useMapAnimation(
           // Use state machine if available
           if (state.animState) {
             // Dispatch TICK to state machine - handles all timing transitions
-            state.animState = trainAnimationReducer(state.animState, {
+            // Non-null assertion safe: guarded by null check at outer scope (line 277)
+            state.animState = trainAnimationReducer!(state.animState, {
               type: 'TICK',
               nowMs
             });
 
             // Get current position from state machine
-            const currentS = getCurrentArclength(state.animState);
+            const currentS = getCurrentArclength!(state.animState);
 
             // Keep filter.s in sync for backwards compatibility
             state.filter.s = currentS;
@@ -379,11 +381,16 @@ export function useMapAnimation(
 
     // Continue animation loop if there are moving trains
     if (anyMoving) {
-      animationFrameRef.current = requestAnimationFrame(animateTrains);
+      animationFrameRef.current = requestAnimationFrame(() => animateTrainsRef.current?.());
     } else {
       isAnimatingRef.current = false;
     }
   }, [lerp, options.refreshInterval]);
+
+  // Keep ref in sync so the animation loop can self-schedule
+  useEffect(() => {
+    animateTrainsRef.current = animateTrains;
+  }, [animateTrains]);
 
   // Schedule animation (call after train positions are updated)
   const scheduleAnimation = useCallback(() => {

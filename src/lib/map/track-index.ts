@@ -215,8 +215,8 @@ async function buildTrackIndex(): Promise<TrackIndex> {
 
       // Check if this stop could serve this route based on prefix patterns
       // MTA stop IDs typically start with a number for numbered lines or letter for lettered lines
-      const firstChar = baseId.charAt(0);
-      const routePrefixes = ROUTE_STOP_PREFIXES[routeId] || [];
+      const _firstChar = baseId.charAt(0);
+      const _routePrefixes = ROUTE_STOP_PREFIXES[routeId] || [];
 
       // For now, project all stops and keep those within reasonable distance
       const arclength = projectPointToTrack(

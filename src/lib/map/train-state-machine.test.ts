@@ -3,7 +3,6 @@ import {
   createTrainAnimationState,
   trainAnimationReducer,
   TrainAnimationState,
-  getCurrentArclength,
 } from './train-state-machine';
 
 // CSV header

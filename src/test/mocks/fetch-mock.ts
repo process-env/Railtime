@@ -70,7 +70,7 @@ function getMockForUrl(url: string): MockResponse<unknown> | MockError | undefin
  * Create a mock fetch implementation
  */
 export function createMockFetch() {
-  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  return vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     const mock = getMockForUrl(url);
 

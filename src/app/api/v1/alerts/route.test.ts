@@ -6,8 +6,8 @@ import { createMockServiceAlert } from '@/test/factories';
 // Mock the MTA lib
 vi.mock('@/lib/mta', () => ({
   fetchAlerts: vi.fn(),
-  filterAlertsByRoutes: vi.fn((alerts, routeIds) =>
-    alerts.filter((a: any) => a.affectedRoutes.some((r: string) => routeIds.includes(r)))
+  filterAlertsByRoutes: vi.fn((alerts: Array<{ affectedRoutes: string[] }>, routeIds: string[]) =>
+    alerts.filter((a) => a.affectedRoutes.some((r: string) => routeIds.includes(r)))
   ),
 }));
 
@@ -21,7 +21,7 @@ describe('GET /api/v1/alerts', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (fetchAlerts as any).mockResolvedValue(mockAlerts);
+    vi.mocked(fetchAlerts).mockResolvedValue(mockAlerts);
   });
 
   it('returns all alerts when no filter', async () => {
@@ -37,7 +37,7 @@ describe('GET /api/v1/alerts', () => {
   it('filters alerts by route', async () => {
     const request = new NextRequest('http://localhost/api/v1/alerts?route=A,C');
     const response = await GET(request);
-    const data = await response.json();
+    await response.json();
 
     expect(filterAlertsByRoutes).toHaveBeenCalledWith(mockAlerts, ['A', 'C']);
   });
@@ -67,7 +67,7 @@ describe('GET /api/v1/alerts', () => {
   });
 
   it('returns 500 on fetch error', async () => {
-    (fetchAlerts as any).mockRejectedValue(new Error('API Error'));
+    vi.mocked(fetchAlerts).mockRejectedValue(new Error('API Error'));
 
     const request = new NextRequest('http://localhost/api/v1/alerts');
     const response = await GET(request);
@@ -78,7 +78,7 @@ describe('GET /api/v1/alerts', () => {
   });
 
   it('handles non-Error thrown values', async () => {
-    (fetchAlerts as any).mockRejectedValue('string error');
+    vi.mocked(fetchAlerts).mockRejectedValue('string error');
 
     const request = new NextRequest('http://localhost/api/v1/alerts');
     const response = await GET(request);

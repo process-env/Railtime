@@ -59,7 +59,8 @@ export function ConductorProvider({ children }: ConductorProviderProps) {
     }
 
     try {
-      const randomTrain = currentTrains[Math.floor(Math.random() * currentTrains.length)];
+      const randomIndex = Math.floor(Math.random() * currentTrains.length);
+      const randomTrain = currentTrains[randomIndex];
       const station = currentStations[randomTrain.nextStopId];
       const stationName = station?.name || randomTrain.nextStopName || 'Unknown';
 
@@ -202,6 +203,7 @@ export function ConductorProvider({ children }: ConductorProviderProps) {
       if (announcementTimerRef.current) clearTimeout(announcementTimerRef.current);
       if (audioRef.current) audioRef.current.pause();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return <>{children}</>;

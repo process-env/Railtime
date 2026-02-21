@@ -1,4 +1,4 @@
-import { getCache, setCache, deleteCache, getRedisClient } from './redis.js';
+import { getCache, setCache, getRedisClient } from './redis.js';
 
 // ---------------------------------------------------------------------------
 // Key patterns and TTLs

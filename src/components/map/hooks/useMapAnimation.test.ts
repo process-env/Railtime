@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { useMapAnimation } from './useMapAnimation';
 
 // Mock the dynamic imports
@@ -354,7 +354,7 @@ describe('useMapAnimation - motion-based animation', () => {
   beforeEach(() => {
     vi.useFakeTimers();
 
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((_callback) => {
       return 1;
     });
 

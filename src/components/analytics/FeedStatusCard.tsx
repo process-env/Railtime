@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getRouteColor, FEED_GROUPS } from '@/lib/constants';
+import { FEED_GROUPS } from '@/lib/constants';
 
 interface FeedStatus {
   feedId: string;

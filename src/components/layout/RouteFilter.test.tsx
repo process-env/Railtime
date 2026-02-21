@@ -45,7 +45,7 @@ describe('RouteFilter', () => {
   it('applies selected styling to active routes', () => {
     useUIStore.setState({ selectedRouteIds: ['A'] });
 
-    const { container } = render(<RouteFilter />);
+    render(<RouteFilter />);
 
     // Selected route should have ring styling
     const selectedButton = screen.getByText('A').closest('button');

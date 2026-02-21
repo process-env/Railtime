@@ -23,8 +23,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 
-# Copy static GTFS data and protobuf schemas from the parent project
-COPY ../public/data/ ./public/data/
+# Note: For seeding (npm run seed), mount the GTFS data directory via docker-compose volume
+# e.g., volumes: ["../public/data:/app/public/data"]
 
 EXPOSE 3001
 

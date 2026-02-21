@@ -9,7 +9,6 @@ import * as path from 'path';
 import {
   createTrainAnimationState,
   trainAnimationReducer,
-  TrainAnimationState,
 } from './train-state-machine';
 
 // Haversine distance (copied from track-index.ts)
@@ -143,7 +142,7 @@ describe('Real MTA Data Test', () => {
     const geojson = JSON.parse(fs.readFileSync(geojsonPath, 'utf-8'));
 
     // Find R route
-    const rFeature = geojson.features.find((f: any) => f.properties?.route_id === 'R');
+    const rFeature = geojson.features.find((f: { properties?: { route_id?: string } }) => f.properties?.route_id === 'R');
     if (!rFeature) {
       console.log('R route not found in GeoJSON');
       return;
@@ -201,7 +200,7 @@ describe('Real MTA Data Test', () => {
     const geojson = JSON.parse(fs.readFileSync(geojsonPath, 'utf-8'));
 
     // Find 1 route
-    const oneFeature = geojson.features.find((f: any) => f.properties?.route_id === '1');
+    const oneFeature = geojson.features.find((f: { properties?: { route_id?: string } }) => f.properties?.route_id === '1');
     if (!oneFeature) {
       console.log('1 route not found in GeoJSON');
       return;
@@ -259,7 +258,7 @@ describe('Real MTA Data Test', () => {
     const geojson = JSON.parse(fs.readFileSync(geojsonPath, 'utf-8'));
 
     // Find R route
-    const rFeature = geojson.features.find((f: any) => f.properties?.route_id === 'R');
+    const rFeature = geojson.features.find((f: { properties?: { route_id?: string } }) => f.properties?.route_id === 'R');
     if (!rFeature) {
       console.log('R route not found');
       return;
@@ -335,7 +334,7 @@ describe('Real MTA Data Test', () => {
 
     const geojson = JSON.parse(fs.readFileSync(geojsonPath, 'utf-8'));
 
-    const rFeature = geojson.features.find((f: any) => f.properties?.route_id === 'R');
+    const rFeature = geojson.features.find((f: { properties?: { route_id?: string } }) => f.properties?.route_id === 'R');
     if (!rFeature) return;
 
     let coords: [number, number][] = [];

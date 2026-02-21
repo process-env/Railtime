@@ -1,4 +1,4 @@
-import type { FeedEntity, TrainPosition, Stop } from '@/types/mta';
+import type { FeedEntity, TrainPosition } from '@/types/mta';
 import { loadStops } from './load-stops';
 import { getTripHeadsignWithFallback } from './load-trips';
 import { validateHeadsign } from './format';

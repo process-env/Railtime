@@ -11,7 +11,6 @@ import type {
   TripPlan,
   TripSegment,
   GraphNode,
-  GraphEdge,
 } from './types';
 import { getStationInfo } from './graph-builder';
 

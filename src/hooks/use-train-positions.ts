@@ -47,7 +47,7 @@ export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
 
       // Subscribe to all train updates
       socket.emit('subscribe:all');
-      setSocketActive(true);
+      queueMicrotask(() => setSocketActive(true));
     } else {
       // Socket disconnected — start fallback timer
       if (disconnectedAtRef.current === null) {

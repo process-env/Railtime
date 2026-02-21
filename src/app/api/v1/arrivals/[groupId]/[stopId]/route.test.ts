@@ -15,7 +15,7 @@ describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (getArrivalBoard as any).mockResolvedValue(mockBoard);
+    vi.mocked(getArrivalBoard).mockResolvedValue(mockBoard);
   });
 
   it('returns arrival board for valid params', async () => {
@@ -32,7 +32,7 @@ describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
 
   it('handles invalid group ID gracefully', async () => {
     // Invalid group IDs are handled by MTA library, not route validation
-    (getArrivalBoard as any).mockRejectedValue(new Error('Invalid feed group'));
+    vi.mocked(getArrivalBoard).mockRejectedValue(new Error('Invalid feed group'));
     const request = new NextRequest('http://localhost/api/v1/arrivals/INVALID/A24N');
     const response = await GET(request, {
       params: Promise.resolve({ groupId: 'INVALID', stopId: 'A24N' }),
@@ -45,7 +45,7 @@ describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
 
   it('handles invalid stop ID gracefully', async () => {
     // Invalid stop IDs are handled by MTA library, not route validation
-    (getArrivalBoard as any).mockRejectedValue(new Error('Stop not found'));
+    vi.mocked(getArrivalBoard).mockRejectedValue(new Error('Stop not found'));
     const request = new NextRequest('http://localhost/api/v1/arrivals/ACE/INVALID!!');
     const response = await GET(request, {
       params: Promise.resolve({ groupId: 'ACE', stopId: 'INVALID!!' }),
@@ -93,7 +93,7 @@ describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
   });
 
   it('returns 500 on fetch error', async () => {
-    (getArrivalBoard as any).mockRejectedValue(new Error('MTA API Error'));
+    vi.mocked(getArrivalBoard).mockRejectedValue(new Error('MTA API Error'));
 
     const request = new NextRequest('http://localhost/api/v1/arrivals/ACE/A24N');
     const response = await GET(request, {
@@ -119,7 +119,7 @@ describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
   });
 
   it('handles non-Error thrown values', async () => {
-    (getArrivalBoard as any).mockRejectedValue('string error');
+    vi.mocked(getArrivalBoard).mockRejectedValue('string error');
 
     const request = new NextRequest('http://localhost/api/v1/arrivals/ACE/A24N');
     const response = await GET(request, {

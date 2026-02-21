@@ -22,7 +22,8 @@ vi.mock('@/stores', () => ({
     clearDismissed: vi.fn(),
   }),
   useTrainsStore: Object.assign(
-    (selector: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (selector?: (state: any) => any) => {
       const state = {
         trains: {},
         updateTrains: vi.fn(),

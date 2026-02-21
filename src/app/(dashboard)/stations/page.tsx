@@ -15,12 +15,12 @@ export default function StationsPage() {
   const { alerts } = useAlerts();
 
   // Build lookup maps for derived data
-  // eslint-disable-next-line react-hooks/purity -- Date.now is intentional, recomputes when trains change
   const stationData = useMemo(() => {
     // Time thresholds for train states (matching map behavior)
     const AT_STATION_THRESHOLD_MS = 30 * 1000; // 30 seconds - at station
     const ARRIVING_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes - arriving
     const EN_ROUTE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes - en route
+    // eslint-disable-next-line react-hooks/purity
     const currentTime = Date.now();
 
     const stationTrainStates: Record<string, { atStation: number; arriving: number; enRoute: number }> = {};

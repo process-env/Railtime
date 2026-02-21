@@ -12,7 +12,7 @@ import type {
   PathfindingResult,
   TripPlannerOptions,
 } from './types';
-import { nodeKey, parseNodeKey } from './types';
+import { nodeKey } from './types';
 import { getStationNodes } from './graph-builder';
 
 /**

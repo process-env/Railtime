@@ -38,6 +38,8 @@ export function ArrivalsTimelineChart({ data }: ArrivalsTimelineChartProps) {
   }
 
   // Original chart code - kept for when historical data is re-enabled
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const recharts = require('recharts');
   const {
     LineChart,
     Line,
@@ -47,7 +49,7 @@ export function ArrivalsTimelineChart({ data }: ArrivalsTimelineChartProps) {
     Tooltip,
     ResponsiveContainer,
     Legend,
-  } = require('recharts');
+  } = recharts;
 
   return (
     <ResponsiveContainer width="100%" height={300}>

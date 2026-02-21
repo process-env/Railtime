@@ -45,7 +45,7 @@ interface SegmentItemProps {
   isLast: boolean;
 }
 
-function SegmentItem({ segment, isLast }: SegmentItemProps) {
+function SegmentItem({ segment, isLast: _isLast }: SegmentItemProps) {
   const durationMin = Math.round(segment.durationSeconds / 60);
 
   switch (segment.type) {

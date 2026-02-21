@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useAnalytics } from './use-analytics';
 import { createMockTrainPosition } from '@/test/factories';
 import { QueryWrapper } from '@/test/utils/query-wrapper';
-import { FEED_GROUPS } from '@/lib/constants';
+// FEED_GROUPS kept as reference for test data generation
 
 // Mock fetch
 global.fetch = vi.fn();

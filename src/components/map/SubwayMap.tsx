@@ -7,8 +7,12 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useUIStore } from '@/stores';
 import { useTrainPositions, useStaticData, useAlerts } from '@/hooks';
 import { NYC_BOUNDS } from '@/lib/constants';
-import { useMapAnimation, useStationMarkers, useTrainMarkers } from './hooks';
+import { useMapAnimation, useStationMarkers, useTrainMarkers, useTripRouteLayer, getTripBounds, useUserLocationMarker } from './hooks';
 import { TrainDetailPanel } from './TrainDetailPanel';
+import { TripMarkers } from './TripMarkers';
+import { MyLocationButton } from './MyLocationButton';
+import { useSelectedTrip } from '@/stores/trip-store';
+import { useGeolocationStatus } from '@/stores';
 import type { RouteDurationMatrix } from '@/lib/map/route-durations';
 
 // Map style - CARTO Dark Matter with labels
@@ -94,6 +98,42 @@ export function SubwayMap() {
     durationMatrix,  // Pre-computed durations from GTFS
     alerts,  // Service alerts for speed modulation
   });
+
+  // Trip route visualization hook
+  useTripRouteLayer(map.current, mapLoaded);
+
+  // User location marker hook
+  useUserLocationMarker(map.current, mapLoaded);
+  const geolocationStatus = useGeolocationStatus();
+
+  // Get selected trip for bounds fitting
+  const selectedTrip = useSelectedTrip();
+  const previousTripIdRef = useRef<string | null>(null);
+
+  // Auto-fit map to show entire trip route when a new trip is selected
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !selectedTrip) return;
+
+    // Only fit bounds when a NEW trip is selected (not on every render)
+    if (previousTripIdRef.current === selectedTrip.id) return;
+    previousTripIdRef.current = selectedTrip.id;
+
+    const bounds = getTripBounds(selectedTrip, stations);
+    if (bounds) {
+      map.current.fitBounds(bounds, {
+        padding: { top: 80, bottom: 80, left: 60, right: 60 },
+        maxZoom: 15,
+        duration: 1000,
+      });
+    }
+  }, [mapLoaded, selectedTrip, stations]);
+
+  // Clear trip ID ref when trip is cleared
+  useEffect(() => {
+    if (!selectedTrip) {
+      previousTripIdRef.current = null;
+    }
+  }, [selectedTrip]);
 
   // Initialize map
   useEffect(() => {
@@ -185,6 +225,7 @@ export function SubwayMap() {
       map.current?.remove();
       map.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Pan to selected station
@@ -333,11 +374,44 @@ export function SubwayMap() {
             <span>Place</span>
           </div>
         )}
+        {geolocationStatus === 'active' && (
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-3 h-3 bg-blue-500 border-2 border-white rounded-full" />
+            <span>You</span>
+          </div>
+        )}
+        {selectedTrip && (
+          <>
+            <div className="border-t border-gray-600 my-2" />
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-3 h-3 bg-green-500 border-2 border-green-600 rounded-full flex items-center justify-center text-[8px] font-bold text-white">A</div>
+              <span>Start</span>
+            </div>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-3 h-3 bg-red-500 border-2 border-red-600 rounded-full flex items-center justify-center text-[8px] font-bold text-white">B</div>
+              <span>End</span>
+            </div>
+            {selectedTrip.totalTransfers > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-amber-500 border-2 border-amber-600 rounded-full" />
+                <span>Transfer</span>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Train count */}
       <div className="absolute top-4 left-4 bg-background/90 backdrop-blur px-3 py-2 rounded-lg shadow-lg text-sm">
         <span className="font-medium">{trains.length}</span> trains active
+      </div>
+
+      {/* Trip Route Markers (origin, destination, transfers) */}
+      <TripMarkers map={map.current} mapLoaded={mapLoaded} />
+
+      {/* My Location Button - positioned bottom-right above attribution */}
+      <div className="absolute bottom-20 right-4 z-10">
+        <MyLocationButton map={map.current} mapLoaded={mapLoaded} />
       </div>
 
       {/* Train Detail Panel */}

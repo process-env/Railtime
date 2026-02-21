@@ -35,11 +35,13 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const s = connectSocket();
     if (!s) return;
 
-    setSocket(s);
+    // Store socket in ref to avoid synchronous setState in effect body
+    const socketRef = { current: s };
 
     function onConnect() {
       console.log('[socket] Connected to WS server');
       setIsConnected(true);
+      setSocket(socketRef.current);
     }
 
     function onDisconnect(reason: string) {
@@ -51,7 +53,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     s.on('disconnect', onDisconnect);
 
     if (s.connected) {
-      setIsConnected(true);
+      // Already connected - fire the connect handler
+      onConnect();
+    } else {
+      // Set socket before connect so consumers can attach listeners
+      queueMicrotask(() => setSocket(s));
     }
 
     return () => {

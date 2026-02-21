@@ -115,8 +115,8 @@ describe('StationCard', () => {
   });
 
   it('handles station with undefined routes', () => {
-    const station = { ...createMockStop(), routes: undefined };
-    const { container } = render(<StationCard station={station as any} />);
+    const station = { ...createMockStop(), routes: null };
+    const { container } = render(<StationCard station={station} />);
 
     // Should not throw
     expect(container).toBeDefined();

@@ -9,7 +9,7 @@ import { QueryWrapper } from '@/test/utils/query-wrapper';
 global.fetch = vi.fn();
 
 describe('AlertBanner', () => {
-  const mockAlerts = [
+  const _mockAlerts = [
     createMockServiceAlert({ id: 'alert1', severity: 'critical', headerText: 'Critical Alert' }),
   ];
 
@@ -186,7 +186,7 @@ describe('AlertBanner', () => {
       dismissedIds: new Set([dismissedAlertId]),
     });
 
-    const { container } = render(<AlertBanner />, { wrapper: QueryWrapper });
+    render(<AlertBanner />, { wrapper: QueryWrapper });
 
     await vi.waitFor(() => {
       expect(screen.queryByText('Dismissed Alert')).not.toBeInTheDocument();

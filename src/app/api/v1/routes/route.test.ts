@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET } from './route';
-import { createMockRoute, createAllSubwayRoutes } from '@/test/factories';
+import { createAllSubwayRoutes } from '@/test/factories';
+import type { Route } from '@/types/mta';
 
 // Mock the MTA lib
 vi.mock('@/lib/mta', () => ({
@@ -11,10 +12,11 @@ import { loadRoutes } from '@/lib/mta';
 
 describe('GET /api/v1/routes', () => {
   const mockRoutes = createAllSubwayRoutes();
+  const mockDict = Object.fromEntries(mockRoutes.map((r: Route) => [r.route_id, r]));
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (loadRoutes as any).mockResolvedValue({ list: mockRoutes });
+    vi.mocked(loadRoutes).mockResolvedValue({ list: mockRoutes, dict: mockDict });
   });
 
   it('returns all routes', async () => {
@@ -30,14 +32,14 @@ describe('GET /api/v1/routes', () => {
     const response = await GET();
     const data = await response.json();
 
-    const routeA = data.find((r: any) => r.route_id === 'A');
+    const routeA = data.find((r: { route_id: string }) => r.route_id === 'A');
     expect(routeA).toBeDefined();
     expect(routeA.short_name).toBe('A');
     expect(routeA.color).toBe('0039A6');
   });
 
   it('returns 500 on load error', async () => {
-    (loadRoutes as any).mockRejectedValue(new Error('File not found'));
+    vi.mocked(loadRoutes).mockRejectedValue(new Error('File not found'));
 
     const response = await GET();
 
@@ -48,7 +50,7 @@ describe('GET /api/v1/routes', () => {
   });
 
   it('handles empty routes list', async () => {
-    (loadRoutes as any).mockResolvedValue({ list: [] });
+    vi.mocked(loadRoutes).mockResolvedValue({ list: [], dict: {} });
 
     const response = await GET();
     const data = await response.json();
@@ -60,7 +62,7 @@ describe('GET /api/v1/routes', () => {
     const response = await GET();
     const data = await response.json();
 
-    const routeIds = data.map((r: any) => r.route_id);
+    const routeIds = data.map((r: { route_id: string }) => r.route_id);
     expect(routeIds).toContain('A');
     expect(routeIds).toContain('1');
     expect(routeIds).toContain('7');

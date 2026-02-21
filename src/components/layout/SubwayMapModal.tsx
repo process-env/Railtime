@@ -31,7 +31,6 @@ export function SubwayMapModal({ tooltip = 'Subway Map' }: SubwayMapModalProps) 
   const [open, setOpen] = useState(false);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [scale, setScale] = useState(0.3);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [workerReady, setWorkerReady] = useState(false);
 
@@ -45,18 +44,15 @@ export function SubwayMapModal({ tooltip = 'Subway Map' }: SubwayMapModalProps) 
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
-    setLoading(false);
     setError(null);
   }
 
   function onDocumentLoadError(err: Error) {
-    setLoading(false);
     setError(err.message);
   }
 
   const zoomIn = () => setScale((s) => Math.min(s + 0.1, 2));
   const zoomOut = () => setScale((s) => Math.max(s - 0.1, 0.2));
-  const resetZoom = () => setScale(0.3);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

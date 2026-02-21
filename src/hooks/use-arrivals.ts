@@ -53,7 +53,7 @@ export function useArrivals(
       // Subscribe to this station
       socket.emit('subscribe:station', stopId);
       prevStopIdRef.current = stopId;
-      setSocketActive(true);
+      queueMicrotask(() => setSocketActive(true));
     } else {
       if (disconnectedAtRef.current === null) {
         disconnectedAtRef.current = Date.now();

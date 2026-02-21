@@ -93,7 +93,7 @@ describe('ArrivalBoard', () => {
 
   it('handles missing stop name gracefully', () => {
     const arrivals = [
-      createMockArrival({ stopId: '101N', stopName: undefined as any }),
+      createMockArrival({ stopId: '101N', stopName: undefined as unknown as string }),
     ];
     render(<ArrivalBoard arrivals={arrivals} />);
 
@@ -102,7 +102,7 @@ describe('ArrivalBoard', () => {
 
   it('handles missing route ID gracefully', () => {
     const arrivals = [
-      createMockArrival({ stopId: '101N', routeId: undefined as any }),
+      createMockArrival({ stopId: '101N', routeId: undefined as unknown as string }),
     ];
     render(<ArrivalBoard arrivals={arrivals} />);
 

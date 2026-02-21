@@ -15,7 +15,7 @@
  *   - arrivals:update  { stationId, arrivals, updatedAt }
  */
 import type { Server, Namespace, Socket } from "socket.io";
-import type { FeedEntity, ArrivalItem } from "../types.js";
+import type { FeedEntity } from "../types.js";
 import {
   computeArrivals,
   mergeArrivalMaps,

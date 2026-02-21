@@ -1,6 +1,6 @@
 'use client';
 
-import { DollarSign, Car, TrendingDown, Users } from 'lucide-react';
+import { DollarSign, TrendingDown, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency, formatNumber, type EconomicImpact } from '@/lib/analytics/impact-calculator';
 

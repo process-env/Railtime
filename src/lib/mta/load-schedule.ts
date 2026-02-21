@@ -5,12 +5,6 @@ import { parse as csvParse } from 'csv-parse/sync';
 const DATA_DIR = path.join(process.cwd(), 'public', 'data');
 const STOP_TIMES_CSV = path.join(DATA_DIR, 'stop_times.txt');
 
-interface StopTime {
-  tripId: string;
-  stopId: string;
-  arrivalTime: string; // HH:MM:SS format
-}
-
 // Cache: Map<stopId, Map<tripId, arrivalTimeSeconds>>
 let scheduleCache: Map<string, Map<string, number>> | null = null;
 
