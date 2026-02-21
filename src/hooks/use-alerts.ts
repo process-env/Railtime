@@ -29,6 +29,9 @@ interface UseAlertsReturn {
 /** Threshold in ms before falling back to polling after socket disconnect */
 const FALLBACK_DELAY_MS = 30_000;
 
+/** If no socket data received within this window, fall back to polling */
+const LIVENESS_TIMEOUT_MS = 120_000;
+
 export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
   const { refreshInterval = 60000, enabled = true, routeIds } = options;
   const { dismissedIds, dismissAlert, clearDismissed } = useAlertsStore();
@@ -45,6 +48,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
   const [socketActive, setSocketActive] = useState(false);
   const disconnectedAtRef = useRef<number | null>(null);
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSocketDataRef = useRef<number | null>(null);
 
   // Socket-pushed alerts
   const [socketAlerts, setSocketAlerts] = useState<ServiceAlert[]>([]);
@@ -126,6 +130,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
         );
       }
       setSocketAlerts(alerts);
+      lastSocketDataRef.current = Date.now();
       setSocketActive(true); // Only switch from polling after first data delivery
     }
 
@@ -158,6 +163,21 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
       socket.off('alerts:cleared', handleAlertCleared);
     };
   }, [socket, isConnected, routeIds]);
+
+  // --- Socket data liveness check ---
+  useEffect(() => {
+    if (!socketActive) return;
+
+    const interval = setInterval(() => {
+      const lastData = lastSocketDataRef.current;
+      if (lastData && Date.now() - lastData > LIVENESS_TIMEOUT_MS) {
+        setSocketActive(false);
+        queryClient.invalidateQueries({ queryKey: queryKeys.alerts(routeIds) });
+      }
+    }, 30_000); // Check every 30s
+
+    return () => clearInterval(interval);
+  }, [socketActive, queryClient, routeIds]);
 
   // --- React Query polling (disabled when socket is active) ---
   const usePolling = enabled && !socketActive;
@@ -208,9 +228,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
   return {
     alerts: activeAlerts,
     visibleAlerts,
-    isLoading: socketActive
-      ? socketAlerts.length === 0 && !rawAlerts
-      : query.isLoading,
+    isLoading: socketActive ? false : query.isLoading,
     error: socketActive ? null : query.error?.message || null,
     refetch: query.refetch,
     counts,

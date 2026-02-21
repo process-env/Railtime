@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchFeed, fetchAllFeeds } from '@/lib/mta/fetch-feed';
 import { calculateTrainPositions } from '@/lib/mta/train-positions';
-import { internalError } from '@/lib/api/errors';
+import { internalError, badRequest } from '@/lib/api/errors';
 import { getCache, setCache } from '@/lib/redis';
 import type { TrainPosition } from '@/types/mta';
 
 const FEED_GROUP_IDS = ['ACE', 'BDFM', 'G', 'JZ', 'NQRW', 'L', 'SI', '1234567'];
-const CACHE_TTL = 30; // seconds
+const CACHE_TTL = 20; // seconds (15s poll cycle + 5s grace)
 const CACHE_HEADERS = {
   'Cache-Control': 's-maxage=10, stale-while-revalidate=5',
 };
@@ -33,7 +33,7 @@ async function tryRedisCache(groupId: string | null): Promise<TrainPosition[] | 
 function writeBackToCache(positions: TrainPosition[], groupId: string | null): void {
   if (groupId) {
     // Single group fetch — write directly
-    setCache(`feed:${groupId}:positions`, positions, CACHE_TTL);
+    setCache(`feed:${groupId}:positions`, positions, CACHE_TTL).catch(() => {});
   } else {
     // All groups — partition positions by feed group and write each
     const byGroup = new Map<string, TrainPosition[]>();
@@ -45,7 +45,7 @@ function writeBackToCache(positions: TrainPosition[], groupId: string | null): v
       byGroup.set(group, arr);
     }
     for (const [group, trains] of byGroup) {
-      setCache(`feed:${group}:positions`, trains, CACHE_TTL);
+      setCache(`feed:${group}:positions`, trains, CACHE_TTL).catch(() => {});
     }
   }
 }
@@ -72,6 +72,10 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const groupId = searchParams.get('groupId');
+
+    if (groupId && !FEED_GROUP_IDS.includes(groupId.toUpperCase())) {
+      return badRequest(`Invalid feed group: ${groupId}. Valid groups: ${FEED_GROUP_IDS.join(', ')}`);
+    }
 
     // Try Redis cache first (pre-computed by WS server or previous request)
     const cached = await tryRedisCache(groupId);

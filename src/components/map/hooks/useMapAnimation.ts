@@ -111,10 +111,13 @@ const ARRIVING_DISTANCE = 200;
 const STATION_SNAP_DISTANCE = 20;
 const DWELL_DURATION_MS = 2000;  // 2 seconds at station before departing
 
+const BLEND_SPEED = 0.06;  // Per-frame at 60fps — ~95% in 0.8s, ~99.6% in 1.5s
+
 /** Guard against NaN/Infinity arclength. Returns fallback if invalid. */
-function safeArclength(s: number, fallback: number | undefined): number {
+function safeArclength(s: number, fallback: number | undefined, fallback2?: number): number {
   if (Number.isFinite(s)) return s;
   if (fallback !== undefined && Number.isFinite(fallback)) return fallback;
+  if (fallback2 !== undefined && Number.isFinite(fallback2)) return fallback2;
   return 0;
 }
 
@@ -347,14 +350,17 @@ export function useMapAnimation(
 
             // Get current position from state machine
             const currentS_sm = getCurrentArclength!(state.animState);
-            const targetS_sm = safeArclength(currentS_sm, state.lastRenderedS);
+            const targetS_sm = safeArclength(currentS_sm, state.lastRenderedS, state.prevS);
 
             // Blend from rendered position toward state machine target
             const currentRendered = state.lastRenderedS ?? targetS_sm;
-            const blend_sm = 1 - Math.pow(1 - 0.06, Math.max(0.5, frameDtMs / 16.67));
+            const blend_sm = 1 - Math.pow(1 - BLEND_SPEED, Math.max(0.5, frameDtMs / 16.67));
             state.filter.s = currentRendered + (targetS_sm - currentRendered) * blend_sm;
             if (Math.abs(state.filter.s - targetS_sm) < 1) {
               state.filter.s = targetS_sm;
+            }
+            if (!Number.isFinite(state.filter.s)) {
+              state.filter.s = state.lastRenderedS ?? state.prevS;
             }
             state.lastRenderedS = state.filter.s;
 
@@ -367,7 +373,7 @@ export function useMapAnimation(
             }
           } else {
             // Fallback: schedule-based animation with smooth blending
-            const adjustedDuration = state.scheduledDuration / state.speedMultiplier;
+            const adjustedDuration = state.scheduledDuration / Math.max(0.01, state.speedMultiplier);
             const elapsed = (nowMs - state.segmentStartTime) / 1000;
             const rawProgress = adjustedDuration > 0 ? elapsed / adjustedDuration : 1;
             const progress = Math.max(0, Math.min(1, rawProgress));
@@ -386,12 +392,11 @@ export function useMapAnimation(
             targetS = Math.max(minS, Math.min(maxS, targetS));
 
             // NaN guard on target
-            targetS = safeArclength(targetS, state.lastRenderedS);
+            targetS = safeArclength(targetS, state.lastRenderedS, state.prevS);
 
             // Smooth blend from current rendered position toward target
             // Prevents teleportation on segment changes while tracking API data
             const currentS = state.lastRenderedS ?? targetS;
-            const BLEND_SPEED = 0.06;  // Per-frame at 60fps — ~95% correction in 1.5s
             const dtNorm = Math.max(0.5, frameDtMs / 16.67);  // Normalize to 60fps
             const blend = 1 - Math.pow(1 - BLEND_SPEED, dtNorm);
             state.filter.s = currentS + (targetS - currentS) * blend;
@@ -399,6 +404,9 @@ export function useMapAnimation(
             // Snap when very close to avoid asymptotic hover
             if (Math.abs(state.filter.s - targetS) < 1) {
               state.filter.s = targetS;
+            }
+            if (!Number.isFinite(state.filter.s)) {
+              state.filter.s = state.lastRenderedS ?? state.prevS;
             }
 
             state.lastRenderedS = state.filter.s;

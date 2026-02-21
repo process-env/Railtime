@@ -15,8 +15,8 @@ function getRedisClient(): Redis | null {
       enableOfflineQueue: false,
     });
 
-    redis.on('error', () => {
-      // Silently ignore Redis errors
+    redis.on('error', (err) => {
+      console.error('[Redis]', err.message);
     });
 
     return redis;
