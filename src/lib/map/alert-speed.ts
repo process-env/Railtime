@@ -13,29 +13,29 @@ export function getRouteSpeedMultiplier(
   alerts: ServiceAlert[],
   routeId: string
 ): number {
-  const routeAlerts = alerts.filter(a =>
-    a.affectedRoutes.some(r => r.toUpperCase() === routeId.toUpperCase())
+  const routeAlerts = (alerts ?? []).filter(a =>
+    (a.affectedRoutes ?? []).some(r => r.toUpperCase() === routeId.toUpperCase())
   );
 
   if (routeAlerts.length === 0) return 1.0;
 
   // Find most severe alert
   for (const alert of routeAlerts) {
-    const type = alert.alertType.toLowerCase();
+    const type = (alert.alertType ?? '').toLowerCase();
     if (type.includes('suspension') || type.includes('cancel')) {
       return 0.5; // Major slowdown
     }
   }
 
   for (const alert of routeAlerts) {
-    const type = alert.alertType.toLowerCase();
+    const type = (alert.alertType ?? '').toLowerCase();
     if (type.includes('delay')) {
       return 0.8; // Moderate slowdown
     }
   }
 
   for (const alert of routeAlerts) {
-    const type = alert.alertType.toLowerCase();
+    const type = (alert.alertType ?? '').toLowerCase();
     if (type.includes('service change') || type.includes('detour')) {
       return 0.9; // Minor slowdown
     }

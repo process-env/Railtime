@@ -56,7 +56,7 @@ export function AlertCard({ alert, defaultExpanded = false, className }: AlertCa
   };
 
   // Sanitize HTML content before rendering
-  const sanitizedDescription = sanitizeHtml(alert.descriptionHtml || alert.headerText);
+  const sanitizedDescription = sanitizeHtml(alert.descriptionHtml || alert.headerText || '');
 
   return (
     <Card className={cn('overflow-hidden transition-shadow hover:shadow-md', className)}>
@@ -111,12 +111,12 @@ export function AlertCard({ alert, defaultExpanded = false, className }: AlertCa
           {(alert.affectedStopNames?.length ?? 0) > 0 && (
             <div className="mt-3 pt-3 border-t">
               <p className="text-xs font-medium text-muted-foreground mb-1">
-                Affected Stations ({alert.affectedStopNames.length})
+                Affected Stations ({alert.affectedStopNames?.length ?? 0})
               </p>
               <p className="text-xs text-muted-foreground">
-                {alert.affectedStopNames.slice(0, ALERT_LIMITS.CARD_STATIONS).join(', ')}
-                {alert.affectedStopNames.length > ALERT_LIMITS.CARD_STATIONS &&
-                  ` +${alert.affectedStopNames.length - ALERT_LIMITS.CARD_STATIONS} more`}
+                {(alert.affectedStopNames ?? []).slice(0, ALERT_LIMITS.CARD_STATIONS).join(', ')}
+                {(alert.affectedStopNames?.length ?? 0) > ALERT_LIMITS.CARD_STATIONS &&
+                  ` +${(alert.affectedStopNames?.length ?? 0) - ALERT_LIMITS.CARD_STATIONS} more`}
               </p>
             </div>
           )}

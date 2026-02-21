@@ -9,8 +9,8 @@ import { useAlerts } from '@/hooks/use-alerts';
 export function AlertStatusCard() {
   const { alerts: activeAlerts, counts } = useAlerts();
 
-  const total = counts.critical + counts.warning + counts.info;
-  const recentAlerts = activeAlerts.slice(0, 3);
+  const total = (counts?.critical ?? 0) + (counts?.warning ?? 0) + (counts?.info ?? 0);
+  const recentAlerts = (activeAlerts ?? []).slice(0, 3);
 
   return (
     <Card>
@@ -29,21 +29,21 @@ export function AlertStatusCard() {
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-red-500" />
             <div>
-              <p className="text-xl font-bold">{counts.critical}</p>
+              <p className="text-xl font-bold">{counts?.critical ?? 0}</p>
               <p className="text-xs text-muted-foreground">Critical</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 text-yellow-500" />
             <div>
-              <p className="text-xl font-bold">{counts.warning}</p>
+              <p className="text-xl font-bold">{counts?.warning ?? 0}</p>
               <p className="text-xs text-muted-foreground">Warnings</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Info className="h-4 w-4 text-blue-500" />
             <div>
-              <p className="text-xl font-bold">{counts.info}</p>
+              <p className="text-xl font-bold">{counts?.info ?? 0}</p>
               <p className="text-xs text-muted-foreground">Info</p>
             </div>
           </div>

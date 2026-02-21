@@ -54,7 +54,7 @@ export default function StationsPage() {
     // Build set of stations with alerts
     const stationsWithAlerts = new Set<string>();
     for (const alert of alerts) {
-      for (const stopId of alert.affectedStops) {
+      for (const stopId of (alert.affectedStops ?? [])) {
         const parentId = stopId?.replace(/[NS]$/, '');
         if (parentId) stationsWithAlerts.add(parentId);
       }

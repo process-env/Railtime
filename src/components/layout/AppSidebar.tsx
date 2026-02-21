@@ -52,7 +52,7 @@ export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === 'collapsed';
   const { alerts } = useAlerts();
-  const alertCount = alerts.length;
+  const alertCount = alerts?.length ?? 0;
   const prefetchAnalytics = usePrefetchAnalytics();
   const prefetchMap = usePrefetchMap();
   const [tripPlannerOpen, setTripPlannerOpen] = useState(false);

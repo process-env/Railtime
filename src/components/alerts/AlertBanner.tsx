@@ -130,12 +130,13 @@ export function AlertBanner({ className }: AlertBannerProps) {
   // Use the new hook interface - visibleAlerts comes directly from the hook
   const { visibleAlerts, isLoading } = useAlerts({ enabled: true });
 
-  const criticalAlerts = visibleAlerts.filter((a) => a.severity === 'critical');
-  const warningAlerts = visibleAlerts.filter((a) => a.severity === 'warning');
-  const infoAlerts = visibleAlerts.filter((a) => a.severity === 'info');
+  const safeAlerts = visibleAlerts ?? [];
+  const criticalAlerts = safeAlerts.filter((a) => a.severity === 'critical');
+  const warningAlerts = safeAlerts.filter((a) => a.severity === 'warning');
+  const infoAlerts = safeAlerts.filter((a) => a.severity === 'info');
 
   // Show loading skeleton during initial fetch
-  if (isLoading && visibleAlerts.length === 0) {
+  if (isLoading && safeAlerts.length === 0) {
     return (
       <div className={cn('flex flex-col', className)}>
         <TickerSkeleton severity="critical" />
@@ -143,7 +144,7 @@ export function AlertBanner({ className }: AlertBannerProps) {
     );
   }
 
-  if (visibleAlerts.length === 0) return null;
+  if (safeAlerts.length === 0) return null;
 
   return (
     <div className={cn('flex flex-col', className)}>

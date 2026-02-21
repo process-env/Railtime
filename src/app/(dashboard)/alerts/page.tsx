@@ -82,7 +82,7 @@ export default function AlertsPage() {
             />
           </div>
           <div>
-            <p className="text-2xl font-bold">{counts.critical}</p>
+            <p className="text-2xl font-bold">{counts?.critical ?? 0}</p>
             <p className="text-xs text-muted-foreground">Critical</p>
           </div>
         </div>
@@ -93,7 +93,7 @@ export default function AlertsPage() {
             />
           </div>
           <div>
-            <p className="text-2xl font-bold">{counts.warning}</p>
+            <p className="text-2xl font-bold">{counts?.warning ?? 0}</p>
             <p className="text-xs text-muted-foreground">Warnings</p>
           </div>
         </div>
@@ -102,7 +102,7 @@ export default function AlertsPage() {
             <Info className={`h-5 w-5 ${SEVERITY_COLORS.info.text}`} />
           </div>
           <div>
-            <p className="text-2xl font-bold">{counts.info}</p>
+            <p className="text-2xl font-bold">{counts?.info ?? 0}</p>
             <p className="text-xs text-muted-foreground">Info</p>
           </div>
         </div>

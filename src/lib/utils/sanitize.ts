@@ -5,6 +5,8 @@ import DOMPurify from 'dompurify';
  * Allows safe HTML tags for alert descriptions
  */
 export function sanitizeHtml(dirty: string): string {
+  if (!dirty) return '';
+
   if (typeof window === 'undefined') {
     // Server-side: strip all HTML as a fallback
     return dirty.replace(/<[^>]*>/g, '');

@@ -17,7 +17,7 @@ export function AlertList({
   className,
   defaultExpanded = false,
 }: AlertListProps) {
-  if (alerts.length === 0) {
+  if (!alerts?.length) {
     return (
       <div className={cn('flex flex-col items-center justify-center py-12 text-center', className)}>
         <div className="text-4xl mb-3">✓</div>
@@ -28,7 +28,7 @@ export function AlertList({
 
   return (
     <div className={cn('space-y-3', className)}>
-      {alerts.map((alert) => (
+      {(alerts ?? []).map((alert) => (
         <AlertCard key={alert.id} alert={alert} defaultExpanded={defaultExpanded} />
       ))}
     </div>
