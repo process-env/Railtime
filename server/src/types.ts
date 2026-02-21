@@ -56,6 +56,7 @@ export interface ServiceAlert {
   descriptionHtml: string;
   affectedRoutes: string[];
   affectedStops: string[];
+  affectedStopNames?: string[];
   activePeriods: Array<{ start: string; end?: string }>;
   createdAt: string;
   updatedAt: string;

@@ -8,7 +8,7 @@ import type { TrainPosition } from '@/types/mta';
 const FEED_GROUP_IDS = ['ACE', 'BDFM', 'G', 'JZ', 'NQRW', 'L', 'SI', '1234567'];
 const CACHE_TTL = 30; // seconds
 const CACHE_HEADERS = {
-  'Cache-Control': 's-maxage=10, stale-while-revalidate=50',
+  'Cache-Control': 's-maxage=10, stale-while-revalidate=5',
 };
 
 /**
@@ -52,7 +52,8 @@ function writeBackToCache(positions: TrainPosition[], groupId: string | null): v
 
 /** Map route ID to MTA feed group */
 function routeToFeedGroup(routeId: string): string | null {
-  const upper = routeId.toUpperCase();
+  // Strip express suffix (e.g., 6X → 6, FX → F)
+  const upper = routeId.toUpperCase().replace(/X$/, '');
   if (['A', 'C', 'E'].includes(upper)) return 'ACE';
   if (['B', 'D', 'F', 'M'].includes(upper)) return 'BDFM';
   if (upper === 'G') return 'G';
@@ -61,8 +62,9 @@ function routeToFeedGroup(routeId: string): string | null {
   if (upper === 'L') return 'L';
   if (upper === 'SI' || upper === 'SIR') return 'SI';
   if (['1', '2', '3', '4', '5', '6', '7'].includes(upper)) return '1234567';
-  // Shuttles: GS → NQRW (42nd St), FS → ACE (Franklin Ave), H → ACE (Rockaway)
-  if (['GS', 'FS', 'H', 'S'].includes(upper)) return 'NQRW';
+  // Shuttles: S/GS → 1234567 (42nd St), FS → ACE (Franklin Ave), H → ACE (Rockaway)
+  if (['S', 'GS'].includes(upper)) return '1234567';
+  if (['FS', 'H'].includes(upper)) return 'ACE';
   return null;
 }
 

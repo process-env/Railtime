@@ -14,8 +14,8 @@
  *
  * Server broadcasts:
  *   - alerts:update   { alerts, updatedAt }              full alert list
- *   - alerts:new      { alerts }                         newly appeared alerts
- *   - alerts:cleared  { alertIds }                       IDs of alerts that disappeared
+ *   - alerts:new      { alert }                          one event per newly appeared alert
+ *   - alerts:cleared  { alertId }                        one event per cleared alert ID
  */
 import type { Server, Namespace, Socket } from "socket.io";
 import type { ServiceAlert } from "../types.js";
@@ -85,23 +85,25 @@ function onAlertUpdate(alerts: ServiceAlert[]): void {
   // --- Broadcast full update to all-alerts ---
   alertsNsp.to("all-alerts").emit("alerts:update", { alerts, updatedAt });
 
-  // --- Broadcast new alerts ---
+  // --- Broadcast new alerts (one event per alert, matching client contract) ---
   if (newAlerts.length > 0) {
-    alertsNsp.to("all-alerts").emit("alerts:new", { alerts: newAlerts });
-
-    // Also emit to per-route rooms
     for (const alert of newAlerts) {
+      alertsNsp.to("all-alerts").emit("alerts:new", { alert });
+
+      // Also emit to per-route rooms
       for (const routeId of alert.affectedRoutes) {
         alertsNsp
           .to(`route:${routeId.toUpperCase()}`)
-          .emit("alerts:new", { alerts: [alert] });
+          .emit("alerts:new", { alert });
       }
     }
   }
 
-  // --- Broadcast cleared alerts ---
+  // --- Broadcast cleared alerts (one event per ID, matching client contract) ---
   if (clearedIds.length > 0) {
-    alertsNsp.to("all-alerts").emit("alerts:cleared", { alertIds: clearedIds });
+    for (const alertId of clearedIds) {
+      alertsNsp.to("all-alerts").emit("alerts:cleared", { alertId });
+    }
   }
 
   // --- Per-route full update ---

@@ -144,6 +144,10 @@ export function useTrainMarkers(
   // Ref to hold latest API data for animation loop (no re-render on update)
   const latestApiDataRef = useRef<Map<string, ApiDataEntry>>(new Map());
 
+  // Dedup stability: persist previous poll's winners to prevent flip-flopping
+  const dedupWinnersRef = useRef(new Map<string, string>()); // dedupKey → tripId
+  const dedupExcludeCountRef = useRef(0);
+
   // Load track utilities on mount
   useEffect(() => {
     if (useAlphaBetaGamma) {
@@ -212,24 +216,44 @@ export function useTrainMarkers(
       ? trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase()))
       : trains;
 
-    // Deduplicate trains at the same stop — show max 1 per route per stop
-    // If multiple trains share the same (routeId, nextStopId), they're at the same
-    // location and stack visually. Keep only the first encountered per group.
-    const stopSeen = new Map<string, string>();  // "routeId:nextStopId" → tripId to keep
-    const stopExclude = new Set<string>();        // tripIds to filter out
+    // Deduplicate trains on the same segment — show max 1 per route per segment.
+    // Key includes prevStopId so trains on different segments (approaching same stop
+    // from different directions) are NOT deduped.
+    const prevWinners = dedupWinnersRef.current;
+    const newWinners = new Map<string, string>();
+    const stopExclude = new Set<string>();
 
+    // First pass: group trains by dedup key
+    const keyGroups = new Map<string, string[]>(); // key → tripIds
     for (const train of filteredTrains) {
-      const key = `${train.routeId}:${train.nextStopId}`;
-      if (stopSeen.has(key)) {
-        stopExclude.add(train.tripId);
+      const key = `${train.routeId}:${train.prevStopId ?? ''}:${train.nextStopId}`;
+      const group = keyGroups.get(key);
+      if (group) {
+        group.push(train.tripId);
       } else {
-        stopSeen.set(key, train.tripId);
+        keyGroups.set(key, [train.tripId]);
       }
     }
+
+    // Second pass: pick winner per key, preferring previous winner for stability
+    for (const [key, tripIds] of keyGroups) {
+      const prevWinner = prevWinners.get(key);
+      const winner = (prevWinner && tripIds.includes(prevWinner))
+        ? prevWinner
+        : tripIds[0];
+      newWinners.set(key, winner);
+      for (const tripId of tripIds) {
+        if (tripId !== winner) stopExclude.add(tripId);
+      }
+    }
+
+    dedupWinnersRef.current = newWinners;
 
     const displayTrains = stopExclude.size > 0
       ? filteredTrains.filter(t => !stopExclude.has(t.tripId))
       : filteredTrains;
+
+    dedupExcludeCountRef.current = stopExclude.size;
 
     // Calculate clustering offsets for overlapping trains
     const trainsWithPosition: TrainWithPosition[] = displayTrains.map(t => ({
@@ -444,10 +468,12 @@ export function useTrainMarkers(
     scheduleAnimation();
   }, [mapLoaded, map, trains, selectedRouteIds, lerp, getDistance, refreshInterval, selectedTrainId, setSelectedTrain, trainAnimsRef, trainMotionRef, scheduleAnimation, useAlphaBetaGamma, durationMatrix, alerts]);
 
-  // Memoize visible train count
+  // Memoize visible train count (subtract deduped trains)
   const visibleTrainCount = useMemo(() => {
-    if (selectedRouteIds.length === 0) return trains.length;
-    return trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase())).length;
+    const total = selectedRouteIds.length === 0
+      ? trains.length
+      : trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase())).length;
+    return total - dedupExcludeCountRef.current;
   }, [trains, selectedRouteIds]);
 
   // Get current phase for a train from motion state

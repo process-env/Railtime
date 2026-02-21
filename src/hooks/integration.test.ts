@@ -205,7 +205,7 @@ describe('Hook Integration: StationsPage scenario', () => {
     // Simulate the StationsPage logic for finding stations with alerts
     const stationsWithAlerts = new Set<string>();
     for (const alert of alertsResult.current.alerts) {
-      for (const stopId of alert.affectedStops) {
+      for (const stopId of alert.affectedStops ?? []) {
         const parentId = stopId?.replace(/[NS]$/, '');
         if (parentId) stationsWithAlerts.add(parentId);
       }
@@ -293,7 +293,7 @@ describe('Hook Integration: Search scenario', () => {
     // Check if found stations have alerts
     const foundStationIds = new Set(searchResult.current.map((s) => s.id));
     const alertsForFoundStations = alertsResult.current.alerts.filter((alert) =>
-      alert.affectedStops.some((stopId) => {
+      (alert.affectedStops ?? []).some((stopId) => {
         const parentId = stopId?.replace(/[NS]$/, '');
         return parentId && foundStationIds.has(parentId);
       })

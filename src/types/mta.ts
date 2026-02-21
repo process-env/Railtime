@@ -121,14 +121,14 @@ export type AlertSeverity = 'info' | 'warning' | 'critical';
 
 export interface ServiceAlert {
   id: string;
-  alertType: string;
+  alertType?: string;
   severity: AlertSeverity;
   headerText: string;
   descriptionHtml: string;
-  affectedRoutes: string[];
-  affectedStops: string[];
-  affectedStopNames: string[];
-  activePeriods: Array<{ start: string; end?: string }>;
+  affectedRoutes?: string[];
+  affectedStops?: string[];
+  affectedStopNames?: string[];
+  activePeriods?: Array<{ start: string; end?: string }>;
   createdAt: string;
   updatedAt: string;
 }
