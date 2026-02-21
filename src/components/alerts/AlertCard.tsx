@@ -31,7 +31,7 @@ export function AlertCard({ alert, defaultExpanded = false, className }: AlertCa
 
   // Format time range
   const formatTimeRange = () => {
-    if (!alert.activePeriods.length) return 'Ongoing';
+    if (!alert.activePeriods?.length) return 'Ongoing';
 
     const period = alert.activePeriods[0];
     const start = new Date(period.start);
@@ -69,7 +69,7 @@ export function AlertCard({ alert, defaultExpanded = false, className }: AlertCa
                 {alert.alertType || alert.severity}
               </Badge>
               {/* Route badges - circles */}
-              {alert.affectedRoutes.slice(0, ALERT_LIMITS.CARD_ROUTES).map((route) => {
+              {(alert.affectedRoutes ?? []).slice(0, ALERT_LIMITS.CARD_ROUTES).map((route) => {
                 const color = getRouteColor(route);
                 const textColor = getTextColorForBackground(color);
                 return (
@@ -82,9 +82,9 @@ export function AlertCard({ alert, defaultExpanded = false, className }: AlertCa
                   </span>
                 );
               })}
-              {alert.affectedRoutes.length > ALERT_LIMITS.CARD_ROUTES && (
+              {(alert.affectedRoutes?.length ?? 0) > ALERT_LIMITS.CARD_ROUTES && (
                 <span className="text-xs text-muted-foreground">
-                  +{alert.affectedRoutes.length - ALERT_LIMITS.CARD_ROUTES} more
+                  +{(alert.affectedRoutes?.length ?? 0) - ALERT_LIMITS.CARD_ROUTES} more
                 </span>
               )}
             </div>
@@ -108,7 +108,7 @@ export function AlertCard({ alert, defaultExpanded = false, className }: AlertCa
             className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none mt-2 border-t pt-3"
             dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
           />
-          {alert.affectedStopNames.length > 0 && (
+          {(alert.affectedStopNames?.length ?? 0) > 0 && (
             <div className="mt-3 pt-3 border-t">
               <p className="text-xs font-medium text-muted-foreground mb-1">
                 Affected Stations ({alert.affectedStopNames.length})

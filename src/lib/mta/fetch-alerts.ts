@@ -232,6 +232,6 @@ export function filterAlertsByRoutes(
 
   const routeSet = new Set(routeIds.map((r) => r.toUpperCase()));
   return alerts.filter((a) =>
-    a.affectedRoutes.some((r) => routeSet.has(r))
+    a.affectedRoutes?.some((r) => routeSet.has(r))
   );
 }

@@ -14,7 +14,10 @@ import type { ServiceAlert } from '@/types/mta';
 function groupAlertsBySeverity(alerts: ServiceAlert[]) {
   return alerts.reduce(
     (acc, alert) => {
-      acc[alert.severity].push(alert);
+      const bucket = acc[alert.severity];
+      if (bucket) {
+        bucket.push(alert);
+      }
       return acc;
     },
     {
@@ -34,7 +37,7 @@ export default function AlertsPage() {
     critical: criticalAlerts,
     warning: warningAlerts,
     info: infoAlerts,
-  } = useMemo(() => groupAlertsBySeverity(activeAlerts), [activeAlerts]);
+  } = useMemo(() => groupAlertsBySeverity(activeAlerts ?? []), [activeAlerts]);
 
   if (error) {
     return (
@@ -107,7 +110,7 @@ export default function AlertsPage() {
 
       {/* Alert Tabs */}
       <div>
-        {isLoading && activeAlerts.length === 0 ? (
+        {isLoading && (activeAlerts?.length ?? 0) === 0 ? (
           <div className="space-y-3">
             <Skeleton className="h-24" />
             <Skeleton className="h-24" />
@@ -116,7 +119,7 @@ export default function AlertsPage() {
         ) : (
           <Tabs defaultValue="all" className="w-full">
             <TabsList>
-              <TabsTrigger value="all">All ({activeAlerts.length})</TabsTrigger>
+              <TabsTrigger value="all">All ({activeAlerts?.length ?? 0})</TabsTrigger>
               <TabsTrigger
                 value="critical"
                 className={SEVERITY_COLORS.critical.text}
@@ -135,7 +138,7 @@ export default function AlertsPage() {
             </TabsList>
 
             <TabsContent value="all" className="mt-4">
-              <AlertList alerts={activeAlerts} defaultExpanded />
+              <AlertList alerts={activeAlerts ?? []} defaultExpanded />
             </TabsContent>
 
             <TabsContent value="critical" className="mt-4">

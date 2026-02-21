@@ -29,7 +29,7 @@ function TickerContent({ alerts }: { alerts: ServiceAlert[] }) {
           className="inline-flex items-center gap-2 px-6 flex-shrink-0"
         >
           {/* Route circles */}
-          {alert.affectedRoutes.slice(0, ALERT_LIMITS.TICKER_ROUTES).map((route) => {
+          {(alert.affectedRoutes ?? []).slice(0, ALERT_LIMITS.TICKER_ROUTES).map((route) => {
             const color = getRouteColor(route);
             const routeTextColor = getTextColorForBackground(color);
             return (
@@ -42,9 +42,9 @@ function TickerContent({ alerts }: { alerts: ServiceAlert[] }) {
               </span>
             );
           })}
-          {alert.affectedRoutes.length > ALERT_LIMITS.TICKER_ROUTES && (
+          {(alert.affectedRoutes?.length ?? 0) > ALERT_LIMITS.TICKER_ROUTES && (
             <span className="text-xs opacity-75">
-              +{alert.affectedRoutes.length - ALERT_LIMITS.TICKER_ROUTES}
+              +{(alert.affectedRoutes?.length ?? 0) - ALERT_LIMITS.TICKER_ROUTES}
             </span>
           )}
           <span className="text-sm font-medium">{alert.headerText}</span>

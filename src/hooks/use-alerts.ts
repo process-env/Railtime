@@ -123,7 +123,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
       let alerts = data.alerts;
       if (routeIds?.length) {
         alerts = alerts.filter((a) =>
-          a.affectedRoutes.some((r) => routeIds.includes(r))
+          a.affectedRoutes?.some((r) => routeIds.includes(r))
         );
       }
       setSocketAlerts(alerts);
@@ -136,7 +136,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
         // Apply routeId filter
         if (
           routeIds?.length &&
-          !data.alert.affectedRoutes.some((r) => routeIds.includes(r))
+          !data.alert.affectedRoutes?.some((r) => routeIds.includes(r))
         ) {
           return prev;
         }
@@ -179,7 +179,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
     const alerts: ServiceAlert[] = rawAlerts || [];
     const now = new Date();
     return alerts.filter((alert) => {
-      if (!alert.activePeriods.length) return true;
+      if (!alert.activePeriods?.length) return true;
       return alert.activePeriods.some((period) => {
         const start = new Date(period.start);
         const end = period.end ? new Date(period.end) : null;
