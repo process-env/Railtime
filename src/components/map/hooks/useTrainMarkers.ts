@@ -252,8 +252,6 @@ export function useTrainMarkers(
       ? filteredTrains.filter(t => !stopExclude.has(t.tripId))
       : filteredTrains;
 
-    // dedupExcludeCount is computed in the visibleTrainCount useMemo below
-
     // Calculate clustering offsets for overlapping trains
     const trainsWithPosition: TrainWithPosition[] = displayTrains.map(t => ({
       tripId: t.tripId,

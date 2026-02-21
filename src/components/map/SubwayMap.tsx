@@ -75,8 +75,7 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
     useAlphaBetaGamma: true,  // Enable new smooth animation system
   });
 
-  // Train markers hook - with schedule-based animation + alert modulation
-  // (must run before station markers so getTrainPhase is available)
+  // Train markers hook — schedule-based animation + alert modulation
   const { getTrainPhase } = useTrainMarkers(map.current, mapLoaded, trainAnimsRef, trainMotionRef, lerp, {
     trains,
     selectedRouteIds,
@@ -89,18 +88,20 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
     alerts,  // Service alerts for speed modulation
   });
 
-  // Compute arriving station IDs from train phase state machine
+  // Flash station when any train will arrive within 60s (or just arrived within 15s)
   const arrivingStationIds = useMemo(() => {
     const ids = new Set<string>();
+    const now = Date.now();
     for (const train of trains) {
-      const phase = getTrainPhase(train.tripId);
-      if (phase === 'ARRIVING' || phase === 'BOARDING') {
-        const parentId = train.nextStopId?.replace(/[NS]$/, '');
+      if (train.nextTimeMs == null) continue;
+      const timeToArrival = train.nextTimeMs - now;
+      if (timeToArrival >= -15_000 && timeToArrival < 60_000) {
+        const parentId = train.nextStopId.replace(/[NS]$/, '');
         if (parentId) ids.add(parentId);
       }
     }
     return ids;
-  }, [trains, getTrainPhase]);
+  }, [trains]);
 
   // Station markers hook
   useStationMarkers(map.current, mapLoaded, {
