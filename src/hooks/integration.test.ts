@@ -14,12 +14,42 @@ import { QueryWrapper, createTestQueryClient, createQueryWrapper } from '@/test/
 // Mock fetch
 global.fetch = vi.fn();
 
-// Mock alerts store
+// Mock stores
 vi.mock('@/stores', () => ({
   useAlertsStore: () => ({
     dismissedIds: new Set<string>(),
     dismissAlert: vi.fn(),
     clearDismissed: vi.fn(),
+  }),
+  useTrainsStore: Object.assign(
+    (selector: any) => {
+      const state = {
+        trains: {},
+        updateTrains: vi.fn(),
+        removeTrains: vi.fn(),
+        clearTrains: vi.fn(),
+        getTrainsByRoute: vi.fn(() => []),
+      };
+      return selector ? selector(state) : state;
+    },
+    {
+      getState: () => ({
+        trains: {},
+        updateTrains: vi.fn(),
+        removeTrains: vi.fn(),
+        clearTrains: vi.fn(),
+        getTrainsByRoute: vi.fn(() => []),
+      }),
+    }
+  ),
+}));
+
+// Mock SocketProvider (hooks now use useSocket)
+vi.mock('@/components/providers/SocketProvider', () => ({
+  useSocket: () => ({
+    socket: null,
+    isConnected: false,
+    isAvailable: false,
   }),
 }));
 

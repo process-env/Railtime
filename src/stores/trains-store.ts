@@ -16,6 +16,7 @@ interface TrainsState {
 
   // Actions
   updateTrains: (trains: TrainPosition[]) => void;
+  removeTrains: (tripIds: string[]) => void;
   clearTrains: () => void;
 
   // Selectors
@@ -30,6 +31,15 @@ export const useTrainsStore = create<TrainsState>((set, get) => ({
       const trains = { ...state.trains };
       for (const train of newTrains) {
         trains[train.tripId] = train;
+      }
+      return { trains };
+    }),
+
+  removeTrains: (tripIds) =>
+    set((state) => {
+      const trains = { ...state.trains };
+      for (const id of tripIds) {
+        delete trains[id];
       }
       return { trains };
     }),

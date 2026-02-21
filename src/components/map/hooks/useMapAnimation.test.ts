@@ -15,7 +15,7 @@ vi.mock('@/lib/map/motion-planner', () => ({
 vi.mock('@/lib/map/alpha-beta-gamma', () => ({
   predictPosition: vi.fn((state: { s: number }) => state.s),
   DEFAULT_FILTER_PARAMS: { alpha: 0.8, beta: 0.2, gamma: 0.1 },
-  createFilterState: vi.fn((s: number) => ({ s, v: 0, a: 0, lastT: Date.now() })),
+  createFilterState: vi.fn((s: number) => ({ s, v: 0, a: 0, lastUpdateTime: Date.now() })),
 }));
 
 vi.mock('@/lib/map/train-state-machine', () => ({
@@ -403,7 +403,7 @@ describe('useMapAnimation - motion-based animation', () => {
         marker: mockMarker as unknown as maplibregl.Marker,
         popup: mockPopup as unknown as maplibregl.Popup,
         track: { points: [], stopArclengths: new Map() } as unknown as import('@/lib/map/track-index').RouteTrack,
-        filter: { s: 1000, v: 0, a: 0, lastT: Date.now() },
+        filter: { s: 1000, v: 0, a: 0, lastUpdateTime: Date.now() },
         plan: null,
         prevStopId: 'A01',
         nextStopId: 'A02',

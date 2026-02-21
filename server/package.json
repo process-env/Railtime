@@ -1,0 +1,30 @@
+{
+  "name": "railtime-ws-server",
+  "version": "1.0.0",
+  "description": "Railtime v2 WebSocket server - real-time MTA feed ingestion and broadcast",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "seed": "tsx src/scripts/seed-neo4j.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.1",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "ioredis": "^5.8.2",
+    "neo4j-driver": "^5.27.0",
+    "protobufjs": "^7.5.4",
+    "axios": "^1.13.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/cors": "^2.8.17",
+    "typescript": "^5",
+    "tsx": "^4.19.0"
+  }
+}

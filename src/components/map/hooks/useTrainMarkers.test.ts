@@ -136,6 +136,7 @@ describe('useTrainMarkers', () => {
         eta: '5 min',
         prevStopId: 'A00N',
         headsign: 'Uptown',
+        heading: 0,
       },
       {
         tripId: 'trip2',
@@ -147,6 +148,7 @@ describe('useTrainMarkers', () => {
         eta: '3 min',
         prevStopId: 'B00N',
         headsign: 'Downtown',
+        heading: 0,
       },
       {
         tripId: 'trip3',
@@ -158,6 +160,7 @@ describe('useTrainMarkers', () => {
         eta: '7 min',
         prevStopId: 'C00N',
         headsign: 'Express',
+        heading: 0,
       },
     ];
 
@@ -195,6 +198,7 @@ describe('useTrainMarkers', () => {
         eta: '5 min',
         prevStopId: 'A00N',
         headsign: 'Uptown',
+        heading: 0,
       },
       {
         tripId: 'trip2',
@@ -206,6 +210,7 @@ describe('useTrainMarkers', () => {
         eta: '3 min',
         prevStopId: 'B00N',
         headsign: 'Downtown',
+        heading: 0,
       },
       {
         tripId: 'trip3',
@@ -217,6 +222,7 @@ describe('useTrainMarkers', () => {
         eta: '7 min',
         prevStopId: 'C00N',
         headsign: 'Express',
+        heading: 0,
       },
     ];
 
@@ -302,6 +308,7 @@ describe('useTrainMarkers', () => {
         eta: '5 min',
         prevStopId: 'A00N',
         headsign: 'Uptown',
+        heading: 0,
       },
     ];
 
@@ -340,6 +347,7 @@ describe('useTrainMarkers', () => {
         eta: '3 min',
         prevStopId: 'B00N',
         headsign: 'Downtown',
+        heading: 0,
       },
     ];
 
@@ -361,6 +369,7 @@ describe('useTrainMarkers', () => {
         eta: '5 min',
         prevStopId: 'A00N',
         headsign: 'Uptown',
+        heading: 0,
       },
       {
         tripId: 'trip2',
@@ -372,6 +381,7 @@ describe('useTrainMarkers', () => {
         eta: '3 min',
         prevStopId: 'B00N',
         headsign: 'Downtown',
+        heading: 0,
       },
     ];
 
@@ -416,6 +426,7 @@ describe('useTrainMarkers', () => {
         eta: '5 min',
         prevStopId: 'A00N',
         headsign: 'Uptown',
+        heading: 0,
       },
     ];
 
@@ -475,7 +486,7 @@ describe('Phase detection', () => {
       marker: mockMarker as unknown as maplibregl.Marker,
       popup: mockPopup as unknown as maplibregl.Popup,
       track: null,
-      filter: { s: 1000, v: 0, a: 0, lastT: Date.now() },
+      filter: { s: 1000, v: 0, a: 0, lastUpdateTime: Date.now() },
       plan: null,
       prevStopId: 'A01',
       nextStopId: 'A02',
@@ -540,7 +551,7 @@ describe('Phase detection', () => {
       marker: mockMarker as unknown as maplibregl.Marker,
       popup: mockPopup as unknown as maplibregl.Popup,
       track: null,
-      filter: { s: 1000, v: 0, a: 0, lastT: Date.now() },
+      filter: { s: 1000, v: 0, a: 0, lastUpdateTime: Date.now() },
       plan: null,
       prevStopId: 'A01',
       nextStopId: 'A02',
@@ -606,7 +617,7 @@ describe('Phase detection', () => {
       marker: mockMarker as unknown as maplibregl.Marker,
       popup: mockPopup as unknown as maplibregl.Popup,
       track: null,
-      filter: { s: 1000, v: 0, a: 0, lastT: Date.now() },
+      filter: { s: 1000, v: 0, a: 0, lastUpdateTime: Date.now() },
       plan: null,
       prevStopId: 'A01',
       nextStopId: 'A02',

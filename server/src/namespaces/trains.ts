@@ -1,0 +1,128 @@
+/**
+ * /trains Socket.IO Namespace
+ *
+ * Handles real-time train position broadcasting with room-based fan-out.
+ *
+ * Rooms:
+ *   - "all-trains"        full map view, receives all position updates
+ *   - "route:{routeId}"   only positions for that route
+ *   - "feed:{feedGroupId}" positions for an entire feed group
+ *
+ * Client events:
+ *   - subscribe:all       join the all-trains room
+ *   - subscribe:route     join route:{id}
+ *   - unsubscribe:route   leave route:{id}
+ *
+ * Server broadcasts:
+ *   - trains:update   { feedGroupId, trains, updatedAt, stale }
+ *   - trains:remove   { tripIds }
+ *   - feed:status     { feedGroupId, status, tripCount, latencyMs }
+ */
+import type { Server, Namespace, Socket } from "socket.io";
+import type { TrainPosition } from "../types.js";
+import { FEED_GROUPS, type FeedUpdateCallback } from "../ingestion/feed-loop.js";
+
+let trainsNsp: Namespace | null = null;
+
+/**
+ * Set up the /trains namespace on the Socket.IO server.
+ * Returns the onUpdate callback to wire into the feed loop.
+ */
+export function setupTrainsNamespace(io: Server): FeedUpdateCallback {
+  trainsNsp = io.of("/trains");
+
+  trainsNsp.on("connection", (socket: Socket) => {
+    console.log(`[/trains] client connected: ${socket.id}`);
+
+    // --- Subscribe to all trains (full map view) ---
+    socket.on("subscribe:all", () => {
+      socket.join("all-trains");
+      console.log(`[/trains] ${socket.id} joined all-trains`);
+    });
+
+    // --- Subscribe to a specific route ---
+    socket.on("subscribe:route", (routeId: string) => {
+      if (typeof routeId !== "string" || !routeId.trim()) return;
+      const room = `route:${routeId.toUpperCase()}`;
+      socket.join(room);
+      console.log(`[/trains] ${socket.id} joined ${room}`);
+    });
+
+    // --- Unsubscribe from a specific route ---
+    socket.on("unsubscribe:route", (routeId: string) => {
+      if (typeof routeId !== "string" || !routeId.trim()) return;
+      const room = `route:${routeId.toUpperCase()}`;
+      socket.leave(room);
+      console.log(`[/trains] ${socket.id} left ${room}`);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log(`[/trains] ${socket.id} disconnected (${reason})`);
+    });
+  });
+
+  console.log("[/trains] Namespace ready");
+
+  // Return the callback that the feed loop should call per group
+  return onFeedUpdate;
+}
+
+/**
+ * Callback wired into startFeedLoop(). Called once per feed group per cycle.
+ */
+function onFeedUpdate(
+  feedGroupId: string,
+  trains: TrainPosition[],
+  removedTripIds: string[],
+  _entities: unknown, // we don't use entities here
+  latencyMs: number,
+  status: "success" | "error" | "timeout",
+): void {
+  if (!trainsNsp) return;
+
+  const updatedAt = new Date().toISOString();
+  const stale = status !== "success";
+
+  // --- Broadcast to all-trains room ---
+  const fullPayload = { feedGroupId, trains, updatedAt, stale };
+  trainsNsp.to("all-trains").emit("trains:update", fullPayload);
+
+  // --- Broadcast to feed:{groupId} room ---
+  trainsNsp.to(`feed:${feedGroupId}`).emit("trains:update", fullPayload);
+
+  // --- Fan out to per-route rooms ---
+  // Group trains by routeId for targeted delivery
+  const byRoute = new Map<string, TrainPosition[]>();
+  for (const t of trains) {
+    const key = t.routeId.toUpperCase();
+    if (!byRoute.has(key)) byRoute.set(key, []);
+    byRoute.get(key)!.push(t);
+  }
+
+  // Find all routes that belong to this feed group
+  const feedGroup = FEED_GROUPS.find((g) => g.id === feedGroupId);
+  const groupRoutes = feedGroup ? feedGroup.routes.map((r) => r.toUpperCase()) : [];
+
+  for (const routeId of groupRoutes) {
+    const routeTrains = byRoute.get(routeId) ?? [];
+    trainsNsp.to(`route:${routeId}`).emit("trains:update", {
+      feedGroupId,
+      trains: routeTrains,
+      updatedAt,
+      stale,
+    });
+  }
+
+  // --- Broadcast removed trips ---
+  if (removedTripIds.length > 0) {
+    trainsNsp.to("all-trains").emit("trains:remove", { tripIds: removedTripIds });
+  }
+
+  // --- Feed status event ---
+  trainsNsp.to("all-trains").emit("feed:status", {
+    feedGroupId,
+    status,
+    tripCount: trains.length,
+    latencyMs,
+  });
+}
