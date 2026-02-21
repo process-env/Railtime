@@ -1,9 +1,23 @@
 'use client';
 
-import { ApolloClient, InMemoryCache, HttpLink, ApolloLink } from '@apollo/client';
+import {
+  ApolloClient,
+  ApolloLink,
+  InMemoryCache,
+  HttpLink,
+  Observable,
+} from '@apollo/client';
 
 const APPSYNC_URL = process.env.NEXT_PUBLIC_APPSYNC_URL ?? '';
 const APPSYNC_API_KEY = process.env.NEXT_PUBLIC_APPSYNC_API_KEY ?? '';
+
+/** When AppSync is not configured, short-circuit all requests. */
+const noopLink = new ApolloLink(() => {
+  return new Observable((observer) => {
+    observer.next({ data: null });
+    observer.complete();
+  });
+});
 
 const authLink = new ApolloLink((operation, forward) => {
   operation.setContext({
@@ -18,8 +32,12 @@ const httpLink = new HttpLink({
   uri: APPSYNC_URL,
 });
 
+const link = APPSYNC_URL
+  ? authLink.concat(httpLink)
+  : noopLink;
+
 export const apolloClient = new ApolloClient({
-  link: authLink.concat(httpLink),
+  link,
   cache: new InMemoryCache({
     typePolicies: {
       Query: {

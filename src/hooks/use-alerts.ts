@@ -135,6 +135,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
     }
 
     function handleAlertNew(data: { alert: ServiceAlert }) {
+      if (!data?.alert?.id) return;
       setSocketAlerts((prev) => {
         // Add if not already present
         if (prev.some((a) => a.id === data.alert.id)) return prev;
