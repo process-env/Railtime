@@ -1,4 +1,5 @@
 export { useArrivals } from './use-arrivals';
+export { useMultiStationArrivals } from './use-multi-station-arrivals';
 export { useTrainPositions } from './use-train-positions';
 export { useTrainPositionsSuspense } from './use-train-positions-suspense';
 export { useAnalytics } from './use-analytics';

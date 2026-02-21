@@ -38,6 +38,7 @@ import { usePrefetchAnalytics, usePrefetchMap, useAlerts } from '@/hooks';
 import { RouteFilter } from './RouteFilter';
 import { SubwayMapModal } from './SubwayMapModal';
 import { TripPlannerPanel } from '@/components/trip-planner';
+import { NearbyArrivalsWidget } from './NearbyArrivalsWidget';
 
 const navItems = [
   { href: '/map', label: 'Live Map', icon: Map },
@@ -148,6 +149,11 @@ export function AppSidebar() {
               <RouteFilter compact={isCollapsed} />
             </SidebarGroupContent>
           </SidebarGroup>
+        )}
+
+        {/* Nearby Arrivals - only show on map page */}
+        {pathname === '/map' && (
+          <NearbyArrivalsWidget isCollapsed={isCollapsed} />
         )}
       </SidebarContent>
 
