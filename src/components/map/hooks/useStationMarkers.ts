@@ -7,6 +7,18 @@ import {
 } from '@/lib/mta/station-utils';
 import type { Station, TrainPosition } from '@/types/mta';
 
+/** Fast approximate distance in meters between two lat/lon points */
+function approxDistanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = dLat * dLat + dLon * dLon * Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180);
+  return R * Math.sqrt(a);
+}
+
+/** Max distance (meters) for a train to trigger station arrival animation */
+const ARRIVING_PROXIMITY_M = 500;
+
 export interface UseStationMarkersOptions {
   stations: Record<string, Station>;
   selectedRouteIds: string[];
@@ -54,12 +66,17 @@ export function useStationMarkers(
     const ids = new Set<string>();
     trains.forEach((train) => {
       const parentId = getParentStationId(train.nextStopId);
-      if (parentId) {
+      if (!parentId) return;
+      const station = stations[parentId];
+      if (!station) return;
+      // Only flash if train is within proximity of the station
+      const dist = approxDistanceM(train.lat, train.lon, station.lat, station.lon);
+      if (dist <= ARRIVING_PROXIMITY_M) {
         ids.add(parentId);
       }
     });
     return ids;
-  }, [trains]);
+  }, [trains, stations]);
 
   // Always show all parent stations - route filter only affects trains, not stations
   const filteredStations = useMemo(() => {
