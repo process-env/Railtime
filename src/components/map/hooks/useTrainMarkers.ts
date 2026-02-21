@@ -212,25 +212,23 @@ export function useTrainMarkers(
       ? trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase()))
       : trains;
 
-    // Deduplicate trains at terminal stations — show max 1 per route per terminal
-    // Prevents marker stacking when multiple trains queue at first/last stops
-    const terminalKeep = new Map<string, string>(); // "routeId:baseStopId" → tripId to keep
-    const terminalExclude = new Set<string>();       // tripIds to filter out
+    // Deduplicate trains at the same stop — show max 1 per route per stop
+    // If multiple trains share the same (routeId, nextStopId), they're at the same
+    // location and stack visually. Keep only the first encountered per group.
+    const stopSeen = new Map<string, string>();  // "routeId:nextStopId" → tripId to keep
+    const stopExclude = new Set<string>();        // tripIds to filter out
 
     for (const train of filteredTrains) {
-      if (TERMINAL_STOPS.has(train.nextStopId)) {
-        const baseStopId = train.nextStopId.replace(/[NS]$/, '');
-        const key = `${train.routeId}:${baseStopId}`;
-        if (terminalKeep.has(key)) {
-          terminalExclude.add(train.tripId);
-        } else {
-          terminalKeep.set(key, train.tripId);
-        }
+      const key = `${train.routeId}:${train.nextStopId}`;
+      if (stopSeen.has(key)) {
+        stopExclude.add(train.tripId);
+      } else {
+        stopSeen.set(key, train.tripId);
       }
     }
 
-    const displayTrains = terminalExclude.size > 0
-      ? filteredTrains.filter(t => !terminalExclude.has(t.tripId))
+    const displayTrains = stopExclude.size > 0
+      ? filteredTrains.filter(t => !stopExclude.has(t.tripId))
       : filteredTrains;
 
     // Calculate clustering offsets for overlapping trains
