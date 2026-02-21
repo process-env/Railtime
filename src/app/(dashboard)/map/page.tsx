@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorBoundary, MapErrorFallback } from '@/components/ErrorBoundary';
 import { useUIStore } from '@/stores';
+import { useTrainPositions, useAlerts } from '@/hooks';
 
 // Dynamic import to avoid SSR issues with MapLibre
 const SubwayMap = dynamic(
@@ -27,6 +28,10 @@ export default function MapPage() {
   const searchParams = useSearchParams();
   const { setMapView } = useUIStore();
 
+  // Start data fetches immediately — runs in parallel with SubwayMap chunk download
+  const { trains } = useTrainPositions({ refreshInterval: 15000 });
+  const { alerts } = useAlerts();
+
   // Handle URL params for map navigation (from station cards)
   useEffect(() => {
     const lat = searchParams.get('lat');
@@ -47,7 +52,7 @@ export default function MapPage() {
   return (
     <div className="h-full w-full overflow-hidden">
       <ErrorBoundary fallback={<MapErrorFallback onRetry={() => window.location.reload()} />}>
-        <SubwayMap />
+        <SubwayMap trains={trains} alerts={alerts} />
       </ErrorBoundary>
     </div>
   );

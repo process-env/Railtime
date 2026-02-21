@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useUIStore } from '@/stores';
-import { useTrainPositions, useStaticData, useAlerts } from '@/hooks';
+import { useStaticData } from '@/hooks';
 import { NYC_BOUNDS } from '@/lib/constants';
 import { useMapAnimation, useStationMarkers, useTrainMarkers, useTripRouteLayer, getTripBounds, useUserLocationMarker } from './hooks';
 import { TrainDetailPanel } from './TrainDetailPanel';
@@ -14,14 +14,19 @@ import { MyLocationButton } from './MyLocationButton';
 import { useSelectedTrip } from '@/stores/trip-store';
 import { useGeolocationStatus } from '@/stores';
 import type { RouteDurationMatrix } from '@/lib/map/route-durations';
+import type { TrainPosition, ServiceAlert } from '@/types/mta';
 
 // Map style - CARTO Dark Matter with labels
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 const REFRESH_INTERVAL = 15000; // 15 seconds
-const TRAIN_POSITION_OPTIONS = { refreshInterval: REFRESH_INTERVAL };
 
-export function SubwayMap() {
+interface SubwayMapProps {
+  trains: TrainPosition[];
+  alerts: ServiceAlert[];
+}
+
+export function SubwayMap({ trains, alerts }: SubwayMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -43,12 +48,6 @@ export function SubwayMap() {
     selectedTrainId,
     setSelectedTrain,
   } = useUIStore();
-
-  // Train positions hook
-  const { trains } = useTrainPositions(TRAIN_POSITION_OPTIONS);
-
-  // Alerts hook for speed modulation
-  const { alerts } = useAlerts();
 
   // Duration matrix for schedule-based animation
   const [durationMatrix, setDurationMatrix] = useState<RouteDurationMatrix | null>(null);
@@ -176,7 +175,10 @@ export function SubwayMap() {
         map.current.setPaintProperty(layer.id, 'text-halo-width', 1.5);
       });
 
-      // Add subway lines GeoJSON
+      // Signal map ready — markers can render immediately
+      setMapLoaded(true);
+
+      // Add subway lines GeoJSON (cosmetic, non-blocking)
       try {
         const response = await fetch('/map/nyc-subway-lines.geojson');
         const geojson = await response.json();
@@ -204,8 +206,6 @@ export function SubwayMap() {
       } catch (err) {
         console.error('Failed to load subway lines:', err);
       }
-
-      setMapLoaded(true);
     });
 
     map.current.on('moveend', () => {
@@ -337,8 +337,8 @@ export function SubwayMap() {
     }
   }, [selectedTrainId, selectedTrain, setSelectedTrain]);
 
-  // Show loading overlay until map and initial data are ready
-  const isInitializing = !mapLoaded || trains.length === 0;
+  // Show loading overlay until map is ready
+  const isInitializing = !mapLoaded;
 
   return (
     <div className="relative w-full h-full">
