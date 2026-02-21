@@ -14,6 +14,11 @@ export { BusiestStationsCard } from './BusiestStationsCard';
 export { RouteProfileCard } from './RouteProfileCard';
 export { ServiceSpanCard } from './ServiceSpanCard';
 
+// Historical analytics components (AppSync-backed)
+export { DelayTrendChart } from './DelayTrendChart';
+export { RoutePerformanceTable } from './RoutePerformanceTable';
+export { SystemHealthTimeline } from './SystemHealthTimeline';
+
 // Impact components
 export { EconomicImpactCard } from './EconomicImpactCard';
 export { EnvironmentalImpactCard } from './EnvironmentalImpactCard';

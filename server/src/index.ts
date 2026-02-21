@@ -10,6 +10,7 @@ import { setupTrainsNamespace } from "./namespaces/trains.js";
 import { setupAlertsNamespace } from "./namespaces/alerts.js";
 import { setupArrivalsNamespace } from "./namespaces/arrivals.js";
 import type { FeedEntity } from "./types.js";
+import { collectMetrics, collectAlertEvent, startCollector, stopCollector } from "./analytics/metrics-collector.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -92,12 +93,15 @@ io.on("connection", (socket) => {
 // Graceful shutdown
 // ---------------------------------------------------------------------------
 
-function shutdown(signal: string) {
+async function shutdown(signal: string) {
   console.log(`\n[server] received ${signal}, shutting down gracefully...`);
 
   // Stop ingestion loops first (no more data flowing)
   stopFeedLoop();
   stopAlertLoop();
+
+  // Flush remaining analytics data
+  await stopCollector();
 
   io.close(() => {
     console.log("[server] Socket.IO server closed");
@@ -145,9 +149,18 @@ httpServer.listen(PORT, async () => {
 
     // Forward to /arrivals namespace (compute arrivals for subscribed stations)
     broadcastArrivals(feedGroupId, entities as FeedEntity[]);
+
+    // Forward to analytics collector (DynamoDB persistence)
+    collectMetrics(feedGroupId, trains, entities as FeedEntity[], latencyMs, status);
   });
 
-  startAlertLoop(onAlertUpdate);
+  startAlertLoop((alerts) => {
+    onAlertUpdate(alerts);
+    collectAlertEvent(alerts);
+  });
+
+  // Start analytics collector (flushes to DynamoDB every 5 min)
+  startCollector();
 
   console.log("[server] All namespaces and ingestion loops started");
 });

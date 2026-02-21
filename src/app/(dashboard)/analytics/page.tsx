@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Train, MapPin, Clock, Activity, RefreshCw, Calendar } from 'lucide-react';
+import { Train, MapPin, Clock, Activity, RefreshCw, Calendar, History } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,6 +15,9 @@ import {
   RouteProfileCard,
   ServiceSpanCard,
   EquipmentStatusCard,
+  DelayTrendChart,
+  RoutePerformanceTable,
+  SystemHealthTimeline,
 } from '@/components/analytics';
 import { useAnalytics } from '@/hooks/use-analytics';
 import { useScheduleAnalytics } from '@/hooks/use-schedule-analytics';
@@ -158,6 +161,23 @@ export default function AnalyticsPage() {
             </div>
           </>
         ) : null}
+      </div>
+
+      {/* Historical Performance Section (AppSync-backed) */}
+      <div className="border-t pt-6">
+        <div className="flex items-center gap-2 mb-4">
+          <History className="h-5 w-5" />
+          <h2 className="text-xl font-semibold">Historical Performance</h2>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <DelayTrendChart />
+          <SystemHealthTimeline />
+        </div>
+
+        <div className="mt-6">
+          <RoutePerformanceTable />
+        </div>
       </div>
 
       {/* Real-Time Performance Section */}

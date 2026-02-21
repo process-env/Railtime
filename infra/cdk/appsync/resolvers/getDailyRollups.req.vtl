@@ -1,0 +1,33 @@
+#if($ctx.args.routeId)
+{
+  "version": "2017-02-28",
+  "operation": "Query",
+  "query": {
+    "expression": "routeId = :routeId AND #d BETWEEN :from AND :to",
+    "expressionNames": {
+      "#d": "date"
+    },
+    "expressionValues": {
+      ":routeId": $util.dynamodb.toDynamoDBJson($ctx.args.routeId),
+      ":from": $util.dynamodb.toDynamoDBJson($ctx.args.from),
+      ":to": $util.dynamodb.toDynamoDBJson($ctx.args.to)
+    }
+  },
+  "scanIndexForward": true
+}
+#else
+{
+  "version": "2017-02-28",
+  "operation": "Scan",
+  "filter": {
+    "expression": "#d BETWEEN :from AND :to",
+    "expressionNames": {
+      "#d": "date"
+    },
+    "expressionValues": {
+      ":from": $util.dynamodb.toDynamoDBJson($ctx.args.from),
+      ":to": $util.dynamodb.toDynamoDBJson($ctx.args.to)
+    }
+  }
+}
+#end

@@ -19,7 +19,9 @@
     "neo4j-driver": "^5.27.0",
     "protobufjs": "^7.5.4",
     "axios": "^1.13.2",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "@aws-sdk/client-dynamodb": "^3.750.0",
+    "@aws-sdk/lib-dynamodb": "^3.750.0"
   },
   "devDependencies": {
     "@types/node": "^20",

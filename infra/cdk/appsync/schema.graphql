@@ -1,0 +1,59 @@
+type RouteMetric {
+  routeId: String!
+  timestamp: AWSTimestamp!
+  trainCount: Int!
+  avgDelaySeconds: Float
+  onTimePercent: Float
+  headwayAvgSeconds: Float
+  feedLatencyMs: Int
+  feedStatus: String
+}
+
+type DailyRollup {
+  routeId: String!
+  date: String!
+  avgDelay: Float
+  onTimePercent: Float
+  peakTrainCount: Int
+  totalAlerts: Int
+  avgHeadway: Float
+  totalTrips: Int
+}
+
+type FeedGroupHealth {
+  feedGroupId: String!
+  status: String!
+  latencyMs: Int
+  trainCount: Int
+}
+
+type SystemHealth {
+  timestamp: AWSTimestamp!
+  activeTrains: Int!
+  feedGroups: [FeedGroupHealth!]!
+  alertCount: Int!
+}
+
+type Query {
+  getRouteMetrics(routeId: String!, from: AWSTimestamp!, to: AWSTimestamp!): [RouteMetric!]!
+  getDailyRollups(routeId: String, from: String!, to: String!): [DailyRollup!]!
+  getLatestSystemHealth: SystemHealth
+}
+
+type Subscription {
+  onRouteMetricUpdate(routeId: String): RouteMetric
+    @aws_subscribe(mutations: ["publishRouteMetric"])
+}
+
+type Mutation {
+  publishRouteMetric(
+    routeId: String!
+    timestamp: AWSTimestamp!
+    trainCount: Int!
+    avgDelaySeconds: Float
+    onTimePercent: Float
+    headwayAvgSeconds: Float
+    feedLatencyMs: Int
+    feedStatus: String
+  ): RouteMetric
+}
