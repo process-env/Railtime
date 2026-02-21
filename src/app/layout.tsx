@@ -28,9 +28,25 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <head>
-        {/* Preconnect to map tile server for faster LCP */}
-        <link rel="preconnect" href="https://basemaps.cartocdn.com" />
+        {/* Preconnect to map tile servers for faster LCP */}
+        <link rel="preconnect" href="https://basemaps.cartocdn.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://tiles.basemaps.cartocdn.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
+        <link rel="dns-prefetch" href="https://tiles.basemaps.cartocdn.com" />
+        {/* Preload map style JSON — starts download before MapLibre initializes */}
+        <link
+          rel="preload"
+          href="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+          as="fetch"
+          crossOrigin="anonymous"
+        />
+        {/* Preload subway lines GeoJSON — starts download before map.on('load') */}
+        <link
+          rel="preload"
+          href="/map/nyc-subway-lines.geojson"
+          as="fetch"
+          crossOrigin="anonymous"
+        />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
