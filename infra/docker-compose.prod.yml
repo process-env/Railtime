@@ -76,8 +76,14 @@ services:
       - MTA_API_KEY=${MTA_API_KEY}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
       - NODE_ENV=production
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - DYNAMODB_TABLE_METRICS=${DYNAMODB_TABLE_METRICS:-railtime-metrics}
+      - DYNAMODB_TABLE_EVENTS=${DYNAMODB_TABLE_EVENTS:-railtime-events}
+      - DATA_DIR=/app/public/data
     volumes:
-      - ../public/data:/public/data:ro
+      - ../public/data:/app/public/data:ro
     depends_on:
       neo4j:
         condition: service_healthy

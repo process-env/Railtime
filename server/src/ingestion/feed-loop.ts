@@ -25,6 +25,7 @@ import type {
 const POLL_INTERVAL_MS = 15_000;
 const FEED_TIMEOUT_MS = 15_000;
 const REDIS_TTL_SECONDS = 30; // slightly longer than poll interval for overlap
+const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), '..', 'public', 'data');
 
 export const FEED_GROUPS: FeedGroupConfig[] = [
   {
@@ -115,13 +116,7 @@ let FeedMessage: protobuf.Type | null = null;
 async function loadProtoSchema(): Promise<protobuf.Type> {
   if (FeedMessage) return FeedMessage;
 
-  const protoPath = path.join(
-    process.cwd(),
-    "..",
-    "public",
-    "data",
-    "gtfs-realtime.proto",
-  );
+  const protoPath = path.join(DATA_DIR, "gtfs-realtime.proto");
   const root = await protobuf.load(protoPath);
   FeedMessage = root.lookupType("transit_realtime.FeedMessage");
   console.log("[feed-loop] Protobuf schema loaded");
@@ -137,7 +132,7 @@ let stopsDict: Record<string, Stop> | null = null;
 async function loadStopsDict(): Promise<Record<string, Stop>> {
   if (stopsDict) return stopsDict;
 
-  const stopsPath = path.join(process.cwd(), "..", "public", "data", "stops.txt");
+  const stopsPath = path.join(DATA_DIR, "stops.txt");
   const text = await fs.readFile(stopsPath, "utf8");
   const lines = text.split("\n").filter((l) => l.trim().length > 0);
 

@@ -19,7 +19,7 @@ import neo4j, { type Driver, type Session } from 'neo4j-driver';
 // Configuration
 // ---------------------------------------------------------------------------
 
-const DATA_DIR = path.join(process.cwd(), '..', 'public', 'data');
+const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), '..', 'public', 'data');
 const CLEAN_FLAG = process.argv.includes('--clean');
 
 const BATCH_SIZE = 500;
