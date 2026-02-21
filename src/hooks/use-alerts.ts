@@ -91,7 +91,6 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
       disconnectedAtRef.current = null;
 
       socket.emit('subscribe:all');
-      queueMicrotask(() => setSocketActive(true));
     } else {
       if (disconnectedAtRef.current === null) {
         disconnectedAtRef.current = Date.now();
@@ -113,7 +112,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
 
   // --- Socket event listeners ---
   useEffect(() => {
-    if (!socket || !socketActive) return;
+    if (!socket || !isConnected) return;
 
     function handleAlertsUpdate(data: {
       alerts: ServiceAlert[];
@@ -127,6 +126,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
         );
       }
       setSocketAlerts(alerts);
+      setSocketActive(true); // Only switch from polling after first data delivery
     }
 
     function handleAlertNew(data: { alert: ServiceAlert }) {
@@ -157,7 +157,7 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
       socket.off('alerts:new', handleAlertNew);
       socket.off('alerts:cleared', handleAlertCleared);
     };
-  }, [socket, socketActive, routeIds]);
+  }, [socket, isConnected, routeIds]);
 
   // --- React Query polling (disabled when socket is active) ---
   const usePolling = enabled && !socketActive;
