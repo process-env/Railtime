@@ -351,7 +351,7 @@ export function useMapAnimation(
 
             // Blend from rendered position toward state machine target
             const currentRendered = state.lastRenderedS ?? targetS_sm;
-            const blend_sm = 1 - Math.pow(1 - 0.15, Math.max(0.5, frameDtMs / 16.67));
+            const blend_sm = 1 - Math.pow(1 - 0.06, Math.max(0.5, frameDtMs / 16.67));
             state.filter.s = currentRendered + (targetS_sm - currentRendered) * blend_sm;
             if (Math.abs(state.filter.s - targetS_sm) < 1) {
               state.filter.s = targetS_sm;
@@ -391,7 +391,7 @@ export function useMapAnimation(
             // Smooth blend from current rendered position toward target
             // Prevents teleportation on segment changes while tracking API data
             const currentS = state.lastRenderedS ?? targetS;
-            const BLEND_SPEED = 0.15;  // Per-frame at 60fps — ~95% correction in 0.5s
+            const BLEND_SPEED = 0.06;  // Per-frame at 60fps — ~95% correction in 1.5s
             const dtNorm = Math.max(0.5, frameDtMs / 16.67);  // Normalize to 60fps
             const blend = 1 - Math.pow(1 - BLEND_SPEED, dtNorm);
             state.filter.s = currentS + (targetS - currentS) * blend;

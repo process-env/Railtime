@@ -212,8 +212,29 @@ export function useTrainMarkers(
       ? trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase()))
       : trains;
 
+    // Deduplicate trains at terminal stations — show max 1 per route per terminal
+    // Prevents marker stacking when multiple trains queue at first/last stops
+    const terminalKeep = new Map<string, string>(); // "routeId:baseStopId" → tripId to keep
+    const terminalExclude = new Set<string>();       // tripIds to filter out
+
+    for (const train of filteredTrains) {
+      if (TERMINAL_STOPS.has(train.nextStopId)) {
+        const baseStopId = train.nextStopId.replace(/[NS]$/, '');
+        const key = `${train.routeId}:${baseStopId}`;
+        if (terminalKeep.has(key)) {
+          terminalExclude.add(train.tripId);
+        } else {
+          terminalKeep.set(key, train.tripId);
+        }
+      }
+    }
+
+    const displayTrains = terminalExclude.size > 0
+      ? filteredTrains.filter(t => !terminalExclude.has(t.tripId))
+      : filteredTrains;
+
     // Calculate clustering offsets for overlapping trains
-    const trainsWithPosition: TrainWithPosition[] = filteredTrains.map(t => ({
+    const trainsWithPosition: TrainWithPosition[] = displayTrains.map(t => ({
       tripId: t.tripId,
       lat: t.lat,
       lon: t.lon,
@@ -221,7 +242,7 @@ export function useTrainMarkers(
     }));
     const trainOffsets = calculateTrainOffsets(trainsWithPosition);
 
-    const currentTripIds = new Set(filteredTrains.map((t) => t.tripId));
+    const currentTripIds = new Set(displayTrains.map((t) => t.tripId));
     const now = performance.now();
     const nowMs = Date.now();
 
@@ -281,7 +302,7 @@ export function useTrainMarkers(
     });
 
     // Process each train
-    filteredTrains.forEach(async (train) => {
+    displayTrains.forEach(async (train) => {
       const color = getRouteColor(train.routeId);
       const direction = getDirectionFromStopId(train.nextStopId);
 
