@@ -2,19 +2,7 @@ import { useRef, useEffect, useMemo, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import { MAP_CONSTANTS } from '@/lib/constants';
 import { isParentStation } from '@/lib/mta/station-utils';
-import type { Station, TrainPosition } from '@/types/mta';
-
-/** Fast approximate distance in meters between two lat/lon points */
-function approxDistanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = dLat * dLat + dLon * dLon * Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180);
-  return R * Math.sqrt(a);
-}
-
-/** Max distance (meters) for a train to trigger station arrival animation */
-const ARRIVING_PROXIMITY_M = 500;
+import type { Station } from '@/types/mta';
 
 export interface UseStationMarkersOptions {
   stations: Record<string, Station>;
@@ -22,7 +10,7 @@ export interface UseStationMarkersOptions {
   selectedStationId: string | null;
   setSelectedStation: (id: string | null) => void;
   currentZoom: number;
-  trains: TrainPosition[];
+  arrivingStationIds: Set<string>;
 }
 
 export interface UseStationMarkersReturn {
@@ -52,7 +40,7 @@ export function useStationMarkers(
     selectedStationId,
     setSelectedStation,
     currentZoom,
-    trains,
+    arrivingStationIds,
   } = options;
 
   // Store marker data including cleanup functions
@@ -62,25 +50,6 @@ export function useStationMarkers(
   const filteredStations = useMemo(() => {
     return Object.values(stations).filter(isParentStation);
   }, [stations]);
-
-  const arrivingStationIds = useMemo(() => {
-    const ids = new Set<string>();
-    // Index stations by ID for O(1) lookup
-    const stationById = new Map(filteredStations.map(s => [s.id, s]));
-
-    for (const train of trains) {
-      const parentId = train.nextStopId?.replace(/[NS]$/, '');
-      if (!parentId) continue;
-
-      const station = stationById.get(parentId);
-      if (!station) continue;
-
-      if (approxDistanceM(train.lat, train.lon, station.lat, station.lon) <= ARRIVING_PROXIMITY_M) {
-        ids.add(parentId);
-      }
-    }
-    return ids;
-  }, [trains, filteredStations]);
 
   // Cleanup function for removing a marker and its event listeners
   const removeMarker = useCallback((id: string) => {

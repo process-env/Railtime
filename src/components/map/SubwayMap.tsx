@@ -75,17 +75,8 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
     useAlphaBetaGamma: true,  // Enable new smooth animation system
   });
 
-  // Station markers hook
-  useStationMarkers(map.current, mapLoaded, {
-    stations,
-    selectedRouteIds,
-    selectedStationId,
-    setSelectedStation,
-    currentZoom,
-    trains,
-  });
-
   // Train markers hook - with schedule-based animation + alert modulation
+  // (must run before station markers so getTrainPhase is available)
   const { getTrainPhase } = useTrainMarkers(map.current, mapLoaded, trainAnimsRef, trainMotionRef, lerp, {
     trains,
     selectedRouteIds,
@@ -96,6 +87,29 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
     useAlphaBetaGamma: true,  // Enable new smooth animation system
     durationMatrix,  // Pre-computed durations from GTFS
     alerts,  // Service alerts for speed modulation
+  });
+
+  // Compute arriving station IDs from train phase state machine
+  const arrivingStationIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const train of trains) {
+      const phase = getTrainPhase(train.tripId);
+      if (phase === 'ARRIVING' || phase === 'BOARDING') {
+        const parentId = train.nextStopId?.replace(/[NS]$/, '');
+        if (parentId) ids.add(parentId);
+      }
+    }
+    return ids;
+  }, [trains, getTrainPhase]);
+
+  // Station markers hook
+  useStationMarkers(map.current, mapLoaded, {
+    stations,
+    selectedRouteIds,
+    selectedStationId,
+    setSelectedStation,
+    currentZoom,
+    arrivingStationIds,
   });
 
   // Trip route visualization hook

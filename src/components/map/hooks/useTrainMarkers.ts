@@ -146,7 +146,6 @@ export function useTrainMarkers(
 
   // Dedup stability: persist previous poll's winners to prevent flip-flopping
   const dedupWinnersRef = useRef(new Map<string, string>()); // dedupKey → tripId
-  const dedupExcludeCountRef = useRef(0);
 
   // Load track utilities on mount
   useEffect(() => {
@@ -253,7 +252,7 @@ export function useTrainMarkers(
       ? filteredTrains.filter(t => !stopExclude.has(t.tripId))
       : filteredTrains;
 
-    dedupExcludeCountRef.current = stopExclude.size;
+    // dedupExcludeCount is computed in the visibleTrainCount useMemo below
 
     // Calculate clustering offsets for overlapping trains
     const trainsWithPosition: TrainWithPosition[] = displayTrains.map(t => ({
@@ -469,11 +468,19 @@ export function useTrainMarkers(
   }, [mapLoaded, map, trains, selectedRouteIds, lerp, getDistance, refreshInterval, selectedTrainId, setSelectedTrain, trainAnimsRef, trainMotionRef, scheduleAnimation, useAlphaBetaGamma, durationMatrix, alerts]);
 
   // Memoize visible train count (subtract deduped trains)
+  // Replicates the dedup grouping logic to count exclusions without accessing refs during render
   const visibleTrainCount = useMemo(() => {
-    const total = selectedRouteIds.length === 0
-      ? trains.length
-      : trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase())).length;
-    return total - dedupExcludeCountRef.current;
+    const filteredTrains = selectedRouteIds.length === 0
+      ? trains
+      : trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase()));
+
+    // Count unique dedup keys — each key keeps one train, rest are excluded
+    const dedupKeys = new Set<string>();
+    for (const train of filteredTrains) {
+      dedupKeys.add(`${train.routeId}:${train.prevStopId ?? ''}:${train.nextStopId}`);
+    }
+
+    return dedupKeys.size;
   }, [trains, selectedRouteIds]);
 
   // Get current phase for a train from motion state
