@@ -6,6 +6,7 @@ import { useAlertsStore } from '@/stores';
 import { mtaApi } from '@/lib/api';
 import { queryKeys } from '@/lib/api/query-keys';
 import { useSocket } from '@/components/providers/SocketProvider';
+import { connectNamespaceSocket, type AlertsSocket } from '@/lib/socket/client';
 import type { ServiceAlert } from '@/types/mta';
 
 interface UseAlertsOptions {
@@ -31,7 +32,14 @@ const FALLBACK_DELAY_MS = 30_000;
 export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
   const { refreshInterval = 60000, enabled = true, routeIds } = options;
   const { dismissedIds, dismissAlert, clearDismissed } = useAlertsStore();
-  const { socket, isConnected } = useSocket();
+
+  // We only use the root socket context to check if WS is available at all
+  const { isAvailable } = useSocket();
+
+  // Per-namespace socket state for /alerts
+  const [socket, setSocket] = useState<AlertsSocket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
   const queryClient = useQueryClient();
 
   const [socketActive, setSocketActive] = useState(false);
@@ -41,7 +49,37 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
   // Socket-pushed alerts
   const [socketAlerts, setSocketAlerts] = useState<ServiceAlert[]>([]);
 
-  // --- Socket lifecycle ---
+  // --- Connect to /alerts namespace ---
+  useEffect(() => {
+    if (!isAvailable || !enabled) return;
+
+    const s = connectNamespaceSocket<AlertsSocket>('/alerts');
+    if (!s) return;
+
+    function onConnect() {
+      setIsConnected(true);
+      setSocket(s);
+    }
+    function onDisconnect() {
+      setIsConnected(false);
+    }
+
+    s.on('connect', onConnect);
+    s.on('disconnect', onDisconnect);
+
+    if (s.connected) {
+      onConnect();
+    } else {
+      queueMicrotask(() => setSocket(s));
+    }
+
+    return () => {
+      s.off('connect', onConnect);
+      s.off('disconnect', onDisconnect);
+    };
+  }, [isAvailable, enabled]);
+
+  // --- Socket lifecycle (subscribe / fallback) ---
   useEffect(() => {
     if (!socket || !enabled) return;
 

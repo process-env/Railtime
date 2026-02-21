@@ -4,7 +4,7 @@ import { createMockTrainPosition } from '@/test/factories';
 import { QueryWrapper } from '@/test/utils/query-wrapper';
 
 // ---------------------------------------------------------------------------
-// Mock socket provider
+// Mock socket provider — now only provides isAvailable
 // ---------------------------------------------------------------------------
 let mockSocketConnected = false;
 const mockSocketOn = vi.fn();
@@ -18,14 +18,21 @@ const mockSocket = {
   on: mockSocketOn,
   off: mockSocketOff,
   emit: mockSocketEmit,
+  connect: vi.fn(),
+  disconnect: vi.fn(),
 };
 
 vi.mock('@/components/providers/SocketProvider', () => ({
   useSocket: () => ({
-    socket: mockSocketConnected ? mockSocket : null,
-    isConnected: mockSocketConnected,
+    socket: null,
+    isConnected: false,
     isAvailable: true,
   }),
+}));
+
+// Mock connectNamespaceSocket to return our mock socket
+vi.mock('@/lib/socket/client', () => ({
+  connectNamespaceSocket: () => (mockSocketConnected ? mockSocket : null),
 }));
 
 // ---------------------------------------------------------------------------

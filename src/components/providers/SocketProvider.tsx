@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Socket } from 'socket.io-client';
 import type { ServerToClientEvents, ClientToServerEvents } from '@/types/ws-events';
-import { connectSocket, disconnectSocket } from '@/lib/socket/client';
+import { connectSocket, disconnectAll } from '@/lib/socket/client';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -63,7 +63,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     return () => {
       s.off('connect', onConnect);
       s.off('disconnect', onDisconnect);
-      disconnectSocket();
+      disconnectAll();
       setIsConnected(false);
       setSocket(null);
     };

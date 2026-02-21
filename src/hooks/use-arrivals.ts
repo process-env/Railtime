@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { mtaApi } from '@/lib/api';
 import { queryKeys } from '@/lib/api/query-keys';
 import { useSocket } from '@/components/providers/SocketProvider';
+import { connectNamespaceSocket, type ArrivalsSocket } from '@/lib/socket/client';
 import type { ArrivalBoard } from '@/types/mta';
 
 interface UseArrivalsOptions {
@@ -21,7 +22,14 @@ export function useArrivals(
   options: UseArrivalsOptions = {}
 ) {
   const { refreshInterval = 30000, enabled = true } = options;
-  const { socket, isConnected } = useSocket();
+
+  // We only use the root socket context to check if WS is available at all
+  const { isAvailable } = useSocket();
+
+  // Per-namespace socket state for /arrivals
+  const [socket, setSocket] = useState<ArrivalsSocket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
   const queryClient = useQueryClient();
 
   const [socketActive, setSocketActive] = useState(false);
@@ -34,7 +42,37 @@ export function useArrivals(
     null
   );
 
-  // --- Socket lifecycle ---
+  // --- Connect to /arrivals namespace ---
+  useEffect(() => {
+    if (!isAvailable || !enabled) return;
+
+    const s = connectNamespaceSocket<ArrivalsSocket>('/arrivals');
+    if (!s) return;
+
+    function onConnect() {
+      setIsConnected(true);
+      setSocket(s);
+    }
+    function onDisconnect() {
+      setIsConnected(false);
+    }
+
+    s.on('connect', onConnect);
+    s.on('disconnect', onDisconnect);
+
+    if (s.connected) {
+      onConnect();
+    } else {
+      queueMicrotask(() => setSocket(s));
+    }
+
+    return () => {
+      s.off('connect', onConnect);
+      s.off('disconnect', onDisconnect);
+    };
+  }, [isAvailable, enabled]);
+
+  // --- Socket lifecycle (subscribe / fallback) ---
   useEffect(() => {
     if (!socket || !enabled || !stopId) return;
 

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { mtaApi } from '@/lib/api';
 import { queryKeys } from '@/lib/api/query-keys';
 import { useSocket } from '@/components/providers/SocketProvider';
+import { connectNamespaceSocket, type TrainsSocket } from '@/lib/socket/client';
 import { useTrainsStore } from '@/stores';
 import type { TrainPosition } from '@/types/mta';
 
@@ -19,7 +20,13 @@ const FALLBACK_DELAY_MS = 30_000;
 export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
   const { refreshInterval = 15000, enabled = true } = options;
 
-  const { socket, isConnected } = useSocket();
+  // We only use the root socket context to check if WS is available at all
+  const { isAvailable } = useSocket();
+
+  // Per-namespace socket state for /trains
+  const [socket, setSocket] = useState<TrainsSocket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
   const queryClient = useQueryClient();
   const updateTrains = useTrainsStore((s) => s.updateTrains);
   const removeTrains = useTrainsStore((s) => s.removeTrains);
@@ -33,7 +40,38 @@ export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
   const [socketTrains, setSocketTrains] = useState<TrainPosition[]>([]);
   const [socketUpdatedAt, setSocketUpdatedAt] = useState<string | undefined>();
 
-  // --- Socket lifecycle ---
+  // --- Connect to /trains namespace ---
+  useEffect(() => {
+    if (!isAvailable || !enabled) return;
+
+    const s = connectNamespaceSocket<TrainsSocket>('/trains');
+    if (!s) return;
+
+    function onConnect() {
+      setIsConnected(true);
+      setSocket(s);
+    }
+    function onDisconnect() {
+      setIsConnected(false);
+    }
+
+    s.on('connect', onConnect);
+    s.on('disconnect', onDisconnect);
+
+    if (s.connected) {
+      onConnect();
+    } else {
+      // Set socket before connect so consumers can attach listeners
+      queueMicrotask(() => setSocket(s));
+    }
+
+    return () => {
+      s.off('connect', onConnect);
+      s.off('disconnect', onDisconnect);
+    };
+  }, [isAvailable, enabled]);
+
+  // --- Socket lifecycle (subscribe / fallback) ---
   useEffect(() => {
     if (!socket || !enabled) return;
 
