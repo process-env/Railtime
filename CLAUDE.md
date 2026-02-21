@@ -214,6 +214,16 @@ npm run test:coverage # Vitest with coverage
 npx vitest run src/lib/trip-planner/__tests__/dijkstra.test.ts  # Run a single test file
 ```
 
+## Deployment
+
+**Git push MUST be followed by a Vercel deploy.** GitHub auto-deploy is not reliably connected. After every `git push`, always run:
+
+```bash
+vercel --prod --yes    # Deploy to production (traintracker-kappa.vercel.app)
+```
+
+Never consider a push "deployed" until `vercel --prod` confirms `Aliased: https://traintracker-kappa.vercel.app`. The CI workflow (GitHub Actions) runs lint/test/build checks independently — it does NOT trigger Vercel deployment.
+
 ## Architecture
 
 ### Data Flow
