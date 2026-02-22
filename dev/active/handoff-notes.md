@@ -4,6 +4,60 @@ _Last Updated: 2026-02-22_
 
 ---
 
+## Session: Bedrock Transit Analysis (2026-02-22, afternoon)
+
+**Goal:** Replace EquipmentStatusCard with AI-powered transit analysis card using Amazon Bedrock Nova Micro.
+
+### What Was Completed (before Bedrock work, same day)
+- Code review remediation deployed (`f032848`), pushed, deployed to Vercel
+- AWS IAM instance profile set up for EC2 DynamoDB access (role: `railtime-ec2-dynamodb`)
+- DynamoDB duplicate key fix — sub-millisecond counters for TRIP_START/TRIP_END (`a13ea5a`)
+- Wired TripCompletionChart to real rollup data (bar chart by route) (`4fdae44`)
+- Wired DelayDistributionChart to real 7-day rollup data (pie chart)
+- LiveSystemDashboard rewritten to use real feed status props instead of broken AppSync query (`c3a5c0e`)
+- ArrivalsTimelineChart rewritten as self-contained 7-Day Trip Trends (ComposedChart) (`c3a5c0e`)
+- Server metrics-collector enriched with feedGroupData + alertCount in SYSTEM_HEALTH record (`c3a5c0e`)
+- VTL resolver `getLatestSystemHealth.res.vtl` fixed to parse real data (`c3a5c0e`)
+- Replaced duplicate FeedStatusCard with BestWorstRouteCard (`299edec`)
+- Animated RidershipAnimationCard with rush hour speed simulation (`1fc2150`, `6faff0b`)
+- WS server rebuilt on EC2 (new IP: `54.88.1.202`, user: `ubuntu`, path: `/opt/railtime`)
+- Data lake confirmed active: 1073+ files in S3 bucket `railtime-analytics-{account}`
+
+**Commits (earlier today):**
+- `f032848` — code review remediation (16 fixes)
+- `bfad234` — remove empty AWS env vars from docker-compose
+- `a13ea5a` — fix DynamoDB duplicate key errors
+- `4fdae44` — wire TripCompletionChart + DelayDistributionChart
+- `c3a5c0e` — wire analytics to real data, fix LiveSystemDashboard + ArrivalsTimeline
+- `299edec` — replace FeedStatusCard with BestWorstRouteCard
+- `1fc2150` — animated ridership counter
+- `6faff0b` — animation plays once on load
+
+### What's Being Built (this task)
+
+**Architecture**: WS server HTTP endpoint → DynamoDB query → Bedrock Nova Micro → Redis cache → Frontend card
+
+Files created/modified:
+- `server/src/api/transit-analysis.ts` — NEW: Bedrock analysis endpoint
+- `server/src/index.ts` — Wire HTTP route for /api/transit-analysis
+- `src/components/analytics/TransitAnalysisCard.tsx` — NEW: Frontend card
+- `src/components/analytics/index.ts` — Add barrel export
+- `src/app/(dashboard)/analytics/page.tsx` — Swap EquipmentStatusCard → TransitAnalysisCard
+
+### EC2 Details (updated)
+- IP: `54.88.1.202`
+- User: `ubuntu`
+- Path: `/opt/railtime`
+- SSH: `ssh -i ~/.ssh/railtime.pem ubuntu@54.88.1.202`
+
+### What's Next
+- Add `bedrock:InvokeModel` permission to EC2 IAM role (`railtime-ec2-dynamodb`)
+- Rebuild WS server on EC2
+- Test with `curl http://localhost:3001/api/transit-analysis` on EC2
+- Deploy frontend to Vercel
+
+---
+
 ## Session: Code Review Remediation (2026-02-22)
 
 **Goal:** Full codebase code review post-analytics-supercharge, followed by leaf-to-core remediation.

@@ -2,6 +2,21 @@
 
 Last Updated: 2026-02-22
 
+### New Components Added (2026-02-22)
+
+- **RidershipAnimationCard**: Animated daily ridership counter with rush-hour speed simulation, fare revenue display
+- **BestWorstRouteCard**: Replaced duplicate FeedStatusCard, shows top/bottom performing routes from rollup data
+- **LiveSystemDashboard**: Rewritten to accept real feed status props instead of broken AppSync query
+- **ArrivalsTimelineChart**: Rewritten as self-contained 7-Day Trip Trends ComposedChart using rollup data
+- **TransitAnalysisCard**: (NEW) Replaces EquipmentStatusCard — AI-generated transit analysis via Bedrock Nova Micro
+
+### EquipmentStatusCard → TransitAnalysisCard
+The EquipmentStatusCard (elevator/escalator outages) is being replaced with a Bedrock-powered transit intelligence card. The new card:
+- Fetches analysis from WS server HTTP endpoint (`/api/transit-analysis`)
+- Server reads latest metrics + alerts from DynamoDB, sends to Bedrock Nova Micro
+- Analysis cached in Redis (10-min TTL)
+- Frontend auto-refreshes every 10 minutes
+
 ## Current State (2026-02-22)
 
 All v2 analytics work is **complete and deployed**:

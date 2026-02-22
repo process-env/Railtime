@@ -8,6 +8,7 @@ export { HistoricalDataCard } from './HistoricalDataCard';
 export { TrainHistoryChart } from './TrainHistoryChart';
 export { DelayDistributionChart } from './DelayDistributionChart';
 export { EquipmentStatusCard } from './EquipmentStatusCard';
+export { TransitAnalysisCard } from './TransitAnalysisCard';
 
 // Schedule Intelligence components
 export { ScheduleFrequencyCard } from './ScheduleFrequencyCard';

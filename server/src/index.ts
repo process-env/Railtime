@@ -10,6 +10,7 @@ import { broadcastArrivals } from "./namespaces/arrivals.js";
 import { setupTrainsNamespace } from "./namespaces/trains.js";
 import { setupAlertsNamespace } from "./namespaces/alerts.js";
 import { setupArrivalsNamespace } from "./namespaces/arrivals.js";
+import { handleTransitAnalysis } from "./api/transit-analysis.js";
 import type { FeedEntity } from "./types.js";
 import { collectMetrics, collectAlertEvent, collectRemovedTrips, startCollector, stopCollector } from "./analytics/metrics-collector.js";
 import { initScheduleLookup, stopScheduleLookup } from "./analytics/schedule-lookup.js";
@@ -29,7 +30,29 @@ const allowedOrigins = [
 // HTTP server (health check endpoint)
 // ---------------------------------------------------------------------------
 
-const httpServer = createServer((_req, res) => {
+const httpServer = createServer(async (req, res) => {
+  // CORS headers for all responses
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  }
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  const url = new URL(req.url ?? "/", `http://localhost`);
+
+  if (url.pathname === "/api/transit-analysis") {
+    await handleTransitAnalysis(req, res);
+    return;
+  }
+
+  // Default: health check
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(
     JSON.stringify({

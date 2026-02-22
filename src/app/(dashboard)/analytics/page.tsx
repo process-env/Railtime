@@ -25,7 +25,7 @@ import {
   TrainHistoryChart,
   DelayDistributionChart,
   ArrivalsTimelineChart,
-  EquipmentStatusCard,
+  TransitAnalysisCard,
   TripCompletionChart,
   LiveSystemDashboard,
   RidershipAnimationCard,
@@ -208,7 +208,7 @@ export default function AnalyticsPage() {
               <RidershipTrendChart />
               <RidershipStatsCard />
             </div>
-            <EquipmentStatusCard />
+            <TransitAnalysisCard />
           </ErrorBoundary>
         </TabsContent>
 
