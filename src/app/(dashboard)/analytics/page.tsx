@@ -2,9 +2,8 @@
 
 import { useMemo } from 'react';
 import { format, subDays } from 'date-fns';
-import { Train, Activity, RefreshCw } from 'lucide-react';
+import { Train, Activity } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   StatsCard,
@@ -37,7 +36,7 @@ import { useDailyRollups } from '@/hooks/use-analytics-data';
 import { useScheduleAnalytics } from '@/hooks/use-schedule-analytics';
 
 export default function AnalyticsPage() {
-  const { data, loading, error, refresh } = useAnalytics();
+  const { data, loading, error } = useAnalytics();
   const { alerts } = useAlerts();
   const alertCount = alerts?.length ?? 0;
   const {
@@ -91,7 +90,6 @@ export default function AnalyticsPage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center space-y-4">
           <p className="text-destructive">Error: {error}</p>
-          <Button onClick={refresh}>Retry</Button>
         </div>
       </div>
     );
@@ -107,10 +105,6 @@ export default function AnalyticsPage() {
             Real-time system metrics, ridership analytics, and impact data
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
       </div>
 
       {/* Stats Grid (always visible above tabs) */}

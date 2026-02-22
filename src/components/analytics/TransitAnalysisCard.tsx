@@ -6,22 +6,34 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { useTransitAnalysis } from '@/hooks/use-transit-analysis';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+interface Insight {
+  title: string;
+  content: string;
+}
+
 /**
- * Parse analysis text into individual bullet points.
- * The model outputs markdown bullets starting with "- ".
+ * Parse analysis text into structured insights.
+ * Each bullet has a bold title (**...**) followed by explanatory content.
  */
-function parseBulletPoints(text: string): string[] {
+function parseInsights(text: string): Insight[] {
   return text
     .split('\n')
     .map(line => line.replace(/^[-*•]\s*/, '').trim())
-    .filter(line => line.length > 0);
+    .filter(line => line.length > 0)
+    .map(line => {
+      const match = line.match(/^\*\*(.+?)\*\*[,:;]?\s*(.*)/);
+      if (match) {
+        return { title: match[1].trim(), content: match[2].trim() };
+      }
+      // No bold prefix — treat entire line as content
+      return { title: '', content: line };
+    });
 }
 
 /**
@@ -56,7 +68,7 @@ function formatTime(isoDate: string): string {
 // ---------------------------------------------------------------------------
 
 export function TransitAnalysisCard() {
-  const { data, isLoading, isRefetching, error, refetch } = useTransitAnalysis();
+  const { data, isLoading, isRefetching, error } = useTransitAnalysis();
 
   // --- Error or no-data state (never a skeleton) ---
   if (error || (!data && !isLoading)) {
@@ -74,12 +86,6 @@ export function TransitAnalysisCard() {
             <p className="text-sm text-muted-foreground">
               {error ? 'Transit analysis unavailable' : 'Analysis generating — updates every 5 minutes'}
             </p>
-            {error && (
-              <Button variant="outline" size="sm" onClick={() => refetch()}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Retry
-              </Button>
-            )}
           </div>
         </CardContent>
       </Card>
@@ -110,7 +116,7 @@ export function TransitAnalysisCard() {
   }
 
   // --- Success state ---
-  const insights = parseBulletPoints(data.analysis);
+  const insights = parseInsights(data.analysis);
 
   return (
     <Card>
@@ -127,13 +133,19 @@ export function TransitAnalysisCard() {
         </Badge>
       </CardHeader>
 
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         {insights.map((insight, i) => (
-          <div key={i} className="flex gap-3">
-            <Brain className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {insight}
-            </p>
+          <div key={i} className="space-y-1">
+            {insight.title && (
+              <p className="text-sm font-medium leading-snug">
+                {insight.title}
+              </p>
+            )}
+            {insight.content && (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {insight.content}
+              </p>
+            )}
           </div>
         ))}
       </CardContent>

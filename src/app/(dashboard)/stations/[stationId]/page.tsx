@@ -150,9 +150,6 @@ export default function StationDetailPage() {
           {error ? (
             <div className="text-center py-4 text-destructive">
               <p>{error}</p>
-              <Button variant="link" onClick={fetchArrivals}>
-                Retry
-              </Button>
             </div>
           ) : (
             <ArrivalBoard arrivals={arrivals} loading={arrivalsLoading} />

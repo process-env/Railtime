@@ -1,8 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { RefreshCw, AlertTriangle, AlertCircle, Info } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertList } from '@/components/alerts';
@@ -31,7 +30,7 @@ function groupAlertsBySeverity(alerts: ServiceAlert[]) {
 
 export default function AlertsPage() {
   // Use the new hook interface - alerts and counts come directly from the hook
-  const { alerts: activeAlerts, counts, isLoading, error, refetch } = useAlerts();
+  const { alerts: activeAlerts, counts, isLoading, error } = useAlerts();
 
   // Single-pass grouping instead of multiple filter calls
   const {
@@ -45,7 +44,6 @@ export default function AlertsPage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center space-y-4">
           <p className="text-destructive">Error: {error}</p>
-          <Button onClick={() => refetch()}>Retry</Button>
         </div>
       </div>
     );
@@ -61,17 +59,6 @@ export default function AlertsPage() {
             Active service disruptions and advisories
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => refetch()}
-          disabled={isLoading}
-        >
-          <RefreshCw
-            className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`}
-          />
-          Refresh
-        </Button>
       </div>
 
       {/* Summary Stats */}
