@@ -60,9 +60,36 @@ function parseCsvLine(line: string): string[] {
 }
 
 /**
+ * Get the UTC epoch ms of midnight in NYC for a given date.
+ * Dynamically detects EST/EDT offset so it works year-round.
+ */
+function getNycMidnightUtcMs(date: Date): number {
+  // Get the NYC calendar date string (YYYY-MM-DD)
+  const nycDateStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+  }).format(date);
+
+  // Create a UTC midnight Date from that calendar date
+  const parts = nycDateStr.split('-').map(Number);
+  const nycMidnight = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+
+  // Get the actual NYC offset dynamically (handles EST/EDT)
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    timeZoneName: 'shortOffset',
+  });
+  const offsetMatch = formatter.format(date).match(/GMT([+-]\d+)/);
+  const offsetHours = offsetMatch ? parseInt(offsetMatch[1], 10) : -5;
+
+  // midnight in NYC = midnight UTC minus the offset
+  return nycMidnight.getTime() - offsetHours * 3600000;
+}
+
+/**
  * Load schedule into memory. Filters to today's service_id.
  */
 async function buildScheduleMap(): Promise<Map<string, number>> {
+  deviationDiagCount = 0; // Reset so diagnostics fire again after midnight rebuild
   const serviceId = getTodayServiceId();
   console.log(`[schedule-lookup] Building schedule for service: ${serviceId}`);
 
@@ -147,17 +174,8 @@ async function buildScheduleMap(): Promise<Map<string, number>> {
  * Convert seconds-since-midnight to epoch ms for today (NYC timezone).
  */
 function secondsToEpochMs(secondsSinceMidnight: number): number {
-  // Get today's midnight in NYC
-  const now = new Date();
-  const nycDateStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
-  }).format(now); // "YYYY-MM-DD"
-
-  const midnightNyc = new Date(`${nycDateStr}T00:00:00-05:00`);
-  // Adjust for DST: use the actual offset
-  const nycOffset = -5 * 3600000; // EST default
-  // For simplicity, compute from the date string
-  return midnightNyc.getTime() + secondsSinceMidnight * 1000;
+  const midnightUtcMs = getNycMidnightUtcMs(new Date());
+  return midnightUtcMs + secondsSinceMidnight * 1000;
 }
 
 /**
@@ -166,15 +184,11 @@ function secondsToEpochMs(secondsSinceMidnight: number): number {
 function scheduleRebuild(): void {
   if (rebuildTimer) clearTimeout(rebuildTimer);
 
-  // Calculate ms until next NYC midnight
+  // Calculate ms until next NYC midnight using dynamic offset
   const now = new Date();
-  const nycDateStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
-  }).format(now);
-  const tomorrow = new Date(`${nycDateStr}T00:00:00`);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  // Add 5 hours for EST (approximate — good enough for a timer)
-  const msUntilMidnight = tomorrow.getTime() + 5 * 3600000 - now.getTime();
+  const todayMidnightUtcMs = getNycMidnightUtcMs(now);
+  const tomorrowMidnightUtcMs = todayMidnightUtcMs + 24 * 3600000;
+  const msUntilMidnight = tomorrowMidnightUtcMs - now.getTime();
 
   // Add 60s buffer after midnight to ensure day has changed
   const delay = Math.max(msUntilMidnight + 60000, 60000);
@@ -241,25 +255,8 @@ export function arrivalTimeToSecondsSinceMidnight(arrivalTime: string): number |
 
   if (isNaN(epochMs)) return null;
 
-  // Get NYC midnight for this timestamp's date
-  const date = new Date(epochMs);
-  const nycDateStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
-  }).format(date);
-
-  // NYC midnight in UTC
-  // Create a date at midnight NYC, then get its UTC epoch
-  const parts = nycDateStr.split('-').map(Number);
-  const nycMidnight = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
-  // Adjust: NYC midnight is UTC+5 (EST) or UTC+4 (EDT)
-  // Get the offset dynamically
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    timeZoneName: 'shortOffset',
-  });
-  const offsetMatch = formatter.format(date).match(/GMT([+-]\d+)/);
-  const offsetHours = offsetMatch ? parseInt(offsetMatch[1], 10) : -5;
-  const midnightUtcMs = nycMidnight.getTime() - offsetHours * 3600000;
+  // Get NYC midnight for this timestamp's date using shared helper
+  const midnightUtcMs = getNycMidnightUtcMs(new Date(epochMs));
 
   const secSinceMidnight = Math.floor((epochMs - midnightUtcMs) / 1000);
   // Handle after-midnight (> 24h = 86400s): keep as-is for GTFS compatibility

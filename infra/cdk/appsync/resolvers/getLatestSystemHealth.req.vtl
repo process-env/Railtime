@@ -1,14 +1,12 @@
 {
   "version": "2017-02-28",
-  "operation": "Scan",
-  "limit": 50,
-  "filter": {
-    "expression": "#ts > :cutoff",
-    "expressionNames": {
-      "#ts": "timestamp"
-    },
+  "operation": "Query",
+  "query": {
+    "expression": "routeId = :pk",
     "expressionValues": {
-      ":cutoff": $util.dynamodb.toDynamoDBJson($util.time.nowEpochMilliSeconds() - 600000)
+      ":pk": $util.dynamodb.toDynamoDBJson("SYSTEM_HEALTH")
     }
-  }
+  },
+  "scanIndexForward": false,
+  "limit": 1
 }

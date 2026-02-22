@@ -71,8 +71,16 @@ let firstDelayLogDone = false;
 interface DailyAccum {
   date: string;
   direction: string; // "N", "S", or "X"
-  allDelays: number[];
-  allHeadways: number[];
+  // Running delay counters (replaces unbounded allDelays array)
+  sumDelays: number;
+  countDelays: number;
+  sumOnTime: number; // count of delays where |d| < ON_TIME_THRESHOLD_SECONDS
+  // Running headway counters (replaces unbounded allHeadways array)
+  sumHeadways: number;
+  countHeadways: number;
+  // Reservoir sampling for median headway (~1000 samples)
+  headwayReservoir: number[];
+  headwayReservoirCount: number; // total items seen (for reservoir probability)
   peakTrainCount: number;
   totalAlerts: number;
   totalBunching: number;
@@ -82,8 +90,11 @@ interface DailyAccum {
   totalTrains: number;
 }
 
+const RESERVOIR_SIZE = 1000;
+
 const dailyAccum = new Map<string, DailyAccum>();
 let dailyAccumDate = '';
+let dailyAlertIds = new Map<string, Set<string>>(); // routeId -> Set<alertId>
 
 function getOrCreateBuffer(routeId: string): RouteBuffer {
   let buf = buffers.get(routeId);
@@ -117,8 +128,13 @@ function getOrCreateDailyAccum(compositeKey: string, date: string): DailyAccum {
     accum = {
       date,
       direction,
-      allDelays: [],
-      allHeadways: [],
+      sumDelays: 0,
+      countDelays: 0,
+      sumOnTime: 0,
+      sumHeadways: 0,
+      countHeadways: 0,
+      headwayReservoir: [],
+      headwayReservoirCount: 0,
       peakTrainCount: 0,
       totalAlerts: 0,
       totalBunching: 0,
@@ -271,13 +287,18 @@ export function collectAlertEvent(alerts: ServiceAlert[]): void {
     );
   }
 
+  // Track unique alert IDs per route to avoid double-counting
   const today = getNycDateString();
   for (const alert of alerts) {
     if (alert.affectedRoutes.length > 0) {
       for (const routeId of alert.affectedRoutes) {
+        let ids = dailyAlertIds.get(routeId);
+        if (!ids) { ids = new Set(); dailyAlertIds.set(routeId, ids); }
+        ids.add(alert.id);
+        // Update both direction accums with the TOTAL unique count
         for (const dir of ['N', 'S']) {
           const accum = getOrCreateDailyAccum(`${routeId}#${dir}`, today);
-          accum.totalAlerts++;
+          accum.totalAlerts = ids.size;
         }
       }
     }
@@ -306,6 +327,7 @@ async function flush(): Promise<void> {
   // Reset daily accumulator on day change
   if (dailyAccumDate !== today) {
     dailyAccum.clear();
+    dailyAlertIds = new Map();
     dailyAccumDate = today;
   }
 
@@ -394,14 +416,57 @@ async function flush(): Promise<void> {
 
     // Merge into daily accumulator (keyed by composite key)
     const accum = getOrCreateDailyAccum(key, today);
-    accum.allDelays.push(...buf.delays);
-    accum.allHeadways.push(...buf.headways);
+
+    // Running delay counters
+    accum.sumDelays += buf.delays.reduce((a, b) => a + b, 0);
+    accum.countDelays += buf.delays.length;
+    accum.sumOnTime += buf.delays.filter(d => Math.abs(d) < ON_TIME_THRESHOLD_SECONDS).length;
+
+    // Running headway counters + reservoir sampling
+    accum.sumHeadways += buf.headways.reduce((a, b) => a + b, 0);
+    accum.countHeadways += buf.headways.length;
+    for (const h of buf.headways) {
+      accum.headwayReservoirCount++;
+      if (accum.headwayReservoir.length < RESERVOIR_SIZE) {
+        accum.headwayReservoir.push(h);
+      } else {
+        const j = Math.floor(Math.random() * accum.headwayReservoirCount);
+        if (j < RESERVOIR_SIZE) {
+          accum.headwayReservoir[j] = h;
+        }
+      }
+    }
+
     accum.peakTrainCount = Math.max(accum.peakTrainCount, trainCount);
     accum.totalBunching += buf.bunchingCount;
     accum.totalGaps += buf.gapCount;
     accum.flushCount++;
     accum.totalTrains += trainCount;
   }
+
+  // Compute aggregated SYSTEM_HEALTH summary record
+  const totalTrains = metrics.reduce((sum, m) => sum + m.trainCount, 0);
+  const healthRecord: MetricRecord = {
+    routeId: 'SYSTEM_HEALTH',
+    direction: null,
+    timestamp: now,
+    trainCount: totalTrains,
+    avgDelaySeconds: null,
+    onTimePercent: null,
+    headwayAvgSeconds: null,
+    feedLatencyMs:
+      metrics.length > 0
+        ? Math.round(
+            metrics.reduce((s, m) => s + (m.feedLatencyMs ?? 0), 0) /
+              metrics.length,
+          )
+        : null,
+    feedStatus: metrics.some((m) => m.feedStatus === 'error')
+      ? 'degraded'
+      : 'ok',
+    expireAt,
+  };
+  metrics.push(healthRecord);
 
   // Compute daily rollup records from accumulator
   const rollups: RollupRecord[] = [];
@@ -411,17 +476,17 @@ async function flush(): Promise<void> {
     // Encode direction in SK: "YYYY-MM-DD#N" or just "YYYY-MM-DD" if no direction
     const dateSk = dirValue ? `${today}#${dirValue}` : today;
 
-    const rollupAvgDelay = mean(accum.allDelays);
-    const rollupOnTimeCount = accum.allDelays.filter(
-      (d) => Math.abs(d) < ON_TIME_THRESHOLD_SECONDS,
-    ).length;
-    const rollupOnTimePercent =
-      accum.allDelays.length > 0
-        ? (rollupOnTimeCount / accum.allDelays.length) * 100
-        : null;
+    const rollupAvgDelay = accum.countDelays > 0
+      ? accum.sumDelays / accum.countDelays
+      : null;
+    const rollupOnTimePercent = accum.countDelays > 0
+      ? (accum.sumOnTime / accum.countDelays) * 100
+      : null;
 
-    const avgHeadwayVal = mean(accum.allHeadways);
-    const medianHeadwayVal = median(accum.allHeadways);
+    const avgHeadwayVal = accum.countHeadways > 0
+      ? accum.sumHeadways / accum.countHeadways
+      : null;
+    const medianHeadwayVal = median(accum.headwayReservoir);
 
     rollups.push({
       routeId,

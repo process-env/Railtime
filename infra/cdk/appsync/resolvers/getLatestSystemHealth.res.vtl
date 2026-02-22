@@ -1,40 +1,13 @@
-## Aggregate latest metrics per route into a SystemHealth snapshot
+## Return the latest pre-aggregated SYSTEM_HEALTH record
 #set($items = $ctx.result.items)
 #if($items.isEmpty())
   $util.toJson(null)
 #else
-  #set($activeTrains = 0)
-  #set($feedGroups = [])
-  #set($latestTimestamp = 0)
-  #set($seenRoutes = {})
-
-  ## Deduplicate: keep only the latest record per routeId
-  #foreach($item in $items)
-    #set($rid = $item.routeId)
-    #if(!$seenRoutes.containsKey($rid) || $item.timestamp > $seenRoutes.get($rid).timestamp)
-      $util.qr($seenRoutes.put($rid, $item))
-    #end
-  #end
-
-  #foreach($entry in $seenRoutes.entrySet())
-    #set($item = $entry.value)
-    #set($activeTrains = $activeTrains + $item.trainCount)
-    #if($item.timestamp > $latestTimestamp)
-      #set($latestTimestamp = $item.timestamp)
-    #end
-    #set($fg = {
-      "feedGroupId": $item.routeId,
-      "status": $item.feedStatus,
-      "latencyMs": $item.feedLatencyMs,
-      "trainCount": $item.trainCount
-    })
-    $util.qr($feedGroups.add($fg))
-  #end
-
+  #set($item = $items[0])
   $util.toJson({
-    "timestamp": $latestTimestamp,
-    "activeTrains": $activeTrains,
-    "feedGroups": $feedGroups,
+    "timestamp": $item.timestamp,
+    "activeTrains": $item.trainCount,
+    "feedGroups": [],
     "alertCount": 0
   })
 #end

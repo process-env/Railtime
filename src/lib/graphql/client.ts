@@ -14,7 +14,7 @@ const APPSYNC_API_KEY = process.env.NEXT_PUBLIC_APPSYNC_API_KEY ?? '';
 /** When AppSync is not configured, short-circuit all requests. */
 const noopLink = new ApolloLink(() => {
   return new Observable((observer) => {
-    observer.next({ data: null });
+    observer.next({ data: {} });
     observer.complete();
   });
 });
@@ -43,16 +43,12 @@ export const apolloClient = new ApolloClient({
       Query: {
         fields: {
           getRouteMetrics: {
-            keyArgs: ['routeId'],
-            merge(_existing = [], incoming: unknown[]) {
-              return [...incoming];
-            },
+            keyArgs: ['routeId', 'direction', 'from', 'to'],
+            merge: false,
           },
           getDailyRollups: {
-            keyArgs: ['routeId'],
-            merge(_existing = [], incoming: unknown[]) {
-              return [...incoming];
-            },
+            keyArgs: ['routeId', 'direction', 'from', 'to'],
+            merge: false,
           },
         },
       },

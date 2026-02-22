@@ -301,6 +301,7 @@ export class AnalyticsStack extends cdk.Stack {
 
     metricsTable.grantWriteData(wsServerRole);
     eventsTable.grantWriteData(wsServerRole);
+    rollupsTable.grantWriteData(wsServerRole);
 
     // -----------------------------------------------------------------------
     // Outputs
