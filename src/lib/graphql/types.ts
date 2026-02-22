@@ -41,6 +41,7 @@ export interface SystemHealth {
   activeTrains: number;
   feedGroups: FeedGroupHealth[];
   alertCount: number;
+  onTimePercent: number | null;
 }
 
 export interface GetRouteMetricsData {

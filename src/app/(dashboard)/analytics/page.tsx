@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Train, MapPin, Clock, Activity, RefreshCw, Calendar, History } from 'lucide-react';
+import { Train, Users, Leaf, Activity, RefreshCw, Calendar, History } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -9,7 +9,6 @@ import {
   RouteActivityChart,
   FeedStatusCard,
   StatsCard,
-  AlertStatusCard,
   ScheduleFrequencyCard,
   BusiestStationsCard,
   RouteProfileCard,
@@ -18,20 +17,31 @@ import {
   DelayTrendChart,
   RoutePerformanceTable,
   SystemHealthTimeline,
+  EconomicImpactCard,
+  EnvironmentalImpactCard,
+  RidershipTrendChart,
+  RidershipStatsCard,
 } from '@/components/analytics';
 import { useAnalytics } from '@/hooks/use-analytics';
 import { useScheduleAnalytics } from '@/hooks/use-schedule-analytics';
+import { useImpactMetrics } from '@/hooks/use-impact-metrics';
+import { useSystemHealth } from '@/hooks/use-analytics-data';
 
 export default function AnalyticsPage() {
-  // Real-time data from useAnalytics hook
   const { data, loading, error, refresh } = useAnalytics();
-
-  // Schedule data from GTFS static
   const {
     data: scheduleData,
     isLoading: scheduleLoading,
     error: scheduleError,
   } = useScheduleAnalytics();
+  const {
+    economic,
+    environmental,
+    dailyRidership,
+    carbonSavedToday,
+    isLoading: impactLoading,
+  } = useImpactMetrics();
+  const { data: healthData, loading: healthLoading } = useSystemHealth();
 
   // Calculate active trains per route for route profile
   const routeActivity = data?.routeActivity;
@@ -45,6 +55,9 @@ export default function AnalyticsPage() {
       {} as Record<string, number>
     );
   }, [routeActivity]);
+
+  // Extract system on-time %
+  const systemOnTime = healthData?.getLatestSystemHealth?.onTimePercent;
 
   if (error) {
     return (
@@ -62,9 +75,9 @@ export default function AnalyticsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Analytics</h1>
+          <h1 className="text-2xl font-bold">Transit Intelligence</h1>
           <p className="text-muted-foreground">
-            Real-time subway system metrics and performance
+            Real-time system metrics, ridership analytics, and impact data
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
@@ -76,43 +89,90 @@ export default function AnalyticsPage() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {loading ? (
-          <>
-            <Skeleton className="h-[100px]" />
-            <Skeleton className="h-[100px]" />
-            <Skeleton className="h-[100px]" />
-            <Skeleton className="h-[100px]" />
-          </>
+          <Skeleton className="h-[100px]" />
         ) : data ? (
-          <>
-            <StatsCard
-              title="Active Trains"
-              value={data.stats.totalTrains}
-              icon={Train}
-              description="Currently running"
-            />
-            <StatsCard
-              title="Stations"
-              value={data.stats.totalStations}
-              icon={MapPin}
-              description="Across all lines"
-            />
-            <StatsCard
-              title="Avg Delay"
-              value={`${data.stats.avgDelay} min`}
-              icon={Clock}
-              description="System-wide"
-            />
-            <StatsCard
-              title="Feed Health"
-              value={`${data.stats.feedHealth}%`}
-              icon={Activity}
-              description="Data sources active"
-            />
-          </>
+          <StatsCard
+            title="Active Trains"
+            value={data.stats.totalTrains}
+            icon={Train}
+            description="Currently running"
+          />
         ) : null}
+
+        {impactLoading ? (
+          <Skeleton className="h-[100px]" />
+        ) : (
+          <StatsCard
+            title="Daily Ridership"
+            value={dailyRidership != null ? dailyRidership.toLocaleString() : '--'}
+            icon={Users}
+            description="MTA Socrata data"
+          />
+        )}
+
+        {impactLoading ? (
+          <Skeleton className="h-[100px]" />
+        ) : (
+          <StatsCard
+            title="Carbon Saved Today"
+            value={carbonSavedToday != null ? `${carbonSavedToday} tonnes` : '--'}
+            icon={Leaf}
+            description="CO₂ emissions prevented"
+          />
+        )}
+
+        {healthLoading ? (
+          <Skeleton className="h-[100px]" />
+        ) : (
+          <StatsCard
+            title="System On-Time %"
+            value={systemOnTime != null ? `${systemOnTime}%` : '--'}
+            icon={Activity}
+            description="Across all routes"
+          />
+        )}
       </div>
 
-      {/* Schedule Intelligence Section */}
+      {/* Environmental & Economic Impact */}
+      <div className="border-t pt-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Leaf className="h-5 w-5" />
+          <h2 className="text-xl font-semibold">Environmental & Economic Impact</h2>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <EnvironmentalImpactCard impact={environmental} loading={impactLoading} />
+          <EconomicImpactCard impact={economic} loading={impactLoading} />
+        </div>
+      </div>
+
+      {/* Ridership Intelligence */}
+      <div className="border-t pt-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Users className="h-5 w-5" />
+          <h2 className="text-xl font-semibold">Ridership Intelligence</h2>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <RidershipTrendChart />
+          <RidershipStatsCard />
+        </div>
+      </div>
+
+      {/* Historical Performance */}
+      <div className="border-t pt-6">
+        <div className="flex items-center gap-2 mb-4">
+          <History className="h-5 w-5" />
+          <h2 className="text-xl font-semibold">Historical Performance</h2>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <DelayTrendChart />
+          <SystemHealthTimeline />
+        </div>
+        <div className="mt-6">
+          <RoutePerformanceTable />
+        </div>
+      </div>
+
+      {/* Schedule Intelligence */}
       <div className="border-t pt-6">
         <div className="flex items-center gap-2 mb-4">
           <Calendar className="h-5 w-5" />
@@ -163,30 +223,10 @@ export default function AnalyticsPage() {
         ) : null}
       </div>
 
-      {/* Historical Performance Section (AppSync-backed) */}
+      {/* System Status */}
       <div className="border-t pt-6">
-        <div className="flex items-center gap-2 mb-4">
-          <History className="h-5 w-5" />
-          <h2 className="text-xl font-semibold">Historical Performance</h2>
-        </div>
-
+        <h2 className="text-xl font-semibold mb-4">System Status</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <DelayTrendChart />
-          <SystemHealthTimeline />
-        </div>
-
-        <div className="mt-6">
-          <RoutePerformanceTable />
-        </div>
-      </div>
-
-      {/* Real-Time Performance Section */}
-      <div className="border-t pt-6">
-        <h2 className="text-xl font-semibold mb-4">Real-Time Performance</h2>
-
-        {/* Charts Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Route Activity */}
           <Card>
             <CardHeader>
               <CardTitle>Train Count by Route</CardTitle>
@@ -199,25 +239,16 @@ export default function AnalyticsPage() {
               ) : null}
             </CardContent>
           </Card>
-
-          {/* Equipment Status */}
           <EquipmentStatusCard />
         </div>
-
-        {/* Bottom Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-          {/* Feed Status */}
           {loading ? (
             <Skeleton className="h-[300px]" />
           ) : data ? (
             <FeedStatusCard feeds={data.feedStatus} />
           ) : null}
-
-          {/* Alert Status */}
-          <AlertStatusCard />
         </div>
       </div>
-
     </div>
   );
 }

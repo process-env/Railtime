@@ -203,6 +203,38 @@ export function calculateAllImpactMetrics(
 }
 
 /**
+ * Calculate impact metrics directly from daily ridership count.
+ * Used when we have actual MTA ridership data from Socrata API.
+ *
+ * @param dailyRidership - Actual daily subway ridership count
+ */
+export function calculateImpactFromRidership(dailyRidership: number): {
+  economic: EconomicImpact;
+  environmental: EnvironmentalImpact;
+} {
+  // Calculate economic impact directly from ridership
+  const vsUber = dailyRidership * (AVG_UBER_FARE - SUBWAY_FARE);
+  const vsTaxi = dailyRidership * (AVG_TAXI_FARE - SUBWAY_FARE);
+  const vsDriving = dailyRidership * (AVG_DRIVING_COST - SUBWAY_FARE);
+  const avgSavingsPerTrip =
+    (AVG_UBER_FARE + AVG_TAXI_FARE + AVG_DRIVING_COST) / 3 - SUBWAY_FARE;
+  const totalSavings = dailyRidership * avgSavingsPerTrip;
+
+  const economic: EconomicImpact = {
+    totalSavings,
+    vsUber,
+    vsTaxi,
+    vsDriving,
+    avgSavingsPerTrip: Math.round(avgSavingsPerTrip * 100) / 100,
+    estimatedRiders: dailyRidership,
+  };
+
+  const environmental = calculateEnvironmentalImpact(dailyRidership);
+
+  return { economic, environmental };
+}
+
+/**
  * Format currency for display.
  */
 export function formatCurrency(amount: number): string {

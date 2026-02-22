@@ -51,6 +51,7 @@ export const GET_LATEST_SYSTEM_HEALTH = gql`
         trainCount
       }
       alertCount
+      onTimePercent
     }
   }
 `;

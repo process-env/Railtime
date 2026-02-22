@@ -22,3 +22,7 @@ export { SystemHealthTimeline } from './SystemHealthTimeline';
 // Impact components
 export { EconomicImpactCard } from './EconomicImpactCard';
 export { EnvironmentalImpactCard } from './EnvironmentalImpactCard';
+
+// Ridership components
+export { RidershipTrendChart } from './RidershipTrendChart';
+export { RidershipStatsCard } from './RidershipStatsCard';

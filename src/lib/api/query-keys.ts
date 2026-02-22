@@ -23,4 +23,7 @@ export const queryKeys = {
 
   // Equipment (Elevator & Escalator)
   equipment: ['equipment'] as const,
+
+  // Ridership (MTA Socrata)
+  ridership: (days?: number) => ['ridership', days ?? 30] as const,
 };
