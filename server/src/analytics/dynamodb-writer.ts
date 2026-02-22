@@ -28,6 +28,8 @@ export interface MetricRecord {
   feedLatencyMs: number | null;
   feedStatus: string;
   expireAt: number;
+  feedGroupData?: string | null;  // JSON array of per-feed-group breakdowns (SYSTEM_HEALTH only)
+  alertCount?: number | null;     // Active alert count (SYSTEM_HEALTH only)
 }
 
 export interface EventRecord {

@@ -29,6 +29,24 @@ const ON_TIME_THRESHOLD_SECONDS = 300; // MTA standard: < 5 min = on time
 const BUNCHING_THRESHOLD_SECONDS = 120; // < 2 min = bunched
 const GAP_THRESHOLD_SECONDS = 900; // > 15 min = service gap
 
+// Route-to-feed-group mapping (mirrors FEED_GROUPS in feed-loop.ts)
+const ROUTE_TO_FEED_GROUP: Record<string, string> = {
+  A: 'ACE', C: 'ACE', E: 'ACE',
+  B: 'BDFM', D: 'BDFM', F: 'BDFM', M: 'BDFM',
+  G: 'G',
+  J: 'JZ', Z: 'JZ',
+  N: 'NQRW', Q: 'NQRW', R: 'NQRW', W: 'NQRW',
+  L: 'L',
+  SI: 'SI', SIR: 'SI',
+  S: '1234567',
+  '1': '1234567', '2': '1234567', '3': '1234567', '4': '1234567',
+  '5': '1234567', '6': '1234567', '7': '1234567',
+};
+
+function getFeedGroupForRoute(routeId: string): string {
+  return ROUTE_TO_FEED_GROUP[routeId] ?? 'UNKNOWN';
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -68,6 +86,7 @@ const buffers = new Map<string, RouteBuffer>();
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let firstDelayLogDone = false;
 let flushing = false;
+let activeAlertCount = 0;
 
 // ---------------------------------------------------------------------------
 // Trip lifecycle tracking
@@ -324,6 +343,8 @@ export function collectMetrics(
  * critical/warning alerts.
  */
 export function collectAlertEvent(alerts: ServiceAlert[]): void {
+  // Always track count even if DynamoDB is not configured (used by SYSTEM_HEALTH)
+  activeAlertCount = alerts.length;
   if (!getDynamoClient()) return;
 
   const now = Date.now();
@@ -572,6 +593,26 @@ async function flush(): Promise<void> {
     accum.totalTrains += trainCount;
   }
 
+  // Build per-feed-group breakdown for SYSTEM_HEALTH
+  const feedGroupMap = new Map<string, { trainCount: number; latencyMs: number; statuses: string[] }>();
+  for (const m of metrics) {
+    const routeId = m.routeId.split('#')[0]; // strip direction suffix
+    const feedGroupId = getFeedGroupForRoute(routeId);
+    if (feedGroupId === 'UNKNOWN') continue;
+    const fg = feedGroupMap.get(feedGroupId) ?? { trainCount: 0, latencyMs: 0, statuses: [] };
+    fg.trainCount += m.trainCount;
+    if (m.feedLatencyMs != null) fg.latencyMs = Math.max(fg.latencyMs, m.feedLatencyMs);
+    if (m.feedStatus) fg.statuses.push(m.feedStatus);
+    feedGroupMap.set(feedGroupId, fg);
+  }
+
+  const feedGroups = Array.from(feedGroupMap.entries()).map(([feedGroupId, data]) => ({
+    feedGroupId,
+    trainCount: data.trainCount,
+    latencyMs: data.latencyMs,
+    status: data.statuses.includes('error') ? 'error' : 'ok',
+  }));
+
   // Compute aggregated SYSTEM_HEALTH summary record
   const totalTrains = metrics.reduce((sum, m) => sum + m.trainCount, 0);
   const healthRecord: MetricRecord = {
@@ -593,6 +634,8 @@ async function flush(): Promise<void> {
       ? 'degraded'
       : 'ok',
     expireAt,
+    feedGroupData: JSON.stringify(feedGroups),
+    alertCount: activeAlertCount,
   };
   metrics.push(healthRecord);
 

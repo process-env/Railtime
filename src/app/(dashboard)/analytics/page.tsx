@@ -30,13 +30,15 @@ import {
   LiveSystemDashboard,
 } from '@/components/analytics';
 import { ErrorBoundary, ChartErrorFallback } from '@/components/ErrorBoundary';
-import { useAnalytics } from '@/hooks/use-analytics';
+import { useAnalytics, useAlerts } from '@/hooks';
 import { useImpactMetrics } from '@/hooks/use-impact-metrics';
 import { useDailyRollups } from '@/hooks/use-analytics-data';
 import { useScheduleAnalytics } from '@/hooks/use-schedule-analytics';
 
 export default function AnalyticsPage() {
   const { data, loading, error, refresh } = useAnalytics();
+  const { alerts } = useAlerts();
+  const alertCount = alerts?.length ?? 0;
   const {
     economic,
     environmental,
@@ -171,7 +173,12 @@ export default function AnalyticsPage() {
         <TabsContent value="overview" className="space-y-6 mt-4">
           <ErrorBoundary fallback={<ChartErrorFallback />}>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <LiveSystemDashboard />
+              <LiveSystemDashboard
+                totalTrains={data?.stats.totalTrains ?? 0}
+                feedStatus={data?.feedStatus ?? []}
+                alertCount={alertCount}
+                loading={loading}
+              />
               <AlertStatusCard />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -224,7 +231,7 @@ export default function AnalyticsPage() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <DelayDistributionChart />
-              {data ? <ArrivalsTimelineChart data={data.timeline} /> : <Skeleton className="h-[300px]" />}
+              <ArrivalsTimelineChart />
             </div>
           </ErrorBoundary>
         </TabsContent>

@@ -4,10 +4,14 @@
   $util.toJson(null)
 #else
   #set($item = $items[0])
+  #set($feedGroups = [])
+  #if($item.feedGroupData)
+    #set($feedGroups = $util.parseJson($item.feedGroupData))
+  #end
   $util.toJson({
     "timestamp": $item.timestamp,
     "activeTrains": $item.trainCount,
-    "feedGroups": [],
-    "alertCount": 0
+    "feedGroups": $feedGroups,
+    "alertCount": $util.defaultIfNull($item.alertCount, 0)
   })
 #end
