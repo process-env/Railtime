@@ -89,6 +89,7 @@ export interface TrainAnimState {
   startTime: number;
   isDwelling: boolean;
   routeId: string;
+  nextStopId: string;       // Needed for last-stop detection in exit gate
   nextStopName: string;
   eta: string;
   direction: 'N' | 'S' | null;

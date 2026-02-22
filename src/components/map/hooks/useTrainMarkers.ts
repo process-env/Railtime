@@ -59,6 +59,65 @@ let _getRouteSpeedMultiplier: ((alerts: ServiceAlert[], routeId: string) => numb
 let _createTrainAnimationState: ((tripId: string, routeId: string, prevStopId: string, nextStopId: string, prevS: number, nextS: number, nowMs: number, initialProgress?: number, scheduledDuration?: number, speedMultiplier?: number) => TrainAnimationState) | null = null;
 let trainAnimationReducer: ((state: TrainAnimationState, action: TrainAction) => TrainAnimationState) | null = null;
 
+// Route terminals: first and last stop for each route+direction
+type RouteTerminals = Map<string, Record<string, { first: string; last: string }>>;
+let routeTerminals: RouteTerminals | null = null;
+
+async function loadRouteTerminals(): Promise<RouteTerminals> {
+  if (routeTerminals) return routeTerminals;
+  const res = await fetch('/data/route-segments.json');
+  const data = await res.json();
+  routeTerminals = new Map();
+  for (const [routeId, routeData] of Object.entries(data.routes)) {
+    const dirs: Record<string, { first: string; last: string }> = {};
+    for (const [dirId, dirData] of Object.entries((routeData as any).directions)) {
+      const stops = (dirData as any).stops as string[];
+      if (stops.length > 0) {
+        dirs[dirId] = { first: stops[0], last: stops[stops.length - 1] };
+      }
+    }
+    routeTerminals.set(routeId, dirs);
+  }
+  return routeTerminals;
+}
+
+function baseStopId(stopId: string): string {
+  if (!stopId) return '';
+  const last = stopId.slice(-1);
+  return (last === 'N' || last === 'S') ? stopId.slice(0, -1) : stopId;
+}
+
+function directionIdFromSuffix(stopId: string): string | null {
+  const last = stopId.slice(-1);
+  if (last === 'N') return '0';
+  if (last === 'S') return '1';
+  return null;
+}
+
+function isAtFirstStop(routeId: string, prevStopId: string): boolean {
+  if (!routeTerminals || !prevStopId) return false;
+  const dirs = routeTerminals.get(routeId);
+  if (!dirs) return false;
+  const dirId = directionIdFromSuffix(prevStopId);
+  if (dirId && dirs[dirId]) {
+    return baseStopId(prevStopId) === dirs[dirId].first;
+  }
+  // No direction suffix — don't block (better to show than wrongly hide)
+  return false;
+}
+
+function isAtLastStop(routeId: string, nextStopId: string): boolean {
+  if (!routeTerminals || !nextStopId) return false;
+  const dirs = routeTerminals.get(routeId);
+  if (!dirs) return false;
+  const dirId = directionIdFromSuffix(nextStopId);
+  if (dirId && dirs[dirId]) {
+    return baseStopId(nextStopId) === dirs[dirId].last;
+  }
+  // Fallback: check both directions
+  return Object.values(dirs).some(d => d.last === baseStopId(nextStopId));
+}
+
 async function loadTrackUtils() {
   if (!getRouteTrack) {
     const [trackModule, filterModule, durationModule, alertModule, stateMachineModule] = await Promise.all([
@@ -78,42 +137,8 @@ async function loadTrackUtils() {
   }
 }
 
-// Terminal stations - module-level constant for performance (avoid recreating Set on each render)
-const TERMINAL_STOPS = new Set([
-  // 1 line
-  '101', '101N', '101S', // Van Cortlandt Park-242 St
-  '142', '142N', '142S', // South Ferry
-  // 2 line
-  '201', '201N', '201S', // Wakefield-241 St
-  '247', '247N', '247S', // Flatbush Av-Brooklyn College
-  // 3 line
-  '301', '301N', '301S', // Harlem-148 St
-  '257', '257N', '257S', // New Lots Av
-  // 4 line
-  '401', '401N', '401S', // Woodlawn
-  '423', '423N', '423S', // Crown Heights-Utica Av
-  // 5 line
-  '501', '501N', '501S', // Eastchester-Dyre Av
-  '416', '416N', '416S', // 180 St (Bronx terminal)
-  // 6 line
-  '601', '601N', '601S', // Pelham Bay Park
-  '640', '640N', '640S', // Brooklyn Bridge-City Hall
-  // 7 line
-  '701', '701N', '701S', // Flushing-Main St
-  '726', '726N', '726S', // 34 St-Hudson Yards
-  // A line
-  'A02', 'A02N', 'A02S', // Inwood-207 St
-  'H11', 'H11N', 'H11S', // Far Rockaway-Mott Av
-  'A65', 'A65N', 'A65S', // Ozone Park-Lefferts Blvd
-  // Other major terminals
-  'G22', 'G22N', 'G22S', // Church Av (G)
-  'G26', 'G26N', 'G26S', // Court Sq (G)
-  'L01', 'L01N', 'L01S', // 8 Av (L)
-  'L29', 'L29N', 'L29S', // Canarsie-Rockaway Pkwy (L)
-]);
-
-// Grace period: keep train visible for 5 minutes after API removes it
-const CULL_GRACE_PERIOD_MS = 300000;
+const STALE_DIM_MS = 120_000;    // 2 min — dim to 0.4 opacity
+const STALE_CULL_MS = 600_000;   // 10 min — hard cull (ghost train)
 
 const FADE_DURATION_MS = 300;
 
@@ -163,7 +188,7 @@ export function useTrainMarkers(
   // Load track utilities on mount
   useEffect(() => {
     if (useAlphaBetaGamma) {
-      loadTrackUtils().then(() => {
+      Promise.all([loadTrackUtils(), loadRouteTerminals()]).then(() => {
         trackUtilsLoaded.current = true;
         forceUpdate(n => n + 1);
       });
@@ -299,53 +324,68 @@ export function useTrainMarkers(
     const now = performance.now();
     const nowMs = Date.now();
 
-    // Remove old markers
-    // - If route filter is active and train's route doesn't match: remove immediately
-    // - If train disappeared from API: apply grace period logic
+    // Remove old markers using entry/exit gate model:
+    // - Route filtered out → remove immediately
+    // - At last stop → fade out (service complete)
+    // - Mid-route → staleness gradient (dim → cull)
     trainAnimsRef.current.forEach((anim, tripId) => {
       if (!currentTripIds.has(tripId)) {
-        // If route filter is active, check if this train's route is filtered out
         const routeFilterActive = selectedRouteIds.length > 0;
         const trainRouteMatchesFilter = selectedRouteIds.includes(anim.routeId?.toUpperCase() || '');
         const isFilteredOut = routeFilterActive && !trainRouteMatchesFilter;
 
         if (isFilteredOut) {
-          // User filtered this route out - remove with fade
+          fadeOutAndRemove(tripId, anim.marker, anim.popup, undefined, anim);
+          trainAnimsRef.current.delete(tripId);
+        } else if (isAtLastStop(anim.routeId, anim.nextStopId)) {
           fadeOutAndRemove(tripId, anim.marker, anim.popup, undefined, anim);
           trainAnimsRef.current.delete(tripId);
         } else {
-          // Train disappeared from API - apply grace period
+          // Mid-route — staleness gradient
           const timeSinceUpdate = nowMs - (anim.startTime || 0);
-          const atTerminal = TERMINAL_STOPS.has(anim.nextStopName || '');
-
-          if (atTerminal || timeSinceUpdate > CULL_GRACE_PERIOD_MS) {
+          if (timeSinceUpdate > STALE_CULL_MS) {
             fadeOutAndRemove(tripId, anim.marker, anim.popup, undefined, anim);
             trainAnimsRef.current.delete(tripId);
+          } else if (timeSinceUpdate > STALE_DIM_MS) {
+            anim.marker.getElement().style.opacity = '0.4';
           }
+        }
+      } else {
+        // Train is ACTIVE in API — restore full opacity if dimmed
+        const el = anim.marker.getElement();
+        if (el.style.opacity === '0.4') {
+          el.style.opacity = '1';
         }
       }
     });
 
     trainMotionRef.current.forEach((state, tripId) => {
       if (!currentTripIds.has(tripId)) {
-        // If route filter is active, check if this train's route is filtered out
         const routeFilterActive = selectedRouteIds.length > 0;
         const trainRouteMatchesFilter = selectedRouteIds.includes(state.routeId?.toUpperCase() || '');
         const isFilteredOut = routeFilterActive && !trainRouteMatchesFilter;
 
         if (isFilteredOut) {
-          // User filtered this route out - remove with fade
+          fadeOutAndRemove(tripId, state.marker, state.popup, state);
+          trainMotionRef.current.delete(tripId);
+        } else if (isAtLastStop(state.routeId, state.nextStopId)) {
           fadeOutAndRemove(tripId, state.marker, state.popup, state);
           trainMotionRef.current.delete(tripId);
         } else {
-          // Train disappeared from API - apply grace period
+          // Mid-route — staleness gradient
           const timeSinceUpdate = nowMs - state.lastApiUpdate;
-          const atTerminal = TERMINAL_STOPS.has(state.nextStopId);
-
-          if (atTerminal || timeSinceUpdate > CULL_GRACE_PERIOD_MS) {
+          if (timeSinceUpdate > STALE_CULL_MS) {
             fadeOutAndRemove(tripId, state.marker, state.popup, state);
             trainMotionRef.current.delete(tripId);
+          } else if (timeSinceUpdate > STALE_DIM_MS) {
+            state.marker.getElement().style.opacity = '0.4';
           }
+        }
+      } else {
+        // Train is ACTIVE in API — restore full opacity if dimmed
+        const el = state.marker.getElement();
+        if (el.style.opacity === '0.4') {
+          el.style.opacity = '1';
         }
       }
     });
@@ -363,6 +403,14 @@ export function useTrainMarkers(
           trainMotionRef.current.set(train.tripId, fading.motionState);
         } else if (fading.animState) {
           trainAnimsRef.current.set(train.tripId, fading.animState);
+        }
+      }
+
+      // Entry gate: don't show trains that haven't left their first station
+      // Only gates NEW markers — existing on-track trains are never affected
+      if (!trainMotionRef.current.has(train.tripId) && !trainAnimsRef.current.has(train.tripId)) {
+        if (isAtFirstStop(train.routeId, train.prevStopId ?? '')) {
+          return; // Skip — train hasn't departed first station (use return not continue since we're in forEach)
         }
       }
 
@@ -482,6 +530,7 @@ export function useTrainMarkers(
           existingAnim.toLat = train.lat;
           existingAnim.startTime = now;
           existingAnim.isDwelling = isDwelling;
+          existingAnim.nextStopId = train.nextStopId;
           existingAnim.nextStopName = train.nextStopName;
           existingAnim.eta = train.eta;
           existingAnim.direction = direction;
@@ -901,6 +950,7 @@ function createLegacyMarker(
     startTime: now,
     isDwelling: false,
     routeId: train.routeId,
+    nextStopId: train.nextStopId,
     nextStopName: train.nextStopName,
     eta: train.eta,
     direction,
