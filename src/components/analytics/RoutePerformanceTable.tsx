@@ -47,11 +47,11 @@ function calculateGrade(row: RouteSummary): { grade: string; color: string } | n
   }
 
   // Map score (0-100) to grade
-  if (score >= 90) return { grade: 'A', color: 'text-green-400' };
-  if (score >= 80) return { grade: 'B', color: 'text-blue-400' };
-  if (score >= 70) return { grade: 'C', color: 'text-yellow-400' };
-  if (score >= 60) return { grade: 'D', color: 'text-orange-400' };
-  return { grade: 'F', color: 'text-red-400' };
+  if (score >= 90) return { grade: 'A', color: 'text-zinc-100' };
+  if (score >= 80) return { grade: 'B', color: 'text-zinc-300' };
+  if (score >= 70) return { grade: 'C', color: 'text-amber-400' };
+  if (score >= 60) return { grade: 'D', color: 'text-orange-500' };
+  return { grade: 'F', color: 'text-rose-500' };
 }
 
 export function RoutePerformanceTable() {
@@ -196,10 +196,10 @@ export function RoutePerformanceTable() {
                           <span
                             className={
                               row.onTimePercent >= 80
-                                ? 'text-green-400'
+                                ? 'text-emerald-400'
                                 : row.onTimePercent >= 60
-                                  ? 'text-yellow-400'
-                                  : 'text-red-400'
+                                  ? 'text-amber-400'
+                                  : 'text-rose-500'
                             }
                           >
                             {row.onTimePercent}%
@@ -228,21 +228,21 @@ export function RoutePerformanceTable() {
                       </td>
                       <td className="text-right py-2 px-2">
                         {row.totalBunching > 0 ? (
-                          <span className="text-orange-400">{row.totalBunching}</span>
+                          <span className="text-amber-400">{row.totalBunching}</span>
                         ) : (
                           '0'
                         )}
                       </td>
                       <td className="text-right py-2 px-2">
                         {row.totalGaps > 0 ? (
-                          <span className="text-red-400">{row.totalGaps}</span>
+                          <span className="text-rose-500">{row.totalGaps}</span>
                         ) : (
                           '0'
                         )}
                       </td>
                       <td className="text-right py-2 px-2">
                         {row.totalAlerts > 0 ? (
-                          <span className="text-yellow-400">{row.totalAlerts}</span>
+                          <span className="text-amber-400">{row.totalAlerts}</span>
                         ) : (
                           '0'
                         )}

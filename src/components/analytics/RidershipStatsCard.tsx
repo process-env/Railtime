@@ -13,9 +13,9 @@ const formatTotal = (value: number) => {
 };
 
 const getRecoveryColor = (percent: number) => {
-  if (percent > 80) return 'text-green-400';
-  if (percent >= 60) return 'text-yellow-400';
-  return 'text-red-400';
+  if (percent > 80) return 'text-emerald-400';
+  if (percent >= 60) return 'text-amber-400';
+  return 'text-rose-500';
 };
 
 export function RidershipStatsCard() {
@@ -102,7 +102,7 @@ export function RidershipStatsCard() {
 
           <div>
             <p className="text-xs text-muted-foreground">Daily Fare Revenue</p>
-            <p className="text-lg font-bold text-green-400">
+            <p className="text-lg font-bold text-emerald-400">
               {data.dailyFareRevenue > 0
                 ? `$${(data.dailyFareRevenue / 1_000_000).toFixed(1)}M`
                 : '--'}
