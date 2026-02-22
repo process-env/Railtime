@@ -30,9 +30,6 @@ const SPEED = [
 /** Base wall-clock milliseconds per simulated hour at 1x speed. */
 const BASE_HOUR_MS = 800;
 
-/** Pause duration (ms) after the full 24h cycle before restarting. */
-const PAUSE_MS = 3000;
-
 /** Hours considered rush hour (for visual glow). */
 const RUSH_HOURS = new Set([7, 8, 9, 17, 18]);
 
@@ -69,14 +66,11 @@ export function RidershipAnimationCard({
   const [currentHour, setCurrentHour] = useState(0);
   const [currentMinute, setCurrentMinute] = useState(0);
   const [isRushHour, setIsRushHour] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-
   // Refs for animation loop bookkeeping (no re-renders needed)
   const rafRef = useRef<number>(0);
   const segmentStartRef = useRef(0); // timestamp when current hour segment started
   const hourIndexRef = useRef(0); // which hour (0-23) we're animating through
-  const pauseStartRef = useRef(0); // timestamp when end-of-day pause started
-  const pausedRef = useRef(false);
+  const pausedRef = useRef(false); // true once animation completes
 
   // Keep latest props in a ref so the rAF callback always reads fresh values
   const propsRef = useRef({ dailyRidership, dailyFareRevenue });
@@ -87,16 +81,8 @@ export function RidershipAnimationCard({
   // ------------------------------------------------------------------
 
   const tick = useCallback((timestamp: number) => {
-    // -- End-of-day pause --
+    // -- Animation complete — stop --
     if (pausedRef.current) {
-      if (timestamp - pauseStartRef.current >= PAUSE_MS) {
-        // Restart cycle
-        pausedRef.current = false;
-        hourIndexRef.current = 0;
-        segmentStartRef.current = timestamp;
-        setIsPaused(false);
-      }
-      rafRef.current = requestAnimationFrame(tick);
       return;
     }
 
@@ -128,14 +114,14 @@ export function RidershipAnimationCard({
         hourIndexRef.current = h + 1;
         segmentStartRef.current = timestamp;
       } else {
-        // Reached end of day — enter pause
+        // Reached end of day — stop animation
         pausedRef.current = true;
-        pauseStartRef.current = timestamp;
-        setIsPaused(true);
+        setIsRushHour(false);
         // Snap final display to 11:59 PM at full totals
         setCurrentHour(23);
         setCurrentMinute(59);
         setCurrentRidership(total);
+        return;
       }
     }
 
