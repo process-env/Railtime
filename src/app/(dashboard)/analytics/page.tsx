@@ -223,7 +223,7 @@ export default function AnalyticsPage() {
               {trainHistoryData.length > 0 ? <TrainHistoryChart data={trainHistoryData} /> : <Skeleton className="h-[300px]" />}
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <DelayDistributionChart data={[]} />
+              <DelayDistributionChart />
               {data ? <ArrivalsTimelineChart data={data.timeline} /> : <Skeleton className="h-[300px]" />}
             </div>
           </ErrorBoundary>
