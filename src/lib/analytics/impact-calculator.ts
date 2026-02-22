@@ -10,7 +10,7 @@
 // ============================================================================
 
 // Economic constants
-export const SUBWAY_FARE = 2.90; // MTA single ride fare (2024)
+export const SUBWAY_FARE = 3.00; // MTA single ride fare (2025)
 export const AVG_UBER_FARE = 20.0; // NYC TLC average rideshare fare
 export const AVG_TAXI_FARE = 17.0; // NYC TLC average taxi fare
 export const AVG_DRIVING_COST = 30.0; // Parking ($15) + gas ($8) + tolls ($7) avg

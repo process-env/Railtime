@@ -9,6 +9,6 @@ export interface RidershipResponse {
   latest: RidershipDay | null;
   avgDaily: number; // average over returned days
   totalRidership: number;
-  dailyFareRevenue: number; // latest day ridership x $2.90
+  dailyFareRevenue: number; // latest day ridership x $3.00
   updatedAt: string;
 }

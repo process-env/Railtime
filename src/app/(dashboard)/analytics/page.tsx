@@ -89,7 +89,7 @@ export default function AnalyticsPage() {
             title="Daily Fare Revenue"
             value={dailyFareRevenue != null ? `$${(dailyFareRevenue / 1_000_000).toFixed(1)}M` : '--'}
             icon={DollarSign}
-            description="Estimated from ridership x $2.90"
+            description="Estimated from ridership × $3.00 fare"
           />
         )}
 
