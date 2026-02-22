@@ -15,7 +15,7 @@ import {
   EnvironmentalImpactCard,
   RidershipTrendChart,
   RidershipStatsCard,
-  FeedStatusCard,
+  BestWorstRouteCard,
   AlertStatusCard,
   RouteActivityChart,
   RouteProfileCard,
@@ -183,7 +183,7 @@ export default function AnalyticsPage() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <SystemHealthTimeline />
-              {data ? <FeedStatusCard feeds={data.feedStatus} /> : <Skeleton className="h-[300px]" />}
+              <BestWorstRouteCard />
             </div>
           </ErrorBoundary>
         </TabsContent>
