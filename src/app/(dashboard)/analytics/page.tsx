@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo } from 'react';
+import { format, subDays } from 'date-fns';
 import { Train, Users, Leaf, DollarSign, Activity, RefreshCw, History } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -15,7 +17,7 @@ import {
 } from '@/components/analytics';
 import { useAnalytics } from '@/hooks/use-analytics';
 import { useImpactMetrics } from '@/hooks/use-impact-metrics';
-import { useSystemHealth } from '@/hooks/use-analytics-data';
+import { useDailyRollups } from '@/hooks/use-analytics-data';
 
 export default function AnalyticsPage() {
   const { data, loading, error, refresh } = useAnalytics();
@@ -27,9 +29,18 @@ export default function AnalyticsPage() {
     carbonSavedToday,
     isLoading: impactLoading,
   } = useImpactMetrics();
-  const { data: healthData, loading: healthLoading } = useSystemHealth();
+  const rollupTo = format(new Date(), 'yyyy-MM-dd');
+  const rollupFrom = format(subDays(new Date(), 7), 'yyyy-MM-dd');
+  const { data: rollupData, loading: rollupLoading } = useDailyRollups(rollupFrom, rollupTo);
 
-  const systemOnTime = healthData?.getLatestSystemHealth?.onTimePercent;
+  const systemOnTime = useMemo(() => {
+    const rollups = rollupData?.getDailyRollups ?? [];
+    const onTimes = rollups
+      .map(r => r.onTimePercent)
+      .filter((v): v is number => v != null);
+    if (onTimes.length === 0) return null;
+    return Math.round((onTimes.reduce((a, b) => a + b, 0) / onTimes.length) * 10) / 10;
+  }, [rollupData]);
 
   if (error) {
     return (
@@ -93,14 +104,14 @@ export default function AnalyticsPage() {
           />
         )}
 
-        {healthLoading ? (
+        {rollupLoading ? (
           <Skeleton className="h-[100px]" />
         ) : (
           <StatsCard
             title="System On-Time %"
             value={systemOnTime != null ? `${systemOnTime}%` : '--'}
             icon={Activity}
-            description="Across all routes"
+            description="7-day average across all routes"
           />
         )}
       </div>

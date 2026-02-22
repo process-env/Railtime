@@ -8,13 +8,6 @@ import { BarChart3 } from 'lucide-react';
 import { useDailyRollups } from '@/hooks/use-analytics-data';
 import { getRouteColor } from '@/lib/constants';
 
-const ROUTE_SCHEDULE: Record<string, string> = {
-  'B': 'Weekday only',
-  'W': 'Weekday only',
-  '6X': 'Rush hours only',
-  '7X': 'Rush hours only',
-};
-
 interface RouteSummary {
   routeId: string;
   avgDelay: number | null;
@@ -26,7 +19,6 @@ interface RouteSummary {
   totalBunching: number;
   totalGaps: number;
   days: number;
-  noService?: boolean;
 }
 
 function calculateGrade(row: RouteSummary): { grade: string; color: string } | null {
@@ -136,26 +128,6 @@ export function RoutePerformanceTable() {
       });
     }
 
-    // Add placeholder rows for scheduled-restriction routes missing from data
-    const presentRoutes = new Set(summaries.map((s) => s.routeId));
-    for (const routeId of Object.keys(ROUTE_SCHEDULE)) {
-      if (!presentRoutes.has(routeId)) {
-        summaries.push({
-          routeId,
-          avgDelay: null,
-          onTimePercent: null,
-          avgHeadway: null,
-          medianHeadway: null,
-          peakTrainCount: null,
-          totalAlerts: 0,
-          totalBunching: 0,
-          totalGaps: 0,
-          days: 0,
-          noService: true,
-        });
-      }
-    }
-
     return summaries.sort((a, b) => a.routeId.localeCompare(b.routeId));
   }, [data]);
 
@@ -197,13 +169,7 @@ export function RoutePerformanceTable() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
-                  const allNull =
-                    row.onTimePercent == null &&
-                    row.avgDelay == null &&
-                    row.avgHeadway == null;
-
-                  return (
+                {rows.filter(row => row.onTimePercent != null || row.avgDelay != null || row.avgHeadway != null).map((row) => (
                     <tr key={row.routeId} className="border-b border-border/50 hover:bg-muted/30">
                       <td className="py-2 px-2">
                         <span
@@ -213,85 +179,76 @@ export function RoutePerformanceTable() {
                           {row.routeId}
                         </span>
                       </td>
-                      {allNull ? (
-                        <td colSpan={9} className="py-2 px-2 text-muted-foreground italic">
-                          {ROUTE_SCHEDULE[row.routeId] ?? 'No data'}
-                        </td>
-                      ) : (
-                        <>
-                          <td className="text-center py-2 px-2">
-                            {(() => {
-                              const gradeResult = calculateGrade(row);
-                              return gradeResult ? (
-                                <span className={`font-bold text-lg ${gradeResult.color}`}>
-                                  {gradeResult.grade}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              );
-                            })()}
-                          </td>
-                          <td className="text-right py-2 px-2">
-                            {row.onTimePercent != null ? (
-                              <span
-                                className={
-                                  row.onTimePercent >= 80
-                                    ? 'text-green-400'
-                                    : row.onTimePercent >= 60
-                                      ? 'text-yellow-400'
-                                      : 'text-red-400'
-                                }
-                              >
-                                {row.onTimePercent}%
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </td>
-                          <td className="text-right py-2 px-2">
-                            {row.avgDelay != null
-                              ? `${row.avgDelay}s`
-                              : '-'}
-                          </td>
-                          <td className="text-right py-2 px-2">
-                            {row.avgHeadway != null
-                              ? `${Math.floor(row.avgHeadway / 60)}m ${row.avgHeadway % 60}s`
-                              : '-'}
-                          </td>
-                          <td className="text-right py-2 px-2">
-                            {row.medianHeadway != null
-                              ? `${Math.floor(row.medianHeadway / 60)}m ${row.medianHeadway % 60}s`
-                              : '-'}
-                          </td>
-                          <td className="text-right py-2 px-2">
-                            {row.peakTrainCount ?? '-'}
-                          </td>
-                          <td className="text-right py-2 px-2">
-                            {row.totalBunching > 0 ? (
-                              <span className="text-orange-400">{row.totalBunching}</span>
-                            ) : (
-                              '0'
-                            )}
-                          </td>
-                          <td className="text-right py-2 px-2">
-                            {row.totalGaps > 0 ? (
-                              <span className="text-red-400">{row.totalGaps}</span>
-                            ) : (
-                              '0'
-                            )}
-                          </td>
-                          <td className="text-right py-2 px-2">
-                            {row.totalAlerts > 0 ? (
-                              <span className="text-yellow-400">{row.totalAlerts}</span>
-                            ) : (
-                              '0'
-                            )}
-                          </td>
-                        </>
-                      )}
+                      <td className="text-center py-2 px-2">
+                        {(() => {
+                          const gradeResult = calculateGrade(row);
+                          return gradeResult ? (
+                            <span className={`font-bold text-lg ${gradeResult.color}`}>
+                              {gradeResult.grade}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          );
+                        })()}
+                      </td>
+                      <td className="text-right py-2 px-2">
+                        {row.onTimePercent != null ? (
+                          <span
+                            className={
+                              row.onTimePercent >= 80
+                                ? 'text-green-400'
+                                : row.onTimePercent >= 60
+                                  ? 'text-yellow-400'
+                                  : 'text-red-400'
+                            }
+                          >
+                            {row.onTimePercent}%
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
+                      <td className="text-right py-2 px-2">
+                        {row.avgDelay != null
+                          ? `${row.avgDelay}s`
+                          : '-'}
+                      </td>
+                      <td className="text-right py-2 px-2">
+                        {row.avgHeadway != null
+                          ? `${Math.floor(row.avgHeadway / 60)}m ${row.avgHeadway % 60}s`
+                          : '-'}
+                      </td>
+                      <td className="text-right py-2 px-2">
+                        {row.medianHeadway != null
+                          ? `${Math.floor(row.medianHeadway / 60)}m ${row.medianHeadway % 60}s`
+                          : '-'}
+                      </td>
+                      <td className="text-right py-2 px-2">
+                        {row.peakTrainCount ?? '-'}
+                      </td>
+                      <td className="text-right py-2 px-2">
+                        {row.totalBunching > 0 ? (
+                          <span className="text-orange-400">{row.totalBunching}</span>
+                        ) : (
+                          '0'
+                        )}
+                      </td>
+                      <td className="text-right py-2 px-2">
+                        {row.totalGaps > 0 ? (
+                          <span className="text-red-400">{row.totalGaps}</span>
+                        ) : (
+                          '0'
+                        )}
+                      </td>
+                      <td className="text-right py-2 px-2">
+                        {row.totalAlerts > 0 ? (
+                          <span className="text-yellow-400">{row.totalAlerts}</span>
+                        ) : (
+                          '0'
+                        )}
+                      </td>
                     </tr>
-                  );
-                })}
+                  ))}
               </tbody>
             </table>
           </div>
