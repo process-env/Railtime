@@ -69,6 +69,19 @@ export default function AnalyticsPage() {
     return map;
   }, [data?.routeActivity]);
 
+  // Build TrainHistoryChart data with valid ISO timestamps
+  // (useAnalytics returns locale-formatted time strings like "12:27 PM"
+  //  which are not parseable by new Date(), causing date-fns format() to throw)
+  const trainHistoryData = useMemo(() => {
+    if (!data) return [];
+    const now = new Date();
+    return data.timeline.map((t, i) => ({
+      time: new Date(now.getTime() - (data.timeline.length - 1 - i) * 5 * 60 * 1000).toISOString(),
+      trainCount: t.arrivals,
+      routeCount: 0,
+    }));
+  }, [data]);
+
   if (error) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -199,7 +212,7 @@ export default function AnalyticsPage() {
         <TabsContent value="trips" className="space-y-6 mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <TripCompletionChart />
-            {data ? <TrainHistoryChart data={data.timeline.map(t => ({ time: t.time, trainCount: t.arrivals, routeCount: 0 }))} /> : <Skeleton className="h-[300px]" />}
+            {trainHistoryData.length > 0 ? <TrainHistoryChart data={trainHistoryData} /> : <Skeleton className="h-[300px]" />}
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <DelayDistributionChart data={[]} />
