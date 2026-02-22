@@ -27,6 +27,7 @@ export { EnvironmentalImpactCard } from './EnvironmentalImpactCard';
 // Ridership components
 export { RidershipTrendChart } from './RidershipTrendChart';
 export { RidershipStatsCard } from './RidershipStatsCard';
+export { RidershipAnimationCard } from './RidershipAnimationCard';
 
 // Live dashboard & trip intelligence
 export { TripCompletionChart } from './TripCompletionChart';

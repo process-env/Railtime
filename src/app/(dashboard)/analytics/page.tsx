@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { format, subDays } from 'date-fns';
-import { Train, Users, DollarSign, Activity, RefreshCw } from 'lucide-react';
+import { Train, Activity, RefreshCw } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -28,6 +28,7 @@ import {
   EquipmentStatusCard,
   TripCompletionChart,
   LiveSystemDashboard,
+  RidershipAnimationCard,
 } from '@/components/analytics';
 import { ErrorBoundary, ChartErrorFallback } from '@/components/ErrorBoundary';
 import { useAnalytics, useAlerts } from '@/hooks';
@@ -126,25 +127,14 @@ export default function AnalyticsPage() {
         ) : null}
 
         {impactLoading ? (
-          <Skeleton className="h-[100px]" />
+          <Skeleton className="h-[100px] lg:col-span-2" />
         ) : (
-          <StatsCard
-            title="Daily Ridership"
-            value={dailyRidership != null ? dailyRidership.toLocaleString() : '--'}
-            icon={Users}
-            description="MTA subway system"
-          />
-        )}
-
-        {impactLoading ? (
-          <Skeleton className="h-[100px]" />
-        ) : (
-          <StatsCard
-            title="Daily Fare Revenue"
-            value={dailyFareRevenue != null ? `$${(dailyFareRevenue / 1_000_000).toFixed(1)}M` : '--'}
-            icon={DollarSign}
-            description="Estimated from ridership"
-          />
+          <div className="lg:col-span-2">
+            <RidershipAnimationCard
+              dailyRidership={dailyRidership ?? 0}
+              dailyFareRevenue={dailyFareRevenue ?? 0}
+            />
+          </div>
         )}
 
         {rollupLoading ? (
