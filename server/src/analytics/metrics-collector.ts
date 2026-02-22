@@ -268,6 +268,7 @@ export function collectMetrics(
   const now = Date.now();
   const expireAt = Math.floor(now / 1000) + TTL_DAYS * 86400;
   const tripStartEvents: EventRecord[] = [];
+  let startEventCounter = 0;
 
   for (const train of trains) {
     const direction = getDirection(train.nextStopId) ?? 'X';
@@ -287,7 +288,7 @@ export function collectMetrics(
 
       tripStartEvents.push({
         pk: `TRIP_START#${train.routeId}#${direction}`,
-        timestamp: now,
+        timestamp: now + startEventCounter++,
         tripId: train.tripId,
         expireAt,
       });
@@ -390,6 +391,7 @@ export function collectRemovedTrips(feedGroupId: string, removedTripIds: string[
   const now = Date.now();
   const expireAt = Math.floor(now / 1000) + TTL_DAYS * 86400;
   const events: EventRecord[] = [];
+  let endEventCounter = 0;
 
   for (const tripId of removedTripIds) {
     const trip = activeTripMap.get(tripId);
@@ -399,7 +401,7 @@ export function collectRemovedTrips(feedGroupId: string, removedTripIds: string[
 
     events.push({
       pk: `TRIP_END#${trip.routeId}#${trip.direction}`,
-      timestamp: now,
+      timestamp: now + endEventCounter++,
       tripId,
       description: JSON.stringify({
         routeId: trip.routeId,
@@ -652,12 +654,13 @@ async function flush(): Promise<void> {
   // Clean up stale trips (not seen for 30 min — likely dead/completed trains)
   const STALE_TRIP_THRESHOLD = 30 * 60 * 1000;
   const staleNow = Date.now();
+  let staleEventCounter = 0;
   for (const [tripId, trip] of activeTripMap) {
     if (staleNow - trip.lastSeenAt > STALE_TRIP_THRESHOLD) {
       const duration = Math.round((trip.lastSeenAt - trip.startedAt) / 1000);
       delayEvents.push({
         pk: `TRIP_END#${trip.routeId}#${trip.direction}`,
-        timestamp: staleNow,
+        timestamp: staleNow + staleEventCounter++,
         tripId,
         description: JSON.stringify({
           routeId: trip.routeId,
