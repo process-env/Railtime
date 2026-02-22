@@ -51,6 +51,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - DYNAMODB_TABLE_METRICS=${DYNAMODB_TABLE_METRICS:-railtime-metrics}
       - DYNAMODB_TABLE_EVENTS=${DYNAMODB_TABLE_EVENTS:-railtime-events}
+      - DYNAMODB_TABLE_ROLLUPS=${DYNAMODB_TABLE_ROLLUPS:-railtime-rollups}
       - DATA_DIR=/app/public/data
     depends_on:
       neo4j:

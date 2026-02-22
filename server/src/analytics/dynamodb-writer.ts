@@ -9,6 +9,7 @@ import { getDynamoClient } from '../lib/dynamodb.js';
 
 const METRICS_TABLE = process.env.DYNAMODB_TABLE_METRICS ?? 'railtime-metrics';
 const EVENTS_TABLE = process.env.DYNAMODB_TABLE_EVENTS ?? 'railtime-events';
+const ROLLUPS_TABLE = process.env.DYNAMODB_TABLE_ROLLUPS ?? 'railtime-rollups';
 const BATCH_SIZE = 25; // DynamoDB limit
 const MAX_RETRIES = 3;
 
@@ -18,6 +19,7 @@ const MAX_RETRIES = 3;
 
 export interface MetricRecord {
   routeId: string;
+  direction: string | null; // "N" or "S"
   timestamp: number;
   trainCount: number;
   avgDelaySeconds: number | null;
@@ -39,6 +41,22 @@ export interface EventRecord {
   severity?: string;
   description?: string;
   expireAt: number;
+}
+
+export interface RollupRecord {
+  routeId: string;
+  date: string; // "YYYY-MM-DD#direction" e.g. "2026-02-22#N"
+  direction: string | null; // "N" or "S" (also stored as attribute for easier reads)
+  avgDelay: number | null;
+  onTimePercent: number | null;
+  peakTrainCount: number;
+  totalAlerts: number;
+  avgHeadway: number | null;
+  medianHeadway: number | null;
+  totalBunching: number;
+  totalGaps: number;
+  totalSkippedStops: number;
+  totalTrips: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,4 +132,9 @@ export async function writeMetrics(records: MetricRecord[]): Promise<void> {
 export async function writeEvents(records: EventRecord[]): Promise<void> {
   if (records.length === 0) return;
   await batchWrite(EVENTS_TABLE, records as unknown as Record<string, unknown>[]);
+}
+
+export async function writeRollups(records: RollupRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  await batchWrite(ROLLUPS_TABLE, records as unknown as Record<string, unknown>[]);
 }

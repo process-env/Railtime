@@ -11,6 +11,7 @@ import { setupAlertsNamespace } from "./namespaces/alerts.js";
 import { setupArrivalsNamespace } from "./namespaces/arrivals.js";
 import type { FeedEntity } from "./types.js";
 import { collectMetrics, collectAlertEvent, startCollector, stopCollector } from "./analytics/metrics-collector.js";
+import { initScheduleLookup, stopScheduleLookup } from "./analytics/schedule-lookup.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -103,6 +104,9 @@ async function shutdown(signal: string) {
   // Flush remaining analytics data
   await stopCollector();
 
+  // Stop schedule rebuild timer
+  stopScheduleLookup();
+
   io.close(() => {
     console.log("[server] Socket.IO server closed");
     httpServer.close(async () => {
@@ -141,6 +145,9 @@ httpServer.listen(PORT, async () => {
   const onTrainUpdate = setupTrainsNamespace(io);
   const onAlertUpdate = setupAlertsNamespace(io);
   setupArrivalsNamespace(io);
+
+  // Load GTFS static schedule for delay computation (before feed loop starts)
+  await initScheduleLookup();
 
   // Start ingestion loops
   startFeedLoop((feedGroupId, trains, removedTripIds, entities, latencyMs, status) => {

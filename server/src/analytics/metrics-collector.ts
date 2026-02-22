@@ -11,10 +11,13 @@ import type { TrainPosition, FeedEntity, ServiceAlert } from '../types.js';
 import {
   writeMetrics,
   writeEvents,
+  writeRollups,
   type MetricRecord,
   type EventRecord,
+  type RollupRecord,
 } from './dynamodb-writer.js';
 import { getDynamoClient } from '../lib/dynamodb.js';
+import { computeDeviation } from './schedule-lookup.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -23,6 +26,29 @@ import { getDynamoClient } from '../lib/dynamodb.js';
 const FLUSH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const TTL_DAYS = 7;
 const ON_TIME_THRESHOLD_SECONDS = 300; // MTA standard: < 5 min = on time
+const BUNCHING_THRESHOLD_SECONDS = 120; // < 2 min = bunched
+const GAP_THRESHOLD_SECONDS = 900; // > 15 min = service gap
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getDirection(stopId: string): string | null {
+  if (!stopId) return null;
+  const last = stopId.charAt(stopId.length - 1);
+  if (last === 'N') return 'N';
+  if (last === 'S') return 'S';
+  return null;
+}
+
+function median(arr: number[]): number | null {
+  if (arr.length === 0) return null;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
 
 // ---------------------------------------------------------------------------
 // In-memory buffer
@@ -34,10 +60,30 @@ interface RouteBuffer {
   headways: number[];
   feedLatencies: number[];
   feedStatuses: string[];
+  bunchingCount: number;
+  gapCount: number;
 }
 
 const buffers = new Map<string, RouteBuffer>();
 let flushTimer: ReturnType<typeof setInterval> | null = null;
+let firstDelayLogDone = false;
+
+interface DailyAccum {
+  date: string;
+  direction: string; // "N", "S", or "X"
+  allDelays: number[];
+  allHeadways: number[];
+  peakTrainCount: number;
+  totalAlerts: number;
+  totalBunching: number;
+  totalGaps: number;
+  totalSkippedStops: number;
+  flushCount: number;
+  totalTrains: number;
+}
+
+const dailyAccum = new Map<string, DailyAccum>();
+let dailyAccumDate = '';
 
 function getOrCreateBuffer(routeId: string): RouteBuffer {
   let buf = buffers.get(routeId);
@@ -48,10 +94,40 @@ function getOrCreateBuffer(routeId: string): RouteBuffer {
       headways: [],
       feedLatencies: [],
       feedStatuses: [],
+      bunchingCount: 0,
+      gapCount: 0,
     };
     buffers.set(routeId, buf);
   }
   return buf;
+}
+
+function getUtcDateString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getOrCreateDailyAccum(compositeKey: string, date: string): DailyAccum {
+  let accum = dailyAccum.get(compositeKey);
+  if (!accum) {
+    const direction = compositeKey.includes('#')
+      ? compositeKey.split('#')[1]
+      : 'X';
+    accum = {
+      date,
+      direction,
+      allDelays: [],
+      allHeadways: [],
+      peakTrainCount: 0,
+      totalAlerts: 0,
+      totalBunching: 0,
+      totalGaps: 0,
+      totalSkippedStops: 0,
+      flushCount: 0,
+      totalTrains: 0,
+    };
+    dailyAccum.set(compositeKey, accum);
+  }
+  return accum;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,49 +147,79 @@ export function collectMetrics(
 ): void {
   if (!getDynamoClient()) return;
 
-  // Group trains by routeId
-  const byRoute = new Map<string, TrainPosition[]>();
+  // Group trains by routeId#direction
+  const byRouteDir = new Map<string, TrainPosition[]>();
   for (const t of trains) {
-    const arr = byRoute.get(t.routeId) || [];
+    const dir = getDirection(t.nextStopId) ?? 'X';
+    const key = `${t.routeId}#${dir}`;
+    const arr = byRouteDir.get(key) || [];
     arr.push(t);
-    byRoute.set(t.routeId, arr);
+    byRouteDir.set(key, arr);
   }
 
-  // Group entities by routeId for delay extraction
-  const entitiesByRoute = new Map<string, FeedEntity[]>();
+  // Group entities by routeId#direction for delay extraction
+  const entitiesByRouteDir = new Map<string, FeedEntity[]>();
   for (const e of entities) {
     if (!e.routeId) continue;
-    const arr = entitiesByRoute.get(e.routeId) || [];
+    const firstStop = e.stopUpdates[0]?.stopId;
+    const dir = firstStop ? (getDirection(firstStop) ?? 'X') : 'X';
+    const key = `${e.routeId}#${dir}`;
+    const arr = entitiesByRouteDir.get(key) || [];
     arr.push(e);
-    entitiesByRoute.set(e.routeId, arr);
+    entitiesByRouteDir.set(key, arr);
   }
 
-  // Accumulate per route
-  for (const [routeId, routeTrains] of byRoute) {
-    const buf = getOrCreateBuffer(routeId);
+  // Accumulate per route+direction
+  for (const [key, routeTrains] of byRouteDir) {
+    const buf = getOrCreateBuffer(key); // Use composite key
     buf.trainCounts.push(routeTrains.length);
     buf.feedLatencies.push(latencyMs);
     buf.feedStatuses.push(status);
 
-    // Extract delays from stop updates
-    const routeEntities = entitiesByRoute.get(routeId) || [];
+    // Compute real delays via schedule deviation (Phase 3)
+    const routeEntities = entitiesByRouteDir.get(key) || [];
     for (const entity of routeEntities) {
+      if (!entity.tripId) continue;
       for (const su of entity.stopUpdates) {
-        if (su.arrival?.delay != null) {
-          buf.delays.push(su.arrival.delay);
+        if (!su.stopId || !su.arrival?.time) continue;
+        const deviation = computeDeviation(entity.tripId, su.stopId, su.arrival.time);
+        if (deviation !== null) {
+          buf.delays.push(deviation);
         }
       }
     }
 
-    // Calculate headways (inter-train gap at next stops)
-    if (routeTrains.length >= 2) {
-      const sorted = [...routeTrains].sort(
-        (a, b) => a.nextTimeMs - b.nextTimeMs,
-      );
-      for (let i = 1; i < sorted.length; i++) {
-        const gap = (sorted[i].nextTimeMs - sorted[i - 1].nextTimeMs) / 1000;
+    // Calculate headway: gap between successive trains at the same stop
+    const byStop = new Map<string, number[]>();
+    for (const t of routeTrains) {
+      if (!t.nextStopId || !t.nextTimeMs) continue;
+      const times = byStop.get(t.nextStopId) || [];
+      times.push(t.nextTimeMs);
+      byStop.set(t.nextStopId, times);
+    }
+    for (const times of byStop.values()) {
+      if (times.length < 2) continue;
+      times.sort((a, b) => a - b);
+      for (let i = 1; i < times.length; i++) {
+        const gap = (times[i] - times[i - 1]) / 1000;
         if (gap > 0 && gap < 3600) {
           buf.headways.push(gap);
+          if (gap < BUNCHING_THRESHOLD_SECONDS) {
+            buf.bunchingCount++;
+          } else if (gap > GAP_THRESHOLD_SECONDS) {
+            buf.gapCount++;
+          }
+        }
+      }
+    }
+
+    // Detect skipped stops (Phase 5)
+    for (const entity of routeEntities) {
+      for (const su of entity.stopUpdates) {
+        if (su.scheduleRelationship === 'SKIPPED') {
+          const today = getUtcDateString();
+          const accum = getOrCreateDailyAccum(key, today);
+          accum.totalSkippedStops++;
         }
       }
     }
@@ -135,11 +241,15 @@ export function collectAlertEvent(alerts: ServiceAlert[]): void {
   const expireAt = Math.floor(now / 1000) + TTL_DAYS * 86400;
   const events: EventRecord[] = [];
 
+  const seenPks = new Set<string>();
   for (const alert of alerts) {
-    if (alert.severity === 'critical' || alert.severity === 'warning') {
+    if (alert.affectedRoutes.length > 0) {
       for (const routeId of alert.affectedRoutes) {
+        const pk = `ALERT#${routeId}`;
+        if (seenPks.has(pk)) continue;
+        seenPks.add(pk);
         events.push({
-          pk: `ALERT#${routeId}`,
+          pk,
           timestamp: now,
           alertId: alert.id,
           severity: alert.severity,
@@ -158,6 +268,18 @@ export function collectAlertEvent(alerts: ServiceAlert[]): void {
       ),
     );
   }
+
+  const today = getUtcDateString();
+  for (const alert of alerts) {
+    if (alert.affectedRoutes.length > 0) {
+      for (const routeId of alert.affectedRoutes) {
+        for (const dir of ['N', 'S']) {
+          const accum = getOrCreateDailyAccum(`${routeId}#${dir}`, today);
+          accum.totalAlerts++;
+        }
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -174,11 +296,21 @@ async function flush(): Promise<void> {
   if (buffers.size === 0) return;
 
   const now = Date.now();
+  const today = getUtcDateString();
   const expireAt = Math.floor(now / 1000) + TTL_DAYS * 86400;
   const metrics: MetricRecord[] = [];
   const delayEvents: EventRecord[] = [];
 
-  for (const [routeId, buf] of buffers) {
+  // Reset daily accumulator on day change
+  if (dailyAccumDate !== today) {
+    dailyAccum.clear();
+    dailyAccumDate = today;
+  }
+
+  for (const [key, buf] of buffers) {
+    const [routeId, direction] = key.split('#');
+    const dirValue = direction === 'X' ? null : direction;
+
     const trainCount =
       buf.trainCounts.length > 0
         ? Math.round(
@@ -211,7 +343,8 @@ async function flush(): Promise<void> {
         : 'unknown';
 
     metrics.push({
-      routeId,
+      routeId: dirValue ? `${routeId}#${dirValue}` : routeId,
+      direction: dirValue,
       timestamp: now,
       trainCount,
       avgDelaySeconds:
@@ -224,17 +357,102 @@ async function flush(): Promise<void> {
       expireAt,
     });
 
-    // Create one delay event per route if significant delays observed
+    // Create one delay event per route+direction if significant delays observed
     const significantDelays = buf.delays.filter(
       (d) => d > ON_TIME_THRESHOLD_SECONDS,
     );
     if (significantDelays.length > 0) {
       delayEvents.push({
-        pk: `DELAY#${routeId}`,
+        pk: `DELAY#${routeId}${dirValue ? `#${dirValue}` : ''}`,
         timestamp: now,
         delaySeconds: Math.round(Math.max(...significantDelays)),
         expireAt,
       });
+    }
+
+    // Generate bunching events (Phase 5)
+    if (buf.bunchingCount > 0) {
+      delayEvents.push({
+        pk: `BUNCH#${routeId}${dirValue ? `#${dirValue}` : ''}`,
+        timestamp: now,
+        description: `${buf.bunchingCount} bunching instances detected`,
+        expireAt,
+      });
+    }
+
+    // Generate gap events (Phase 5)
+    if (buf.gapCount > 0) {
+      delayEvents.push({
+        pk: `GAP#${routeId}${dirValue ? `#${dirValue}` : ''}`,
+        timestamp: now,
+        description: `${buf.gapCount} service gaps detected`,
+        expireAt,
+      });
+    }
+
+    // Merge into daily accumulator (keyed by composite key)
+    const accum = getOrCreateDailyAccum(key, today);
+    accum.allDelays.push(...buf.delays);
+    accum.allHeadways.push(...buf.headways);
+    accum.peakTrainCount = Math.max(accum.peakTrainCount, trainCount);
+    accum.totalBunching += buf.bunchingCount;
+    accum.totalGaps += buf.gapCount;
+    accum.flushCount++;
+    accum.totalTrains += trainCount;
+  }
+
+  // Compute daily rollup records from accumulator
+  const rollups: RollupRecord[] = [];
+  for (const [key, accum] of dailyAccum) {
+    const [routeId, direction] = key.split('#');
+    const dirValue = direction === 'X' ? null : direction;
+    // Encode direction in SK: "YYYY-MM-DD#N" or just "YYYY-MM-DD" if no direction
+    const dateSk = dirValue ? `${today}#${dirValue}` : today;
+
+    const rollupAvgDelay = mean(accum.allDelays);
+    const rollupOnTimeCount = accum.allDelays.filter(
+      (d) => Math.abs(d) < ON_TIME_THRESHOLD_SECONDS,
+    ).length;
+    const rollupOnTimePercent =
+      accum.allDelays.length > 0
+        ? (rollupOnTimeCount / accum.allDelays.length) * 100
+        : null;
+
+    const avgHeadwayVal = mean(accum.allHeadways);
+    const medianHeadwayVal = median(accum.allHeadways);
+
+    rollups.push({
+      routeId,
+      date: dateSk,
+      direction: dirValue,
+      avgDelay:
+        rollupAvgDelay != null
+          ? Math.round(rollupAvgDelay * 10) / 10
+          : null,
+      onTimePercent:
+        rollupOnTimePercent != null
+          ? Math.round(rollupOnTimePercent * 10) / 10
+          : null,
+      peakTrainCount: accum.peakTrainCount,
+      totalAlerts: accum.totalAlerts,
+      avgHeadway:
+        avgHeadwayVal != null ? Math.round(avgHeadwayVal) : null,
+      medianHeadway:
+        medianHeadwayVal != null ? Math.round(medianHeadwayVal) : null,
+      totalBunching: accum.totalBunching,
+      totalGaps: accum.totalGaps,
+      totalSkippedStops: accum.totalSkippedStops,
+      totalTrips: accum.totalTrains,
+    });
+  }
+
+  // Delay diagnostic log (Phase 3) — fires once on first flush with delay data
+  if (!firstDelayLogDone) {
+    const totalDelays = metrics.reduce((sum, m) => sum + (m.avgDelaySeconds != null ? 1 : 0), 0);
+    const delayValues = metrics.filter(m => m.avgDelaySeconds != null).map(m => m.avgDelaySeconds);
+    if (delayValues.length > 0) {
+      console.log(`[metrics-collector] Delay diagnostic: ${totalDelays}/${metrics.length} routes have delay data, sample values: ${delayValues.slice(0, 5).join(', ')}s`);
+      firstDelayLogDone = true;
     }
   }
 
@@ -245,10 +463,17 @@ async function flush(): Promise<void> {
     await Promise.all([
       writeMetrics(metrics),
       delayEvents.length > 0 ? writeEvents(delayEvents) : Promise.resolve(),
+      rollups.length > 0 ? writeRollups(rollups) : Promise.resolve(),
     ]);
+    const anomalyEvents = delayEvents.filter(e => e.pk.startsWith('BUNCH#') || e.pk.startsWith('GAP#')).length;
     console.log(
-      `[metrics-collector] Flushed ${metrics.length} metrics, ${delayEvents.length} delay events`,
+      `[metrics-collector] Flushed ${metrics.length} metrics, ${delayEvents.length} events (${anomalyEvents} anomalies)`,
     );
+    if (rollups.length > 0) {
+      console.log(
+        `[metrics-collector] Updated daily rollups for ${rollups.length} routes`,
+      );
+    }
   } catch (err) {
     console.error(
       '[metrics-collector] Flush error:',
