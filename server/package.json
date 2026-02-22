@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.995.0",
-    "@aws-sdk/client-dynamodb": "^3.750.0",
-    "@aws-sdk/lib-dynamodb": "^3.750.0",
+    "@aws-sdk/client-dynamodb": "^3.995.0",
+    "@aws-sdk/lib-dynamodb": "^3.995.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "axios": "^1.13.2",
     "cors": "^2.8.5",

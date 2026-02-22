@@ -10,10 +10,11 @@ import {
   InvokeModelCommand,
 } from '@aws-sdk/client-bedrock-runtime';
 import { getCache, setCache } from '../lib/redis.js';
+import { CACHE_KEYS } from '../lib/cache-keys.js';
+import type { AlertSummary } from '../types.js';
 import type { MetricRecord, EventRecord, RollupRecord } from './dynamodb-writer.js';
 
 const MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
-const CACHE_KEY = 'transit-analysis:latest';
 const CACHE_TTL_SECONDS = 600; // 10 minutes (2x flush interval for safety)
 
 let bedrockClient: BedrockRuntimeClient | null = null;
@@ -31,8 +32,8 @@ export interface AnalysisInput {
   metrics: MetricRecord[];
   rollups: RollupRecord[];
   events: EventRecord[];
-  alerts: Array<{ id: string; headerText: string; affectedRoutes: string[] }>;
-  systemHealth: MetricRecord | null;
+  alerts: AlertSummary[];
+  systemHealth: (MetricRecord & { alertCount?: number | null }) | null;
 }
 
 export interface AnalysisResult {
@@ -129,7 +130,7 @@ function buildPrompt(input: AnalysisInput): string {
     totalTrains: input.systemHealth.trainCount,
     feedStatus: input.systemHealth.feedStatus,
     avgLatencyMs: input.systemHealth.feedLatencyMs,
-    alerts: (input.systemHealth as unknown as Record<string, unknown>).alertCount ?? 0,
+    alerts: input.systemHealth?.alertCount ?? 0,
   } : null;
 
   // Alert text
@@ -187,6 +188,7 @@ export async function generateAnalysis(input: AnalysisInput): Promise<void> {
       body: JSON.stringify({
         anthropic_version: 'bedrock-2023-05-31',
         max_tokens: 1024,
+        temperature: 0.3,
         messages: [
           { role: 'user', content: prompt },
         ],
@@ -210,7 +212,7 @@ export async function generateAnalysis(input: AnalysisInput): Promise<void> {
       model: MODEL_ID,
     };
 
-    await setCache(CACHE_KEY, result, CACHE_TTL_SECONDS);
+    await setCache(CACHE_KEYS.TRANSIT_ANALYSIS, result, CACHE_TTL_SECONDS);
     console.log(`[transit-analyzer] Analysis generated and cached (${analysisText.length} chars)`);
   } catch (err) {
     console.error(

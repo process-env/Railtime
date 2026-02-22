@@ -16,6 +16,7 @@ export const queryKeys = {
   allFeedStatus: ['feed-status'] as const,
   historical: (hours: number) => ['historical', hours] as const,
   analytics: ['analytics'] as const,
+  transitAnalysis: ['transit-analysis'] as const,
 
   // Schedule (GTFS static - very long cache)
   schedule: ['schedule'] as const,

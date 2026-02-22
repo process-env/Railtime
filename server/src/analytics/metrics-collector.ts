@@ -7,7 +7,7 @@
  * Graceful degradation: if DynamoDB is not configured, all functions
  * are no-ops.
  */
-import type { TrainPosition, FeedEntity, ServiceAlert } from '../types.js';
+import type { TrainPosition, FeedEntity, ServiceAlert, AlertSummary } from '../types.js';
 import {
   writeMetrics,
   writeEvents,
@@ -88,7 +88,7 @@ let flushTimer: ReturnType<typeof setInterval> | null = null;
 let firstDelayLogDone = false;
 let flushing = false;
 let activeAlertCount = 0;
-let latestAlertDetails: Array<{ id: string; headerText: string; affectedRoutes: string[] }> = [];
+let latestAlertDetails: AlertSummary[] = [];
 
 // ---------------------------------------------------------------------------
 // Trip lifecycle tracking
@@ -746,16 +746,21 @@ async function flush(): Promise<void> {
       );
     }
 
-    // Generate AI transit analysis with the data we just flushed
-    generateAnalysis({
-      metrics,
-      rollups,
-      events: delayEvents,
-      alerts: latestAlertDetails,
-      systemHealth: healthRecord,
-    }).catch(err =>
-      console.error('[metrics-collector] Transit analysis generation failed:', err instanceof Error ? err.message : err),
-    );
+    // Generate AI transit analysis — skip if no active trains
+    const routeMetrics = metrics.filter(m => m.routeId !== 'SYSTEM_HEALTH');
+    if (routeMetrics.length > 0 && routeMetrics.some(m => m.trainCount > 0)) {
+      generateAnalysis({
+        metrics,
+        rollups,
+        events: delayEvents,
+        alerts: latestAlertDetails,
+        systemHealth: healthRecord,
+      }).catch(err =>
+        console.error('[metrics-collector] Transit analysis generation failed:', err instanceof Error ? err.message : err),
+      );
+    } else {
+      console.log('[metrics-collector] Skipping analysis — no active trains');
+    }
   } catch (err) {
     console.error(
       '[metrics-collector] Flush error:',

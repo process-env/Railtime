@@ -86,3 +86,13 @@ export interface FeedGroupConfig {
   url: string;
   routes: string[];
 }
+
+// ---------------------------------------------------------------------------
+// Shared analytics types
+// ---------------------------------------------------------------------------
+
+export interface AlertSummary {
+  id: string;
+  headerText: string;
+  affectedRoutes: string[];
+}

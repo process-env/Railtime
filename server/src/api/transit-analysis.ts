@@ -9,8 +9,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getCache } from '../lib/redis.js';
-
-const CACHE_KEY = 'transit-analysis:latest';
+import { CACHE_KEYS } from '../lib/cache-keys.js';
 
 function sendJson(
   res: ServerResponse,
@@ -30,7 +29,7 @@ export async function handleTransitAnalysis(
       analysis: string;
       generatedAt: string;
       model: string;
-    }>(CACHE_KEY);
+    }>(CACHE_KEYS.TRANSIT_ANALYSIS);
 
     if (cached) {
       sendJson(res, 200, cached);
