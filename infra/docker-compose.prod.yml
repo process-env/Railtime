@@ -77,8 +77,8 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
       - NODE_ENV=production
       - AWS_REGION=${AWS_REGION:-us-east-1}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      # AWS credentials provided via EC2 instance profile (railtime-ec2-dynamodb role)
+      # Do NOT set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY — blocks SDK metadata fallback
       - DYNAMODB_TABLE_METRICS=${DYNAMODB_TABLE_METRICS:-railtime-metrics}
       - DYNAMODB_TABLE_EVENTS=${DYNAMODB_TABLE_EVENTS:-railtime-events}
       - DYNAMODB_TABLE_ROLLUPS=${DYNAMODB_TABLE_ROLLUPS:-railtime-rollups}
