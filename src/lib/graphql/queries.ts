@@ -56,6 +56,17 @@ export const GET_LATEST_SYSTEM_HEALTH = gql`
   }
 `;
 
+export const GET_TRIP_EVENTS = gql`
+  query GetTripEvents($routeId: String!, $direction: String, $from: AWSTimestamp!, $to: AWSTimestamp!, $eventType: String) {
+    getTripEvents(routeId: $routeId, direction: $direction, from: $from, to: $to, eventType: $eventType) {
+      pk
+      timestamp
+      tripId
+      description
+    }
+  }
+`;
+
 export const ON_ROUTE_METRIC_UPDATE = gql`
   subscription OnRouteMetricUpdate($routeId: String) {
     onRouteMetricUpdate(routeId: $routeId) {

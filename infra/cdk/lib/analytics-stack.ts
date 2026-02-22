@@ -277,6 +277,20 @@ export class AnalyticsStack extends cdk.Stack {
       ),
     });
 
+    // Events data source (for trip events)
+    const eventsDS = api.addDynamoDbDataSource('EventsDS', eventsTable);
+
+    eventsDS.createResolver('GetTripEvents', {
+      typeName: 'Query',
+      fieldName: 'getTripEvents',
+      requestMappingTemplate: appsync.MappingTemplate.fromFile(
+        path.join(__dirname, '..', 'appsync', 'resolvers', 'getTripEvents.req.vtl'),
+      ),
+      responseMappingTemplate: appsync.MappingTemplate.fromFile(
+        path.join(__dirname, '..', 'appsync', 'resolvers', 'getTripEvents.res.vtl'),
+      ),
+    });
+
     // None data source for mutations (subscriptions backed by local resolver)
     const noneDS = api.addNoneDataSource('NoneDS');
     noneDS.createResolver('PublishRouteMetric', {

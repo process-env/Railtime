@@ -2,9 +2,10 @@
 
 import { useMemo } from 'react';
 import { format, subDays } from 'date-fns';
-import { Train, Users, Leaf, DollarSign, Activity, RefreshCw, History } from 'lucide-react';
+import { Train, Users, DollarSign, Activity, RefreshCw } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   StatsCard,
   DelayTrendChart,
@@ -14,10 +15,24 @@ import {
   EnvironmentalImpactCard,
   RidershipTrendChart,
   RidershipStatsCard,
+  FeedStatusCard,
+  AlertStatusCard,
+  RouteActivityChart,
+  RouteProfileCard,
+  ServiceSpanCard,
+  ScheduleFrequencyCard,
+  BusiestStationsCard,
+  TrainHistoryChart,
+  DelayDistributionChart,
+  ArrivalsTimelineChart,
+  EquipmentStatusCard,
+  TripCompletionChart,
+  LiveSystemDashboard,
 } from '@/components/analytics';
 import { useAnalytics } from '@/hooks/use-analytics';
 import { useImpactMetrics } from '@/hooks/use-impact-metrics';
 import { useDailyRollups } from '@/hooks/use-analytics-data';
+import { useScheduleAnalytics } from '@/hooks/use-schedule-analytics';
 
 export default function AnalyticsPage() {
   const { data, loading, error, refresh } = useAnalytics();
@@ -32,6 +47,7 @@ export default function AnalyticsPage() {
   const rollupTo = format(new Date(), 'yyyy-MM-dd');
   const rollupFrom = format(subDays(new Date(), 7), 'yyyy-MM-dd');
   const { data: rollupData, loading: rollupLoading } = useDailyRollups(rollupFrom, rollupTo);
+  const { data: scheduleData, isLoading: scheduleLoading } = useScheduleAnalytics();
 
   const systemOnTime = useMemo(() => {
     const rollups = rollupData?.getDailyRollups ?? [];
@@ -41,6 +57,17 @@ export default function AnalyticsPage() {
     if (onTimes.length === 0) return null;
     return Math.round((onTimes.reduce((a, b) => a + b, 0) / onTimes.length) * 10) / 10;
   }, [rollupData]);
+
+  // Build activeTrains map for RouteProfileCard
+  const activeTrains = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (data?.routeActivity) {
+      for (const r of data.routeActivity) {
+        map[r.routeId] = r.trainCount;
+      }
+    }
+    return map;
+  }, [data?.routeActivity]);
 
   if (error) {
     return (
@@ -69,7 +96,7 @@ export default function AnalyticsPage() {
         </Button>
       </div>
 
-      {/* Stats Grid */}
+      {/* Stats Grid (always visible above tabs) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {loading ? (
           <Skeleton className="h-[100px]" />
@@ -100,7 +127,7 @@ export default function AnalyticsPage() {
             title="Daily Fare Revenue"
             value={dailyFareRevenue != null ? `$${(dailyFareRevenue / 1_000_000).toFixed(1)}M` : '--'}
             icon={DollarSign}
-            description="Estimated from ridership × $3.00 fare"
+            description="Estimated from ridership"
           />
         )}
 
@@ -116,44 +143,94 @@ export default function AnalyticsPage() {
         )}
       </div>
 
-      {/* Environmental & Economic Impact */}
-      <div className="border-t pt-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Leaf className="h-5 w-5" />
-          <h2 className="text-xl font-semibold">Environmental & Economic Impact</h2>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <EnvironmentalImpactCard impact={environmental} loading={impactLoading} />
-          <EconomicImpactCard impact={economic} loading={impactLoading} />
-        </div>
-      </div>
+      {/* Tabbed Dashboard */}
+      <Tabs defaultValue="overview">
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="overview">System Overview</TabsTrigger>
+          <TabsTrigger value="routes">Route Performance</TabsTrigger>
+          <TabsTrigger value="ridership">Ridership & Impact</TabsTrigger>
+          <TabsTrigger value="trips">Trip Intelligence</TabsTrigger>
+          <TabsTrigger value="schedule">Schedule & Stations</TabsTrigger>
+        </TabsList>
 
-      {/* Ridership Intelligence */}
-      <div className="border-t pt-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="h-5 w-5" />
-          <h2 className="text-xl font-semibold">Ridership Intelligence</h2>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <RidershipTrendChart />
-          <RidershipStatsCard />
-        </div>
-      </div>
+        {/* Tab 1: System Overview */}
+        <TabsContent value="overview" className="space-y-6 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <LiveSystemDashboard />
+            <AlertStatusCard />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <SystemHealthTimeline />
+            {data ? <FeedStatusCard feeds={data.feedStatus} /> : <Skeleton className="h-[300px]" />}
+          </div>
+        </TabsContent>
 
-      {/* Historical Performance */}
-      <div className="border-t pt-6">
-        <div className="flex items-center gap-2 mb-4">
-          <History className="h-5 w-5" />
-          <h2 className="text-xl font-semibold">Historical Performance</h2>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <DelayTrendChart />
-          <SystemHealthTimeline />
-        </div>
-        <div className="mt-6">
+        {/* Tab 2: Route Performance */}
+        <TabsContent value="routes" className="space-y-6 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <DelayTrendChart />
+            {data ? <RouteActivityChart data={data.routeActivity} /> : <Skeleton className="h-[300px]" />}
+          </div>
           <RoutePerformanceTable />
-        </div>
-      </div>
+          {scheduleData ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <RouteProfileCard routeStats={scheduleData.routeStats} activeTrains={activeTrains} />
+              <ServiceSpanCard routeStats={scheduleData.routeStats} serviceDay={scheduleData.serviceDay} />
+            </div>
+          ) : scheduleLoading ? (
+            <Skeleton className="h-[300px]" />
+          ) : null}
+        </TabsContent>
+
+        {/* Tab 3: Ridership & Impact */}
+        <TabsContent value="ridership" className="space-y-6 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <EnvironmentalImpactCard impact={environmental} loading={impactLoading} />
+            <EconomicImpactCard impact={economic} loading={impactLoading} />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <RidershipTrendChart />
+            <RidershipStatsCard />
+          </div>
+          <EquipmentStatusCard />
+        </TabsContent>
+
+        {/* Tab 4: Trip Intelligence */}
+        <TabsContent value="trips" className="space-y-6 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TripCompletionChart />
+            {data ? <TrainHistoryChart data={data.timeline.map(t => ({ time: t.time, trainCount: t.arrivals, routeCount: 0 }))} /> : <Skeleton className="h-[300px]" />}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <DelayDistributionChart data={[]} />
+            {data ? <ArrivalsTimelineChart data={data.timeline} /> : <Skeleton className="h-[300px]" />}
+          </div>
+        </TabsContent>
+
+        {/* Tab 5: Schedule & Stations */}
+        <TabsContent value="schedule" className="space-y-6 mt-4">
+          {scheduleData ? (
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ScheduleFrequencyCard routeStats={scheduleData.routeStats} serviceDay={scheduleData.serviceDay} />
+                <BusiestStationsCard stations={scheduleData.busiestStations} />
+              </div>
+              {data ? (
+                <RouteActivityChart data={data.routeActivity} />
+              ) : null}
+            </>
+          ) : scheduleLoading ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Skeleton className="h-[400px]" />
+              <Skeleton className="h-[400px]" />
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              Schedule data unavailable
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

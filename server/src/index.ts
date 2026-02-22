@@ -10,7 +10,7 @@ import { setupTrainsNamespace } from "./namespaces/trains.js";
 import { setupAlertsNamespace } from "./namespaces/alerts.js";
 import { setupArrivalsNamespace } from "./namespaces/arrivals.js";
 import type { FeedEntity } from "./types.js";
-import { collectMetrics, collectAlertEvent, startCollector, stopCollector } from "./analytics/metrics-collector.js";
+import { collectMetrics, collectAlertEvent, collectRemovedTrips, startCollector, stopCollector } from "./analytics/metrics-collector.js";
 import { initScheduleLookup, stopScheduleLookup } from "./analytics/schedule-lookup.js";
 
 // ---------------------------------------------------------------------------
@@ -159,6 +159,9 @@ httpServer.listen(PORT, async () => {
 
     // Forward to analytics collector (DynamoDB persistence)
     collectMetrics(feedGroupId, trains, entities as FeedEntity[], latencyMs, status);
+
+    // Track trip lifecycle (TRIP_END events for removed trains)
+    collectRemovedTrips(feedGroupId, removedTripIds);
   });
 
   startAlertLoop((alerts) => {

@@ -68,6 +68,23 @@ const buffers = new Map<string, RouteBuffer>();
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let firstDelayLogDone = false;
 
+// ---------------------------------------------------------------------------
+// Trip lifecycle tracking
+// ---------------------------------------------------------------------------
+
+interface ActiveTrip {
+  tripId: string;
+  routeId: string;
+  direction: string;
+  startedAt: number;      // epoch ms
+  lastSeenAt: number;     // epoch ms
+  stopsServed: number;    // count of unique stop IDs visited
+  lastStopId: string;
+  visitedStops: Set<string>; // track unique stops
+}
+
+const activeTripMap = new Map<string, ActiveTrip>();
+
 interface DailyAccum {
   date: string;
   direction: string; // "N", "S", or "X"
@@ -242,6 +259,58 @@ export function collectMetrics(
       }
     }
   }
+
+  // -------------------------------------------------------------------------
+  // Trip lifecycle tracking — detect new trips and update existing ones
+  // -------------------------------------------------------------------------
+
+  const now = Date.now();
+  const expireAt = Math.floor(now / 1000) + TTL_DAYS * 86400;
+  const tripStartEvents: EventRecord[] = [];
+
+  for (const train of trains) {
+    const direction = getDirection(train.nextStopId) ?? 'X';
+
+    if (!activeTripMap.has(train.tripId)) {
+      // New trip — create entry and queue TRIP_START event
+      activeTripMap.set(train.tripId, {
+        tripId: train.tripId,
+        routeId: train.routeId,
+        direction,
+        startedAt: now,
+        lastSeenAt: now,
+        stopsServed: train.nextStopId ? 1 : 0,
+        lastStopId: train.nextStopId,
+        visitedStops: train.nextStopId ? new Set([train.nextStopId]) : new Set(),
+      });
+
+      tripStartEvents.push({
+        pk: `TRIP_START#${train.routeId}#${direction}`,
+        timestamp: now,
+        tripId: train.tripId,
+        expireAt,
+      });
+    } else {
+      // Existing trip — update tracking state
+      const trip = activeTripMap.get(train.tripId)!;
+      trip.lastSeenAt = now;
+      trip.lastStopId = train.nextStopId;
+      if (train.nextStopId) {
+        trip.visitedStops.add(train.nextStopId);
+        trip.stopsServed = trip.visitedStops.size;
+      }
+    }
+  }
+
+  // Write TRIP_START events immediately (low volume, time-sensitive)
+  if (tripStartEvents.length > 0) {
+    writeEvents(tripStartEvents).catch((err) =>
+      console.error(
+        '[metrics-collector] Failed to write trip start events:',
+        err instanceof Error ? err.message : err,
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +371,57 @@ export function collectAlertEvent(alerts: ServiceAlert[]): void {
         }
       }
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Removed-trip tracking
+// ---------------------------------------------------------------------------
+
+/**
+ * Called when the feed loop detects trains that disappeared from a feed group.
+ * Logs TRIP_END events for trips that were being tracked in the activeTripMap.
+ */
+export function collectRemovedTrips(feedGroupId: string, removedTripIds: string[]): void {
+  if (!getDynamoClient()) return;
+  if (removedTripIds.length === 0) return;
+
+  const now = Date.now();
+  const expireAt = Math.floor(now / 1000) + TTL_DAYS * 86400;
+  const events: EventRecord[] = [];
+
+  for (const tripId of removedTripIds) {
+    const trip = activeTripMap.get(tripId);
+    if (!trip) continue;
+
+    const duration = Math.round((trip.lastSeenAt - trip.startedAt) / 1000); // seconds
+
+    events.push({
+      pk: `TRIP_END#${trip.routeId}#${trip.direction}`,
+      timestamp: now,
+      tripId,
+      description: JSON.stringify({
+        routeId: trip.routeId,
+        direction: trip.direction,
+        duration,
+        stopsServed: trip.visitedStops.size,
+        startedAt: trip.startedAt,
+        endedAt: now,
+      }),
+      expireAt,
+    });
+
+    activeTripMap.delete(tripId);
+  }
+
+  if (events.length > 0) {
+    writeEvents(events).catch((err) =>
+      console.error(
+        '[metrics-collector] Failed to write trip end events:',
+        err instanceof Error ? err.message : err,
+      ),
+    );
+    console.log(`[metrics-collector] TRIP_END: ${events.length} trips completed (feed: ${feedGroupId})`);
   }
 }
 
@@ -520,6 +640,31 @@ async function flush(): Promise<void> {
     if (delayValues.length > 0) {
       console.log(`[metrics-collector] Delay diagnostic: ${totalDelays}/${metrics.length} routes have delay data, sample values: ${delayValues.slice(0, 5).join(', ')}s`);
       firstDelayLogDone = true;
+    }
+  }
+
+  // Clean up stale trips (not seen for 30 min — likely dead/completed trains)
+  const STALE_TRIP_THRESHOLD = 30 * 60 * 1000;
+  const staleNow = Date.now();
+  for (const [tripId, trip] of activeTripMap) {
+    if (staleNow - trip.lastSeenAt > STALE_TRIP_THRESHOLD) {
+      const duration = Math.round((trip.lastSeenAt - trip.startedAt) / 1000);
+      delayEvents.push({
+        pk: `TRIP_END#${trip.routeId}#${trip.direction}`,
+        timestamp: staleNow,
+        tripId,
+        description: JSON.stringify({
+          routeId: trip.routeId,
+          direction: trip.direction,
+          duration,
+          stopsServed: trip.visitedStops.size,
+          startedAt: trip.startedAt,
+          endedAt: trip.lastSeenAt, // use last seen, not now
+          stale: true,
+        }),
+        expireAt,
+      });
+      activeTripMap.delete(tripId);
     }
   }
 

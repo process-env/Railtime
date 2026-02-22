@@ -44,6 +44,17 @@ export interface SystemHealth {
   onTimePercent: number | null;
 }
 
+export interface TripEvent {
+  pk: string;
+  timestamp: number;
+  tripId: string | null;
+  description: string | null;
+}
+
+export interface GetTripEventsData {
+  getTripEvents: TripEvent[];
+}
+
 export interface GetRouteMetricsData {
   getRouteMetrics: RouteMetric[];
 }

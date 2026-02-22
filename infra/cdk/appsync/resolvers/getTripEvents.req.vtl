@@ -1,0 +1,26 @@
+#set($eventType = "TRIP_END")
+#if($ctx.args.eventType)
+  #set($eventType = $ctx.args.eventType)
+#end
+
+#if($ctx.args.direction)
+  #set($pk = "${eventType}#${ctx.args.routeId}#${ctx.args.direction}")
+#else
+  #set($pk = "${eventType}#${ctx.args.routeId}#N")
+#end
+{
+  "version": "2017-02-28",
+  "operation": "Query",
+  "query": {
+    "expression": "pk = :pk AND #ts BETWEEN :from AND :to",
+    "expressionNames": {
+      "#ts": "timestamp"
+    },
+    "expressionValues": {
+      ":pk": $util.dynamodb.toDynamoDBJson($pk),
+      ":from": $util.dynamodb.toDynamoDBJson($ctx.args.from),
+      ":to": $util.dynamodb.toDynamoDBJson($ctx.args.to)
+    }
+  },
+  "scanIndexForward": true
+}

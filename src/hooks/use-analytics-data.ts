@@ -6,12 +6,14 @@ import {
   GET_DAILY_ROLLUPS,
   GET_LATEST_SYSTEM_HEALTH,
   ON_ROUTE_METRIC_UPDATE,
+  GET_TRIP_EVENTS,
 } from '@/lib/graphql/queries';
 import type {
   GetRouteMetricsData,
   GetDailyRollupsData,
   GetLatestSystemHealthData,
   OnRouteMetricUpdateData,
+  GetTripEventsData,
 } from '@/lib/graphql/types';
 
 /**
@@ -58,5 +60,21 @@ export function useSystemHealth() {
 export function useRouteMetricSubscription(routeId?: string) {
   return useSubscription<OnRouteMetricUpdateData>(ON_ROUTE_METRIC_UPDATE, {
     variables: { routeId: routeId ?? null },
+  });
+}
+
+/**
+ * Fetch trip events (TRIP_START/TRIP_END) for a route within a time range.
+ */
+export function useTripEvents(routeId: string, from: number, to: number, direction?: string, eventType?: string) {
+  return useQuery<GetTripEventsData>(GET_TRIP_EVENTS, {
+    variables: {
+      routeId,
+      direction: direction ?? null,
+      from,
+      to,
+      eventType: eventType ?? null,
+    },
+    skip: !routeId || !from || !to,
   });
 }

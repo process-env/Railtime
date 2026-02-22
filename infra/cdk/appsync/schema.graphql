@@ -43,10 +43,18 @@ type SystemHealth {
   alertCount: Int!
 }
 
+type TripEvent {
+  pk: String!
+  timestamp: AWSTimestamp!
+  tripId: String
+  description: String
+}
+
 type Query {
   getRouteMetrics(routeId: String!, direction: String, from: AWSTimestamp!, to: AWSTimestamp!): [RouteMetric!]!
   getDailyRollups(routeId: String, direction: String, from: String!, to: String!): [DailyRollup!]!
   getLatestSystemHealth: SystemHealth
+  getTripEvents(routeId: String!, direction: String, from: AWSTimestamp!, to: AWSTimestamp!, eventType: String): [TripEvent!]!
 }
 
 type Subscription {
