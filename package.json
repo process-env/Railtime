@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "npm run build:data && next build",
-    "build:data": "npx tsx scripts/build-duration-matrix.ts",
+    "build:data": "npx tsx scripts/build-route-segments.ts && npx tsx scripts/build-transfer-graph.ts && npx tsx scripts/build-station-routes.ts && npx tsx scripts/build-duration-matrix.ts",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest",

@@ -29,6 +29,7 @@ import {
   TripCompletionChart,
   LiveSystemDashboard,
 } from '@/components/analytics';
+import { ErrorBoundary, ChartErrorFallback } from '@/components/ErrorBoundary';
 import { useAnalytics } from '@/hooks/use-analytics';
 import { useImpactMetrics } from '@/hooks/use-impact-metrics';
 import { useDailyRollups } from '@/hooks/use-analytics-data';
@@ -168,80 +169,90 @@ export default function AnalyticsPage() {
 
         {/* Tab 1: System Overview */}
         <TabsContent value="overview" className="space-y-6 mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <LiveSystemDashboard />
-            <AlertStatusCard />
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <SystemHealthTimeline />
-            {data ? <FeedStatusCard feeds={data.feedStatus} /> : <Skeleton className="h-[300px]" />}
-          </div>
+          <ErrorBoundary fallback={<ChartErrorFallback />}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <LiveSystemDashboard />
+              <AlertStatusCard />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <SystemHealthTimeline />
+              {data ? <FeedStatusCard feeds={data.feedStatus} /> : <Skeleton className="h-[300px]" />}
+            </div>
+          </ErrorBoundary>
         </TabsContent>
 
         {/* Tab 2: Route Performance */}
         <TabsContent value="routes" className="space-y-6 mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <DelayTrendChart />
-            {data ? <RouteActivityChart data={data.routeActivity} /> : <Skeleton className="h-[300px]" />}
-          </div>
-          <RoutePerformanceTable />
-          {scheduleData ? (
+          <ErrorBoundary fallback={<ChartErrorFallback />}>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <RouteProfileCard routeStats={scheduleData.routeStats} activeTrains={activeTrains} />
-              <ServiceSpanCard routeStats={scheduleData.routeStats} serviceDay={scheduleData.serviceDay} />
+              <DelayTrendChart />
+              {data ? <RouteActivityChart data={data.routeActivity} /> : <Skeleton className="h-[300px]" />}
             </div>
-          ) : scheduleLoading ? (
-            <Skeleton className="h-[300px]" />
-          ) : null}
+            <RoutePerformanceTable />
+            {scheduleData ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <RouteProfileCard routeStats={scheduleData.routeStats} activeTrains={activeTrains} />
+                <ServiceSpanCard routeStats={scheduleData.routeStats} serviceDay={scheduleData.serviceDay} />
+              </div>
+            ) : scheduleLoading ? (
+              <Skeleton className="h-[300px]" />
+            ) : null}
+          </ErrorBoundary>
         </TabsContent>
 
         {/* Tab 3: Ridership & Impact */}
         <TabsContent value="ridership" className="space-y-6 mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <EnvironmentalImpactCard impact={environmental} loading={impactLoading} />
-            <EconomicImpactCard impact={economic} loading={impactLoading} />
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <RidershipTrendChart />
-            <RidershipStatsCard />
-          </div>
-          <EquipmentStatusCard />
+          <ErrorBoundary fallback={<ChartErrorFallback />}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <EnvironmentalImpactCard impact={environmental} loading={impactLoading} />
+              <EconomicImpactCard impact={economic} loading={impactLoading} />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <RidershipTrendChart />
+              <RidershipStatsCard />
+            </div>
+            <EquipmentStatusCard />
+          </ErrorBoundary>
         </TabsContent>
 
         {/* Tab 4: Trip Intelligence */}
         <TabsContent value="trips" className="space-y-6 mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <TripCompletionChart />
-            {trainHistoryData.length > 0 ? <TrainHistoryChart data={trainHistoryData} /> : <Skeleton className="h-[300px]" />}
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <DelayDistributionChart data={[]} />
-            {data ? <ArrivalsTimelineChart data={data.timeline} /> : <Skeleton className="h-[300px]" />}
-          </div>
+          <ErrorBoundary fallback={<ChartErrorFallback />}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <TripCompletionChart />
+              {trainHistoryData.length > 0 ? <TrainHistoryChart data={trainHistoryData} /> : <Skeleton className="h-[300px]" />}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <DelayDistributionChart data={[]} />
+              {data ? <ArrivalsTimelineChart data={data.timeline} /> : <Skeleton className="h-[300px]" />}
+            </div>
+          </ErrorBoundary>
         </TabsContent>
 
         {/* Tab 5: Schedule & Stations */}
         <TabsContent value="schedule" className="space-y-6 mt-4">
-          {scheduleData ? (
-            <>
+          <ErrorBoundary fallback={<ChartErrorFallback />}>
+            {scheduleData ? (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <ScheduleFrequencyCard routeStats={scheduleData.routeStats} serviceDay={scheduleData.serviceDay} />
+                  <BusiestStationsCard stations={scheduleData.busiestStations} />
+                </div>
+                {data ? (
+                  <RouteActivityChart data={data.routeActivity} />
+                ) : null}
+              </>
+            ) : scheduleLoading ? (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <ScheduleFrequencyCard routeStats={scheduleData.routeStats} serviceDay={scheduleData.serviceDay} />
-                <BusiestStationsCard stations={scheduleData.busiestStations} />
+                <Skeleton className="h-[400px]" />
+                <Skeleton className="h-[400px]" />
               </div>
-              {data ? (
-                <RouteActivityChart data={data.routeActivity} />
-              ) : null}
-            </>
-          ) : scheduleLoading ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Skeleton className="h-[400px]" />
-              <Skeleton className="h-[400px]" />
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              Schedule data unavailable
-            </div>
-          )}
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                Schedule data unavailable
+              </div>
+            )}
+          </ErrorBoundary>
         </TabsContent>
       </Tabs>
     </div>

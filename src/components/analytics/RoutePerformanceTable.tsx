@@ -136,6 +136,10 @@ export function RoutePerformanceTable() {
     return Math.max(...rows.map(r => r.days));
   }, [rows]);
 
+  const filteredRows = useMemo(() => {
+    return rows.filter(row => row.onTimePercent != null || row.avgDelay != null || row.avgHeadway != null);
+  }, [rows]);
+
   return (
     <Card>
       <CardHeader>
@@ -169,7 +173,7 @@ export function RoutePerformanceTable() {
                 </tr>
               </thead>
               <tbody>
-                {rows.filter(row => row.onTimePercent != null || row.avgDelay != null || row.avgHeadway != null).map((row) => (
+                {filteredRows.map((row) => (
                     <tr key={row.routeId} className="border-b border-border/50 hover:bg-muted/30">
                       <td className="py-2 px-2">
                         <span

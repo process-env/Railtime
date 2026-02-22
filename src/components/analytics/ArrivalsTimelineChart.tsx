@@ -1,6 +1,16 @@
 'use client';
 
 import { Clock, Database } from 'lucide-react';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
 
 interface TimelineData {
   time: string;
@@ -36,20 +46,6 @@ export function ArrivalsTimelineChart({ data }: ArrivalsTimelineChartProps) {
       </div>
     );
   }
-
-  // Original chart code - kept for when historical data is re-enabled
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const recharts = require('recharts');
-  const {
-    LineChart,
-    Line,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer,
-    Legend,
-  } = recharts;
 
   return (
     <ResponsiveContainer width="100%" height={300}>

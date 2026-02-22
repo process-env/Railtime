@@ -49,14 +49,16 @@ export async function GET(request: NextRequest) {
 
     // Parse optional params
     const alternativesParam = searchParams.get('alternatives');
-    const alternatives = alternativesParam
-      ? Math.min(5, Math.max(1, parseInt(alternativesParam, 10)))
-      : 3;
+    const alternativesRaw = alternativesParam !== null ? parseInt(alternativesParam, 10) : NaN;
+    const alternatives = Number.isNaN(alternativesRaw)
+      ? 3
+      : Math.min(5, Math.max(1, alternativesRaw));
 
     const maxTransfersParam = searchParams.get('maxTransfers');
-    const maxTransfers = maxTransfersParam
-      ? Math.min(5, Math.max(0, parseInt(maxTransfersParam, 10)))
-      : 3;
+    const maxTransfersRaw = maxTransfersParam !== null ? parseInt(maxTransfersParam, 10) : NaN;
+    const maxTransfers = Number.isNaN(maxTransfersRaw)
+      ? 3
+      : Math.min(5, Math.max(0, maxTransfersRaw));
 
     const avoidRoutesParam = searchParams.get('avoidRoutes');
     const avoidRoutes = avoidRoutesParam

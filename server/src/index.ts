@@ -3,6 +3,7 @@ import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { getPubClient, getSubClient, closeAll as closeRedis } from "./lib/redis.js";
 import { closeDriver as closeNeo4j } from "./lib/neo4j.js";
+import { closeDynamoClient } from "./lib/dynamodb.js";
 import { startFeedLoop, stopFeedLoop } from "./ingestion/feed-loop.js";
 import { startAlertLoop, stopAlertLoop } from "./ingestion/alert-loop.js";
 import { broadcastArrivals } from "./namespaces/arrivals.js";
@@ -113,7 +114,7 @@ async function shutdown(signal: string) {
       console.log("[server] HTTP server closed");
 
       // Close external connections
-      await Promise.allSettled([closeRedis(), closeNeo4j()]);
+      await Promise.allSettled([closeRedis(), closeNeo4j(), closeDynamoClient()]);
       console.log("[server] External connections closed");
 
       process.exit(0);

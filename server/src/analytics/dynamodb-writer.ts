@@ -113,8 +113,12 @@ async function batchWrite(
     }
 
     if (retries >= MAX_RETRIES) {
-      console.warn(
-        `[dynamodb-writer] ${tableName}: ${unprocessed[tableName]?.length ?? 0} items still unprocessed after ${MAX_RETRIES} retries`,
+      const remaining = unprocessed[tableName]?.length ?? 0;
+      console.error(
+        `[dynamodb-writer] ${tableName}: ${remaining} items still unprocessed after ${MAX_RETRIES} retries — escalating`,
+      );
+      throw new Error(
+        `[dynamodb-writer] ${tableName}: ${remaining} items unprocessed after ${MAX_RETRIES} retries`,
       );
     }
   }

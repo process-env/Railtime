@@ -67,6 +67,7 @@ interface RouteBuffer {
 const buffers = new Map<string, RouteBuffer>();
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let firstDelayLogDone = false;
+let flushing = false;
 
 // ---------------------------------------------------------------------------
 // Trip lifecycle tracking
@@ -437,6 +438,11 @@ function mean(arr: number[]): number | null {
 async function flush(): Promise<void> {
   if (!getDynamoClient()) return;
   if (buffers.size === 0) return;
+  if (flushing) {
+    console.warn('[metrics-collector] Flush already in progress, skipping');
+    return;
+  }
+  flushing = true;
 
   const now = Date.now();
   const today = getNycDateString();
@@ -691,6 +697,8 @@ async function flush(): Promise<void> {
       '[metrics-collector] Flush error:',
       err instanceof Error ? err.message : err,
     );
+  } finally {
+    flushing = false;
   }
 }
 

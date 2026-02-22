@@ -216,7 +216,13 @@ function formatTimestamp(ts: number | null | undefined): string | null {
 
 async function decodeFeed(buffer: ArrayBuffer): Promise<FeedEntity[]> {
   const schema = await loadProtoSchema();
-  const message = schema.decode(new Uint8Array(buffer));
+  let message;
+  try {
+    message = schema.decode(new Uint8Array(buffer));
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Malformed protobuf buffer (${buffer.byteLength} bytes): ${errMsg}`);
+  }
   const obj = schema.toObject(message, {
     longs: Number,
     enums: String,

@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 interface TrainHistoryData {
   time: string;
@@ -27,7 +28,7 @@ export function TrainHistoryChart({ data, compact = false }: TrainHistoryChartPr
 
   if (!data || data.length === 0) {
     return (
-      <div className={`h-[${height}px] flex items-center justify-center text-muted-foreground`}>
+      <div className={cn(compact ? 'h-[180px]' : 'h-[300px]', 'flex items-center justify-center text-muted-foreground')}>
         <p className={compact ? 'text-sm' : ''}>No historical data yet. Start collecting to see trends.</p>
       </div>
     );

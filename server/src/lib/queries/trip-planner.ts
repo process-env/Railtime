@@ -54,7 +54,7 @@ export interface TripPlan {
 const FIND_PATHS_QUERY = `
   MATCH (o:StationRoute) WHERE o.stationId = $originId
   MATCH (d:StationRoute) WHERE d.stationId = $destId
-  MATCH path = shortestPath((o)-[:CONNECTS_TO*..30]->(d))
+  MATCH path = shortestPath((o)-[:CONNECTS_TO*..50]->(d))
   WITH path,
     reduce(cost = 0, r IN relationships(path) | cost + r.duration) AS totalCost,
     size([r IN relationships(path) WHERE r.type = 'transfer']) AS transferCount
@@ -72,7 +72,7 @@ const FIND_PATHS_QUERY = `
 const FIND_PATHS_AVOID_QUERY = `
   MATCH (o:StationRoute) WHERE o.stationId = $originId
   MATCH (d:StationRoute) WHERE d.stationId = $destId
-  MATCH path = shortestPath((o)-[:CONNECTS_TO*..30]->(d))
+  MATCH path = shortestPath((o)-[:CONNECTS_TO*..50]->(d))
   WHERE ALL(r IN relationships(path) WHERE
     CASE WHEN r.type = 'ride'
     THEN NOT r.routeId IN $avoidRoutes

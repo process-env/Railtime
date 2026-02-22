@@ -8,6 +8,7 @@ import {
   Legend,
   Tooltip,
 } from 'recharts';
+import { cn } from '@/lib/utils';
 
 interface DelayData {
   bucket: string;
@@ -42,7 +43,7 @@ export function DelayDistributionChart({ data, compact = false }: DelayDistribut
 
   if (!data || data.length === 0) {
     return (
-      <div className={`h-[${height}px] flex items-center justify-center text-muted-foreground`}>
+      <div className={cn(compact ? 'h-[180px]' : 'h-[250px]', 'flex items-center justify-center text-muted-foreground')}>
         <p className={compact ? 'text-sm' : ''}>No delay data collected yet</p>
       </div>
     );

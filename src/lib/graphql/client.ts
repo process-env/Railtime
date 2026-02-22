@@ -34,7 +34,10 @@ const httpLink = new HttpLink({
 
 const link = APPSYNC_URL
   ? authLink.concat(httpLink)
-  : noopLink;
+  : (() => {
+      console.warn('[Apollo] AppSync not configured (NEXT_PUBLIC_APPSYNC_URL not set) — analytics queries will return empty data');
+      return noopLink;
+    })();
 
 export const apolloClient = new ApolloClient({
   link,

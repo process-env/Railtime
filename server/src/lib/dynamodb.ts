@@ -29,3 +29,12 @@ export function getDynamoClient(): DynamoDBDocumentClient | null {
   console.log('[dynamodb] Client initialized');
   return docClient;
 }
+
+export function closeDynamoClient(): void {
+  if (docClient) {
+    docClient.destroy();
+    docClient = null;
+    initialized = false;
+    console.log('[dynamodb] Client closed');
+  }
+}

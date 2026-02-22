@@ -140,8 +140,6 @@ export class AnalyticsStack extends cdk.Stack {
 
     analyticsBucket.grantReadWrite(glueRole);
     rollupsTable.grantWriteData(glueRole);
-    metricsTable.grantReadData(glueRole);
-    eventsTable.grantReadData(glueRole);
 
     const glueJob = new glue.CfnJob(this, 'DailyRollupJob', {
       name: 'railtime-daily-rollup',

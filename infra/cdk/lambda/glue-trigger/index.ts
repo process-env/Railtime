@@ -1,7 +1,8 @@
 import { GlueClient, StartJobRunCommand } from '@aws-sdk/client-glue';
 
 const glue = new GlueClient({});
-const JOB_NAME = process.env.GLUE_JOB_NAME!;
+const JOB_NAME = process.env.GLUE_JOB_NAME;
+if (!JOB_NAME) throw new Error('Missing required environment variable: GLUE_JOB_NAME');
 
 export async function handler(): Promise<{ statusCode: number; body: string }> {
   try {

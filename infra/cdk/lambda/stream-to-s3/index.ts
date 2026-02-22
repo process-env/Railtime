@@ -5,7 +5,8 @@ import { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { randomUUID } from 'crypto';
 
 const s3 = new S3Client({});
-const BUCKET = process.env.S3_BUCKET!;
+const BUCKET = process.env.S3_BUCKET;
+if (!BUCKET) throw new Error('Missing required environment variable: S3_BUCKET');
 
 interface GroupedRecords {
   metrics: Record<string, unknown>[];
@@ -78,5 +79,11 @@ export async function handler(event: DynamoDBStreamEvent): Promise<void> {
     console.log(`[stream-to-s3] Writing ${records.length} ${type} records to s3://${BUCKET}/${key}`);
   }
 
-  await Promise.all(uploads);
+  try {
+    await Promise.all(uploads);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[stream-to-s3] Failed to write to S3: ${message}`);
+    throw err; // Re-throw so Lambda retries from DynamoDB stream
+  }
 }

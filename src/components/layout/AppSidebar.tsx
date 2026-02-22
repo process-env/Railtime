@@ -34,6 +34,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { usePrefetchAnalytics, usePrefetchMap, useAlerts } from '@/hooks';
 import { RouteFilter } from './RouteFilter';
 import { SubwayMapModal } from './SubwayMapModal';
@@ -176,7 +177,9 @@ export function AppSidebar() {
           <SheetHeader className="sr-only">
             <SheetTitle>Trip Planner</SheetTitle>
           </SheetHeader>
-          <TripPlannerPanel className="h-full" />
+          <ErrorBoundary>
+            <TripPlannerPanel className="h-full" />
+          </ErrorBoundary>
         </SheetContent>
       </Sheet>
     </Sidebar>
