@@ -12,7 +12,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +36,18 @@ interface AnalysisSection {
 
 /** Auto-refresh interval: 10 minutes in ms */
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+
+/** Module-level cache — survives component remounts (tab switches) */
+let cachedResult: TransitAnalysisResponse | null = null;
+let cacheTimestamp = 0;
+const CACHE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
+
+function getCachedResult(): TransitAnalysisResponse | null {
+  if (cachedResult && Date.now() - cacheTimestamp < CACHE_MAX_AGE_MS) {
+    return cachedResult;
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -147,54 +158,23 @@ function formatTime(isoDate: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Loading skeleton
-// ---------------------------------------------------------------------------
-
-function TransitAnalysisSkeleton() {
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2">
-          <Brain className="h-5 w-5" />
-          AI Transit Analysis
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-4 w-2/3" />
-        <Skeleton className="h-12 w-full" />
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function TransitAnalysisCard() {
-  const [data, setData] = useState<TransitAnalysisResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<TransitAnalysisResponse | null>(getCachedResult);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchAnalysis = useCallback(async (isRefresh = false) => {
+  const fetchAnalysis = useCallback(async () => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
     if (!wsUrl) {
       setError('WebSocket server URL not configured');
-      setLoading(false);
       return;
     }
 
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+    setRefreshing(true);
 
     try {
       const res = await fetch(`${wsUrl}/api/transit-analysis`);
@@ -202,22 +182,33 @@ export function TransitAnalysisCard() {
         throw new Error(`Server responded with ${res.status}`);
       }
       const json: TransitAnalysisResponse = await res.json();
+
+      // Update module-level cache
+      cachedResult = json;
+      cacheTimestamp = Date.now();
+
       setData(json);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch analysis');
+      // Only set error if we have no cached data to show
+      if (!cachedResult) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch analysis');
+      }
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
-  // Initial fetch + auto-refresh every 10 minutes
+  // Fetch if cache is stale/empty + auto-refresh every 10 minutes
   useEffect(() => {
-    fetchAnalysis(false);
+    // Only fetch if cache is stale or empty
+    const cached = getCachedResult();
+    if (!cached) {
+      fetchAnalysis();
+    }
 
     intervalRef.current = setInterval(() => {
-      fetchAnalysis(true);
+      fetchAnalysis();
     }, REFRESH_INTERVAL_MS);
 
     return () => {
@@ -227,12 +218,7 @@ export function TransitAnalysisCard() {
     };
   }, [fetchAnalysis]);
 
-  // --- Loading state ---
-  if (loading) {
-    return <TransitAnalysisSkeleton />;
-  }
-
-  // --- Error state ---
+  // --- Error or no-data state (never a skeleton) ---
   if (error || !data) {
     return (
       <Card>
@@ -240,18 +226,23 @@ export function TransitAnalysisCard() {
           <CardTitle className="flex items-center gap-2">
             <Brain className="h-5 w-5" />
             AI Transit Analysis
+            {refreshing && (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-1" />
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
             <Brain className="h-8 w-8 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
-              Transit analysis unavailable
+              {error ? 'Transit analysis unavailable' : 'Analysis generating — updates every 5 minutes'}
             </p>
-            <Button variant="outline" size="sm" onClick={() => fetchAnalysis(false)}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
-            </Button>
+            {error && (
+              <Button variant="outline" size="sm" onClick={() => fetchAnalysis()}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
