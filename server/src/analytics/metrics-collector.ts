@@ -18,6 +18,7 @@ import {
 } from './dynamodb-writer.js';
 import { getDynamoClient } from '../lib/dynamodb.js';
 import { computeDeviation } from './schedule-lookup.js';
+import { generateAnalysis } from './transit-analyzer.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -87,6 +88,7 @@ let flushTimer: ReturnType<typeof setInterval> | null = null;
 let firstDelayLogDone = false;
 let flushing = false;
 let activeAlertCount = 0;
+let latestAlertDetails: Array<{ id: string; headerText: string; affectedRoutes: string[] }> = [];
 
 // ---------------------------------------------------------------------------
 // Trip lifecycle tracking
@@ -345,6 +347,11 @@ export function collectMetrics(
 export function collectAlertEvent(alerts: ServiceAlert[]): void {
   // Always track count even if DynamoDB is not configured (used by SYSTEM_HEALTH)
   activeAlertCount = alerts.length;
+  latestAlertDetails = alerts.map(a => ({
+    id: a.id,
+    headerText: a.headerText,
+    affectedRoutes: a.affectedRoutes,
+  }));
   if (!getDynamoClient()) return;
 
   const now = Date.now();
@@ -738,6 +745,17 @@ async function flush(): Promise<void> {
         `[metrics-collector] Updated daily rollups for ${rollups.length} routes`,
       );
     }
+
+    // Generate AI transit analysis with the data we just flushed
+    generateAnalysis({
+      metrics,
+      rollups,
+      events: delayEvents,
+      alerts: latestAlertDetails,
+      systemHealth: healthRecord,
+    }).catch(err =>
+      console.error('[metrics-collector] Transit analysis generation failed:', err instanceof Error ? err.message : err),
+    );
   } catch (err) {
     console.error(
       '[metrics-collector] Flush error:',
