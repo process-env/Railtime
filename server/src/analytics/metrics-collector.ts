@@ -102,8 +102,10 @@ function getOrCreateBuffer(routeId: string): RouteBuffer {
   return buf;
 }
 
-function getUtcDateString(): string {
-  return new Date().toISOString().slice(0, 10);
+function getNycDateString(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+  }).format(new Date()); // "YYYY-MM-DD"
 }
 
 function getOrCreateDailyAccum(compositeKey: string, date: string): DailyAccum {
@@ -217,7 +219,7 @@ export function collectMetrics(
     for (const entity of routeEntities) {
       for (const su of entity.stopUpdates) {
         if (su.scheduleRelationship === 'SKIPPED') {
-          const today = getUtcDateString();
+          const today = getNycDateString();
           const accum = getOrCreateDailyAccum(key, today);
           accum.totalSkippedStops++;
         }
@@ -269,7 +271,7 @@ export function collectAlertEvent(alerts: ServiceAlert[]): void {
     );
   }
 
-  const today = getUtcDateString();
+  const today = getNycDateString();
   for (const alert of alerts) {
     if (alert.affectedRoutes.length > 0) {
       for (const routeId of alert.affectedRoutes) {
@@ -296,7 +298,7 @@ async function flush(): Promise<void> {
   if (buffers.size === 0) return;
 
   const now = Date.now();
-  const today = getUtcDateString();
+  const today = getNycDateString();
   const expireAt = Math.floor(now / 1000) + TTL_DAYS * 86400;
   const metrics: MetricRecord[] = [];
   const delayEvents: EventRecord[] = [];
