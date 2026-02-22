@@ -2,13 +2,13 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import type { RidershipDay, RidershipResponse } from '@/types/ridership';
 
-// Socrata open data endpoint — no auth required
-const SOCRATA_URL = 'https://data.ny.gov/resource/vxuj-8kew.json';
+// New hourly ridership dataset (Beginning 2025, actively updated)
+const SOCRATA_URL = 'https://data.ny.gov/resource/5wq4-mkjj.json';
 
-// Valid day ranges
-const VALID_DAYS = new Set([7, 30, 90, 365]);
+// Pre-pandemic baseline for comparison (avg weekday ridership 2019)
+const PRE_PANDEMIC_DAILY_AVG = 5_500_000;
 
-// Cache configuration — 1 hour TTL, keyed by days param
+// Cache — 1 hour TTL, keyed by days param
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
 interface CacheEntry {
@@ -19,56 +19,45 @@ interface CacheEntry {
 
 let cache: CacheEntry | null = null;
 
-/**
- * Build a SoQL query URL for the Socrata ridership endpoint.
- */
 function buildSocrataUrl(days: number): string {
-  const fromDate = new Date();
-  fromDate.setDate(fromDate.getDate() - days);
-  const fromDateStr = fromDate.toISOString().split('T')[0]; // YYYY-MM-DD
-
   const params = new URLSearchParams({
-    $order: 'date DESC',
-    $limit: String(days),
-    $where: `date > '${fromDateStr}'`,
+    '$select': 'date_trunc_ymd(transit_timestamp) as day,sum(ridership) as total_ridership',
+    '$where': "transit_mode='subway'",
+    '$group': 'date_trunc_ymd(transit_timestamp)',
+    '$order': 'day DESC',
+    '$limit': String(days),
   });
-
   return `${SOCRATA_URL}?${params.toString()}`;
 }
 
-/**
- * Parse a single Socrata row into a RidershipDay.
- * Socrata fields are strings; we parse them to numbers.
- */
 function parseSocrataRow(row: Record<string, string>): RidershipDay {
+  const ridership = Math.round(parseFloat(row.total_ridership) || 0);
   return {
-    date: row.date ?? '',
-    ridership: parseInt(row.subways_total_estimated_ridership, 10) || 0,
-    prePandemicPercent: parseFloat(row.subways_of_comparable_pre_pandemic_day) || 0,
+    date: row.day ?? '',
+    ridership,
+    prePandemicPercent: ridership > 0
+      ? Math.round((ridership / PRE_PANDEMIC_DAILY_AVG) * 1000) / 10
+      : 0,
   };
 }
 
-/**
- * Transform raw Socrata rows into a RidershipResponse.
- */
 function buildResponse(rows: Record<string, string>[]): RidershipResponse {
   const days: RidershipDay[] = rows.map(parseSocrataRow);
-
   const totalRidership = days.reduce((sum, d) => sum + d.ridership, 0);
   const avgDaily = days.length > 0 ? Math.round(totalRidership / days.length) : 0;
-  const latest = days.length > 0 ? days[0] : null; // Already sorted DESC
+  const latest = days.length > 0 ? days[0] : null;
 
   return {
     days,
     latest,
     avgDaily,
     totalRidership,
+    dailyFareRevenue: latest ? Math.round(latest.ridership * 2.90) : 0,
     updatedAt: new Date().toISOString(),
   };
 }
 
 export async function GET(request: NextRequest) {
-  // Parse and validate days param
   const searchParams = request.nextUrl.searchParams;
   const daysParam = searchParams.get('days');
   const days = daysParam ? parseInt(daysParam, 10) : 30;
@@ -80,12 +69,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Clamp to valid range
   const clampedDays = Math.min(days, 365);
   const cacheKey = `ridership-${clampedDays}`;
 
   try {
-    // Check cache — must match the same days param
     const now = Date.now();
     if (cache && cache.key === cacheKey && (now - cache.timestamp) < CACHE_TTL_MS) {
       return NextResponse.json(cache.data, {
@@ -96,7 +83,6 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Fetch from Socrata
     const url = buildSocrataUrl(clampedDays);
     const res = await fetch(url, {
       headers: { Accept: 'application/json' },
@@ -110,7 +96,6 @@ export async function GET(request: NextRequest) {
     const rawRows: Record<string, string>[] = await res.json();
     const data = buildResponse(rawRows);
 
-    // Update cache
     cache = { data, timestamp: now, key: cacheKey };
 
     return NextResponse.json(data, {
@@ -122,7 +107,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Ridership API error:', error);
 
-    // Return stale cache if available (even for different days param)
     if (cache) {
       return NextResponse.json(cache.data, {
         headers: {

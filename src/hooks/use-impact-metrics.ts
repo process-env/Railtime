@@ -16,6 +16,7 @@ export function useImpactMetrics() {
     economic: metrics?.economic ?? null,
     environmental: metrics?.environmental ?? null,
     dailyRidership: ridership?.latest?.ridership ?? null,
+    dailyFareRevenue: ridership?.dailyFareRevenue ?? null,
     carbonSavedToday: metrics?.environmental?.totalCO2SavedTons ?? null,
     isLoading,
     error,

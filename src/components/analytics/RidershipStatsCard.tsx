@@ -31,8 +31,8 @@ export function RidershipStatsCard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            {Array.from({ length: 4 }).map((_, i) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="space-y-2">
                 <Skeleton className="h-3 w-20" />
                 <Skeleton className="h-6 w-24" />
@@ -71,16 +71,14 @@ export function RidershipStatsCard() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-4">
-          {/* Today's Ridership */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <div>
-            <p className="text-xs text-muted-foreground">Today&apos;s Ridership</p>
+            <p className="text-xs text-muted-foreground">Latest Ridership</p>
             <p className="text-lg font-bold">
               {data.latest.ridership.toLocaleString()}
             </p>
           </div>
 
-          {/* 30-Day Average */}
           <div>
             <p className="text-xs text-muted-foreground">30-Day Average</p>
             <p className="text-lg font-bold">
@@ -88,7 +86,6 @@ export function RidershipStatsCard() {
             </p>
           </div>
 
-          {/* Pre-Pandemic Recovery */}
           <div>
             <p className="text-xs text-muted-foreground">Pre-Pandemic Recovery</p>
             <p className={`text-lg font-bold ${getRecoveryColor(data.latest.prePandemicPercent)}`}>
@@ -96,11 +93,19 @@ export function RidershipStatsCard() {
             </p>
           </div>
 
-          {/* 30-Day Total */}
           <div>
             <p className="text-xs text-muted-foreground">30-Day Total</p>
             <p className="text-lg font-bold">
               {formatTotal(data.totalRidership)}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs text-muted-foreground">Daily Fare Revenue</p>
+            <p className="text-lg font-bold text-green-400">
+              {data.dailyFareRevenue > 0
+                ? `$${(data.dailyFareRevenue / 1_000_000).toFixed(1)}M`
+                : '--'}
             </p>
           </div>
         </div>

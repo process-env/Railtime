@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertList } from '@/components/alerts';
+import { EquipmentStatusCard } from '@/components/analytics';
 import { useAlerts } from '@/hooks/use-alerts';
 import { SEVERITY_COLORS } from '@/lib/constants';
 import type { ServiceAlert } from '@/types/mta';
@@ -166,6 +167,12 @@ export default function AlertsPage() {
             </TabsContent>
           </Tabs>
         )}
+      </div>
+
+      {/* Equipment Status */}
+      <div className="border-t pt-6">
+        <h2 className="text-xl font-semibold mb-4">Elevator & Escalator Status</h2>
+        <EquipmentStatusCard />
       </div>
     </div>
   );
