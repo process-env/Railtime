@@ -13,8 +13,11 @@ interface RouteSummary {
   avgDelay: number | null;
   onTimePercent: number | null;
   avgHeadway: number | null;
+  medianHeadway: number | null;
   peakTrainCount: number | null;
   totalAlerts: number;
+  totalBunching: number;
+  totalGaps: number;
   days: number;
 }
 
@@ -46,9 +49,15 @@ export function RoutePerformanceTable() {
       const headways = records
         .map((r) => r.avgHeadway)
         .filter((d): d is number => d != null);
+      const medianHeadways = records
+        .map((r) => r.medianHeadway)
+        .filter((d): d is number => d != null);
       const peaks = records
         .map((r) => r.peakTrainCount)
         .filter((d): d is number => d != null);
+
+      // Count unique dates (don't count N and S as separate days)
+      const uniqueDates = new Set(records.map((r) => r.date.split('#')[0]));
 
       summaries.push({
         routeId,
@@ -64,13 +73,25 @@ export function RoutePerformanceTable() {
           headways.length > 0
             ? Math.round(headways.reduce((a, b) => a + b, 0) / headways.length)
             : null,
+        medianHeadway:
+          medianHeadways.length > 0
+            ? Math.round(medianHeadways.reduce((a, b) => a + b, 0) / medianHeadways.length)
+            : null,
         peakTrainCount:
           peaks.length > 0 ? Math.max(...peaks) : null,
         totalAlerts: records.reduce(
           (sum, r) => sum + (r.totalAlerts ?? 0),
           0,
         ),
-        days: records.length,
+        totalBunching: records.reduce(
+          (sum, r) => sum + (r.totalBunching ?? 0),
+          0,
+        ),
+        totalGaps: records.reduce(
+          (sum, r) => sum + (r.totalGaps ?? 0),
+          0,
+        ),
+        days: uniqueDates.size,
       });
     }
 
@@ -101,7 +122,10 @@ export function RoutePerformanceTable() {
                   <th className="text-right py-2 px-2 font-medium text-muted-foreground">On-Time %</th>
                   <th className="text-right py-2 px-2 font-medium text-muted-foreground">Avg Delay</th>
                   <th className="text-right py-2 px-2 font-medium text-muted-foreground">Headway</th>
+                  <th className="text-right py-2 px-2 font-medium text-muted-foreground">Med. Headway</th>
                   <th className="text-right py-2 px-2 font-medium text-muted-foreground">Peak Trains</th>
+                  <th className="text-right py-2 px-2 font-medium text-muted-foreground">Bunching</th>
+                  <th className="text-right py-2 px-2 font-medium text-muted-foreground">Gaps</th>
                   <th className="text-right py-2 px-2 font-medium text-muted-foreground">Alerts</th>
                 </tr>
               </thead>
@@ -144,7 +168,26 @@ export function RoutePerformanceTable() {
                         : '-'}
                     </td>
                     <td className="text-right py-2 px-2">
+                      {row.medianHeadway != null
+                        ? `${Math.floor(row.medianHeadway / 60)}m ${row.medianHeadway % 60}s`
+                        : '-'}
+                    </td>
+                    <td className="text-right py-2 px-2">
                       {row.peakTrainCount ?? '-'}
+                    </td>
+                    <td className="text-right py-2 px-2">
+                      {row.totalBunching > 0 ? (
+                        <span className="text-orange-400">{row.totalBunching}</span>
+                      ) : (
+                        '0'
+                      )}
+                    </td>
+                    <td className="text-right py-2 px-2">
+                      {row.totalGaps > 0 ? (
+                        <span className="text-red-400">{row.totalGaps}</span>
+                      ) : (
+                        '0'
+                      )}
                     </td>
                     <td className="text-right py-2 px-2">
                       {row.totalAlerts > 0 ? (

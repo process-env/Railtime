@@ -1,10 +1,14 @@
 export interface RouteMetric {
   routeId: string;
+  direction: string | null;
   timestamp: number;
   trainCount: number;
   avgDelaySeconds: number | null;
   onTimePercent: number | null;
   headwayAvgSeconds: number | null;
+  headwayMedianSeconds: number | null;
+  bunchingCount: number | null;
+  gapCount: number | null;
   feedLatencyMs: number | null;
   feedStatus: string | null;
 }
@@ -12,11 +16,16 @@ export interface RouteMetric {
 export interface DailyRollup {
   routeId: string;
   date: string;
+  direction: string | null;
   avgDelay: number | null;
   onTimePercent: number | null;
   peakTrainCount: number | null;
   totalAlerts: number | null;
   avgHeadway: number | null;
+  medianHeadway: number | null;
+  totalBunching: number | null;
+  totalGaps: number | null;
+  totalSkippedStops: number | null;
   totalTrips: number | null;
 }
 

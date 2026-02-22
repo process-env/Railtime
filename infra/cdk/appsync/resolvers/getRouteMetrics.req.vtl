@@ -1,3 +1,8 @@
+#if($ctx.args.direction)
+  #set($pk = "${ctx.args.routeId}#${ctx.args.direction}")
+#else
+  #set($pk = $ctx.args.routeId)
+#end
 {
   "version": "2017-02-28",
   "operation": "Query",
@@ -7,7 +12,7 @@
       "#ts": "timestamp"
     },
     "expressionValues": {
-      ":routeId": $util.dynamodb.toDynamoDBJson($ctx.args.routeId),
+      ":routeId": $util.dynamodb.toDynamoDBJson($pk),
       ":from": $util.dynamodb.toDynamoDBJson($ctx.args.from),
       ":to": $util.dynamodb.toDynamoDBJson($ctx.args.to)
     }

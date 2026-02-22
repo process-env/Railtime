@@ -1,23 +1,32 @@
 type RouteMetric {
   routeId: String!
+  direction: String
   timestamp: AWSTimestamp!
   trainCount: Int!
   avgDelaySeconds: Float
   onTimePercent: Float
   headwayAvgSeconds: Float
+  headwayMedianSeconds: Float
+  bunchingCount: Int
+  gapCount: Int
   feedLatencyMs: Int
   feedStatus: String
 }
 
 type DailyRollup {
   routeId: String!
+  direction: String
   date: String!
   avgDelay: Float
   onTimePercent: Float
   peakTrainCount: Int
   totalAlerts: Int
   avgHeadway: Float
+  medianHeadway: Float
   totalTrips: Int
+  totalBunching: Int
+  totalGaps: Int
+  totalSkippedStops: Int
 }
 
 type FeedGroupHealth {
@@ -35,8 +44,8 @@ type SystemHealth {
 }
 
 type Query {
-  getRouteMetrics(routeId: String!, from: AWSTimestamp!, to: AWSTimestamp!): [RouteMetric!]!
-  getDailyRollups(routeId: String, from: String!, to: String!): [DailyRollup!]!
+  getRouteMetrics(routeId: String!, direction: String, from: AWSTimestamp!, to: AWSTimestamp!): [RouteMetric!]!
+  getDailyRollups(routeId: String, direction: String, from: String!, to: String!): [DailyRollup!]!
   getLatestSystemHealth: SystemHealth
 }
 
@@ -48,11 +57,15 @@ type Subscription {
 type Mutation {
   publishRouteMetric(
     routeId: String!
+    direction: String
     timestamp: AWSTimestamp!
     trainCount: Int!
     avgDelaySeconds: Float
     onTimePercent: Float
     headwayAvgSeconds: Float
+    headwayMedianSeconds: Float
+    bunchingCount: Int
+    gapCount: Int
     feedLatencyMs: Int
     feedStatus: String
   ): RouteMetric

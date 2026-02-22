@@ -30,11 +30,12 @@ export function SystemHealthTimeline() {
     const byDate = new Map<string, { delays: number[]; onTimes: number[]; alerts: number }>();
 
     for (const r of rollups) {
-      const entry = byDate.get(r.date) ?? { delays: [], onTimes: [], alerts: 0 };
+      const cleanDate = r.date.split('#')[0]; // Strip direction suffix
+      const entry = byDate.get(cleanDate) ?? { delays: [], onTimes: [], alerts: 0 };
       if (r.avgDelay != null) entry.delays.push(r.avgDelay);
       if (r.onTimePercent != null) entry.onTimes.push(r.onTimePercent);
       entry.alerts += r.totalAlerts ?? 0;
-      byDate.set(r.date, entry);
+      byDate.set(cleanDate, entry);
     }
 
     return [...byDate.entries()]

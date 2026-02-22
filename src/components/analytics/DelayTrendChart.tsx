@@ -44,12 +44,19 @@ export function DelayTrendChart() {
     const routes = new Set<string>();
 
     for (const r of rollups) {
+      const cleanDate = r.date.split('#')[0]; // Strip direction suffix
       routes.add(r.routeId);
-      const entry = byDate.get(r.date) ?? {};
+      const entry = byDate.get(cleanDate) ?? {};
       if (r.avgDelay != null) {
-        entry[r.routeId] = Math.round(r.avgDelay * 10) / 10;
+        // Aggregate multiple direction records for same route+date
+        const key = r.routeId;
+        if (entry[key] != null) {
+          entry[key] = (entry[key] + r.avgDelay) / 2; // Average N+S
+        } else {
+          entry[key] = Math.round(r.avgDelay * 10) / 10;
+        }
       }
-      byDate.set(r.date, entry);
+      byDate.set(cleanDate, entry);
     }
 
     const sorted = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));

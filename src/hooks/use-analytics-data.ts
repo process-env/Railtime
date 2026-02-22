@@ -19,10 +19,11 @@ import type {
  * @param routeId - Route ID (e.g. "A", "1", "L")
  * @param from - Start timestamp (epoch seconds)
  * @param to - End timestamp (epoch seconds)
+ * @param direction - Optional direction filter (e.g. "N", "S")
  */
-export function useRouteMetrics(routeId: string, from: number, to: number) {
+export function useRouteMetrics(routeId: string, from: number, to: number, direction?: string) {
   return useQuery<GetRouteMetricsData>(GET_ROUTE_METRICS, {
-    variables: { routeId, from, to },
+    variables: { routeId, direction: direction ?? null, from, to },
     skip: !routeId || !from || !to,
   });
 }
@@ -32,10 +33,11 @@ export function useRouteMetrics(routeId: string, from: number, to: number) {
  * @param from - Start date "YYYY-MM-DD"
  * @param to - End date "YYYY-MM-DD"
  * @param routeId - Optional route filter
+ * @param direction - Optional direction filter (e.g. "N", "S")
  */
-export function useDailyRollups(from: string, to: string, routeId?: string) {
+export function useDailyRollups(from: string, to: string, routeId?: string, direction?: string) {
   return useQuery<GetDailyRollupsData>(GET_DAILY_ROLLUPS, {
-    variables: { routeId: routeId ?? null, from, to },
+    variables: { routeId: routeId ?? null, direction: direction ?? null, from, to },
     skip: !from || !to,
   });
 }

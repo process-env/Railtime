@@ -1,4 +1,7 @@
 #if($ctx.args.routeId)
+  ## Query mode: PK = routeId, SK = date (with direction suffix)
+  ## Use "${to}~" as upper bound so "2026-02-22#N" / "2026-02-22#S" are captured
+  #if($ctx.args.direction)
 {
   "version": "2017-02-28",
   "operation": "Query",
@@ -10,12 +13,54 @@
     "expressionValues": {
       ":routeId": $util.dynamodb.toDynamoDBJson($ctx.args.routeId),
       ":from": $util.dynamodb.toDynamoDBJson($ctx.args.from),
-      ":to": $util.dynamodb.toDynamoDBJson($ctx.args.to)
+      ":to": $util.dynamodb.toDynamoDBJson("${ctx.args.to}~")
+    }
+  },
+  "filter": {
+    "expression": "direction = :dir",
+    "expressionValues": {
+      ":dir": $util.dynamodb.toDynamoDBJson($ctx.args.direction)
     }
   },
   "scanIndexForward": true
 }
+  #else
+{
+  "version": "2017-02-28",
+  "operation": "Query",
+  "query": {
+    "expression": "routeId = :routeId AND #d BETWEEN :from AND :to",
+    "expressionNames": {
+      "#d": "date"
+    },
+    "expressionValues": {
+      ":routeId": $util.dynamodb.toDynamoDBJson($ctx.args.routeId),
+      ":from": $util.dynamodb.toDynamoDBJson($ctx.args.from),
+      ":to": $util.dynamodb.toDynamoDBJson("${ctx.args.to}~")
+    }
+  },
+  "scanIndexForward": true
+}
+  #end
 #else
+  ## Scan mode: no routeId specified, filter by date range
+  #if($ctx.args.direction)
+{
+  "version": "2017-02-28",
+  "operation": "Scan",
+  "filter": {
+    "expression": "#d BETWEEN :from AND :to AND direction = :dir",
+    "expressionNames": {
+      "#d": "date"
+    },
+    "expressionValues": {
+      ":from": $util.dynamodb.toDynamoDBJson($ctx.args.from),
+      ":to": $util.dynamodb.toDynamoDBJson("${ctx.args.to}~"),
+      ":dir": $util.dynamodb.toDynamoDBJson($ctx.args.direction)
+    }
+  }
+}
+  #else
 {
   "version": "2017-02-28",
   "operation": "Scan",
@@ -26,8 +71,9 @@
     },
     "expressionValues": {
       ":from": $util.dynamodb.toDynamoDBJson($ctx.args.from),
-      ":to": $util.dynamodb.toDynamoDBJson($ctx.args.to)
+      ":to": $util.dynamodb.toDynamoDBJson("${ctx.args.to}~")
     }
   }
 }
+  #end
 #end
