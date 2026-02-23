@@ -15,6 +15,8 @@ import type { FeedEntity } from "./types.js";
 import { collectMetrics, collectAlertEvent, collectRemovedTrips, startCollector, stopCollector } from "./analytics/metrics-collector.js";
 import { initScheduleLookup, stopScheduleLookup } from "./analytics/schedule-lookup.js";
 import { createLogger } from "./lib/logger.js";
+import { archivePositions, startArchiver, stopArchiver } from "./analytics/position-archiver.js";
+import { closeS3Client } from "./lib/s3.js";
 
 const log = createLogger('server');
 
@@ -126,6 +128,9 @@ async function shutdown(signal: string) {
   // Flush remaining analytics data
   await stopCollector();
 
+  // Flush remaining position data to S3
+  await stopArchiver();
+
   // Stop schedule rebuild timer
   stopScheduleLookup();
 
@@ -135,7 +140,7 @@ async function shutdown(signal: string) {
       log.info('http server closed');
 
       // Close external connections
-      await Promise.allSettled([closeRedis(), closeNeo4j(), closeDynamoClient()]);
+      await Promise.allSettled([closeRedis(), closeNeo4j(), closeDynamoClient(), closeS3Client()]);
       log.info('external connections closed');
 
       process.exit(0);
@@ -184,6 +189,9 @@ httpServer.listen(PORT, async () => {
 
     // Track trip lifecycle (TRIP_END events for removed trains)
     collectRemovedTrips(feedGroupId, removedTripIds);
+
+    // Archive raw positions to S3 for ML pipeline
+    archivePositions(feedGroupId, trains);
   });
 
   startAlertLoop((alerts) => {
@@ -193,6 +201,9 @@ httpServer.listen(PORT, async () => {
 
   // Start analytics collector (flushes to DynamoDB every 5 min)
   startCollector();
+
+  // Start position archiver (flushes to S3 every 60s)
+  startArchiver();
 
   log.info('all namespaces and ingestion loops started');
 });

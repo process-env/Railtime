@@ -13,6 +13,7 @@ import { getCache, setCache } from '../lib/redis.js';
 import { CACHE_KEYS } from '../lib/cache-keys.js';
 import { createLogger } from '../lib/logger.js';
 import type { AlertSummary } from '../types.js';
+import { writeEvents } from './dynamodb-writer.js';
 import type { MetricRecord, EventRecord, RollupRecord } from './dynamodb-writer.js';
 
 const log = createLogger('analyzer');
@@ -217,6 +218,17 @@ export async function generateAnalysis(input: AnalysisInput): Promise<void> {
     };
 
     await setCache(CACHE_KEYS.TRANSIT_ANALYSIS, result, CACHE_TTL_SECONDS);
+
+    // Persist analysis to DynamoDB for long-term archival (flows to S3 via DynamoDB Streams)
+    writeEvents([{
+      pk: 'ANALYSIS#SYSTEM',
+      timestamp: Date.now(),
+      description: JSON.stringify(result),
+      expireAt: Math.floor(Date.now() / 1000) + 365 * 86400,
+    }]).catch(err =>
+      log.error({ err: err instanceof Error ? err.message : err }, 'failed to persist analysis'),
+    );
+
     log.info({ model: MODEL_ID, charCount: analysisText.length }, 'analysis generated and cached');
   } catch (err) {
     log.error({ err: err instanceof Error ? err.message : err }, 'failed to generate analysis');

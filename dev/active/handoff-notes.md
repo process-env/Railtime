@@ -4,6 +4,50 @@ _Last Updated: 2026-02-23_
 
 ---
 
+## Session: MTA Data Laboratory -- ML Platform (2026-02-23)
+
+**Goal:** Capture real-time position data + AI analysis to S3/DynamoDB, ingest 7 historical MTA datasets, provision SageMaker ML lab, deliver 3 Jupyter notebooks.
+
+### What's Planned
+
+**Phase 0 -- Documentation** (this)
+- Dev context, plan, and task docs in `dev/active/ml-lab/`
+
+**Phase 1 -- Real-Time Data Capture** (server changes)
+- `server/src/lib/s3.ts` -- S3 client singleton (follows dynamodb.ts pattern)
+- `server/src/analytics/position-archiver.ts` -- Buffered S3 position writer
+- `server/src/api/transit-analysis.ts` -- Add writeEvents() for analysis persistence
+- `server/src/index.ts` -- Wire archiver into feed loop + shutdown
+- `server/package.json` -- Add @aws-sdk/client-s3
+
+**Phase 2 -- Historical Data Upload**
+- `scripts/upload-historical-mta.ts` -- Clean CSVs, convert to Parquet, upload to S3
+
+**Phase 3 -- CDK ML Lab Stack**
+- `infra/cdk/lib/analytics-stack.ts` -- Export bucket, lifecycle, crawler, IAM
+- `infra/cdk/lib/ml-lab-stack.ts` -- SageMaker + ML bucket + Glue tables + job
+- `infra/cdk/bin/app.ts` -- Instantiate MlLabStack
+- `infra/cdk/lambda/ml-dataset-trigger/index.ts` -- EventBridge --> Glue job trigger
+
+**Phase 4 -- ML Dataset Pipeline**
+- `infra/cdk/glue-scripts/ml-dataset-pipeline.py` -- PySpark ETL for 5 dataset families
+
+**Phase 5 -- Jupyter Notebooks**
+- `notebooks/01-ridership-forecasting.ipynb` (runs day 1)
+- `notebooks/02-reliability-mdbf-analysis.ipynb` (runs day 1)
+- `notebooks/03-delay-prediction.ipynb` (runs after 3+ days)
+
+### Historical Datasets
+7 MTA CSVs downloaded to `C:\Users\User\Downloads\mtaData\` -- ~29K rows total (2015-2026)
+
+### Cost Estimate
+~$13.60/month (SageMaker + Glue + S3 + Athena)
+
+### Links
+- Dev docs: `dev/active/ml-lab/`
+
+---
+
 ## Session: Full Codebase Review & Critical Remediation (2026-02-23)
 
 **Goal:** Full code review across all 3 domains (frontend, server, infra), then remediate critical-tier findings.

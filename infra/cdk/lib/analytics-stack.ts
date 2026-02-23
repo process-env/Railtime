@@ -18,6 +18,8 @@ import { Construct } from 'constructs';
 import * as path from 'path';
 
 export class AnalyticsStack extends cdk.Stack {
+  public readonly analyticsBucket: s3.Bucket;
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -57,7 +59,7 @@ export class AnalyticsStack extends cdk.Stack {
     // S3 Bucket
     // -----------------------------------------------------------------------
 
-    const analyticsBucket = new s3.Bucket(this, 'AnalyticsBucket', {
+    this.analyticsBucket = new s3.Bucket(this, 'AnalyticsBucket', {
       bucketName: `railtime-analytics-${this.account}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
@@ -69,6 +71,21 @@ export class AnalyticsStack extends cdk.Stack {
             {
               storageClass: s3.StorageClass.INFREQUENT_ACCESS,
               transitionAfter: cdk.Duration.days(30),
+            },
+          ],
+          expiration: cdk.Duration.days(365),
+        },
+        {
+          id: 'positions-lifecycle',
+          prefix: 'raw/positions/',
+          transitions: [
+            {
+              storageClass: s3.StorageClass.INFREQUENT_ACCESS,
+              transitionAfter: cdk.Duration.days(30),
+            },
+            {
+              storageClass: s3.StorageClass.GLACIER_INSTANT_RETRIEVAL,
+              transitionAfter: cdk.Duration.days(90),
             },
           ],
           expiration: cdk.Duration.days(365),
@@ -88,7 +105,7 @@ export class AnalyticsStack extends cdk.Stack {
       memorySize: 256,
       timeout: cdk.Duration.minutes(5),
       environment: {
-        S3_BUCKET: analyticsBucket.bucketName,
+        S3_BUCKET: this.analyticsBucket.bucketName,
       },
       bundling: {
         minify: true,
@@ -96,7 +113,7 @@ export class AnalyticsStack extends cdk.Stack {
       },
     });
 
-    analyticsBucket.grantPut(streamToS3Fn);
+    this.analyticsBucket.grantPut(streamToS3Fn);
 
     // DLQ for failed DynamoDB Stream batches
     const streamDlq = new sqs.Queue(this, 'StreamToS3Dlq', {
@@ -144,7 +161,7 @@ export class AnalyticsStack extends cdk.Stack {
     // Upload Glue script to S3
     const glueScriptDeploy = new s3deploy.BucketDeployment(this, 'GlueScriptDeploy', {
       sources: [s3deploy.Source.asset(path.join(__dirname, '..', 'glue-scripts'))],
-      destinationBucket: analyticsBucket,
+      destinationBucket: this.analyticsBucket,
       destinationKeyPrefix: 'glue-scripts',
     });
 
@@ -156,7 +173,7 @@ export class AnalyticsStack extends cdk.Stack {
       ],
     });
 
-    analyticsBucket.grantReadWrite(glueRole);
+    this.analyticsBucket.grantReadWrite(glueRole);
     rollupsTable.grantWriteData(glueRole);
 
     const glueJob = new glue.CfnJob(this, 'DailyRollupJob', {
@@ -165,12 +182,12 @@ export class AnalyticsStack extends cdk.Stack {
       command: {
         name: 'glueetl',
         pythonVersion: '3',
-        scriptLocation: `s3://${analyticsBucket.bucketName}/glue-scripts/daily-rollup.py`,
+        scriptLocation: `s3://${this.analyticsBucket.bucketName}/glue-scripts/daily-rollup.py`,
       },
       glueVersion: '4.0',
       maxCapacity: 2,
       defaultArguments: {
-        '--S3_BUCKET': analyticsBucket.bucketName,
+        '--S3_BUCKET': this.analyticsBucket.bucketName,
         '--METRICS_TABLE': metricsTable.tableName,
         '--ROLLUPS_TABLE': rollupsTable.tableName,
         '--EVENTS_TABLE': eventsTable.tableName,
@@ -186,7 +203,7 @@ export class AnalyticsStack extends cdk.Stack {
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSGlueServiceRole'),
       ],
     });
-    analyticsBucket.grantRead(crawlerRole);
+    this.analyticsBucket.grantRead(crawlerRole);
 
     new glue.CfnCrawler(this, 'RawDataCrawler', {
       name: 'railtime-raw-crawler',
@@ -194,8 +211,9 @@ export class AnalyticsStack extends cdk.Stack {
       databaseName: 'railtime_analytics',
       targets: {
         s3Targets: [
-          { path: `s3://${analyticsBucket.bucketName}/raw/metrics/` },
-          { path: `s3://${analyticsBucket.bucketName}/raw/events/` },
+          { path: `s3://${this.analyticsBucket.bucketName}/raw/metrics/` },
+          { path: `s3://${this.analyticsBucket.bucketName}/raw/events/` },
+          { path: `s3://${this.analyticsBucket.bucketName}/raw/positions/` },
         ],
       },
       schedule: { scheduleExpression: 'cron(30 0 * * ? *)' },
@@ -421,6 +439,9 @@ export class AnalyticsStack extends cdk.Stack {
     eventsTable.grantWriteData(wsServerRole);
     rollupsTable.grantWriteData(wsServerRole);
 
+    // Allow WS server to write position data to S3
+    this.analyticsBucket.grantPut(wsServerRole, 'raw/positions/*');
+
     // -----------------------------------------------------------------------
     // Outputs
     // -----------------------------------------------------------------------
@@ -443,7 +464,7 @@ export class AnalyticsStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'AnalyticsBucketName', {
-      value: analyticsBucket.bucketName,
+      value: this.analyticsBucket.bucketName,
     });
 
     new cdk.CfnOutput(this, 'WsServerRoleArn', {
