@@ -122,6 +122,7 @@ export function DelayTrendChart() {
                 }}
               />
               <Tooltip
+                wrapperStyle={{ zIndex: 50 }}
                 contentStyle={{
                   backgroundColor: '#1a1a1a',
                   border: '1px solid #333',
@@ -135,7 +136,7 @@ export function DelayTrendChart() {
                   return [label, name];
                 }}
               />
-              <Legend />
+              <Legend wrapperStyle={{ position: 'relative', zIndex: 0 }} />
               {routeIds.map((routeId) => (
                 <Line
                   key={routeId}

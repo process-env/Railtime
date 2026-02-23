@@ -31,14 +31,14 @@ export function BunchingGapTrendChart() {
   const chartData = useMemo(() => {
     const rollups = data?.getDailyRollups ?? [];
 
-    // Group by date, sum across routes
-    const byDate = new Map<string, { bunching: number; gaps: number }>();
+    // Group by date, count distinct routes affected (not raw instance totals)
+    const byDate = new Map<string, { bunchRoutes: Set<string>; gapRoutes: Set<string> }>();
     for (const r of rollups) {
       const date = r.date?.split('#')[0]; // strip direction suffix
       if (!date) continue;
-      const existing = byDate.get(date) ?? { bunching: 0, gaps: 0 };
-      existing.bunching += r.totalBunching ?? 0;
-      existing.gaps += r.totalGaps ?? 0;
+      const existing = byDate.get(date) ?? { bunchRoutes: new Set(), gapRoutes: new Set() };
+      if ((r.totalBunching ?? 0) > 0) existing.bunchRoutes.add(r.routeId);
+      if ((r.totalGaps ?? 0) > 0) existing.gapRoutes.add(r.routeId);
       byDate.set(date, existing);
     }
 
@@ -46,8 +46,8 @@ export function BunchingGapTrendChart() {
       .map(([date, vals]) => ({
         date,
         label: format(new Date(date + 'T12:00:00'), 'MMM d'),
-        bunching: vals.bunching,
-        gaps: vals.gaps,
+        bunching: vals.bunchRoutes.size,
+        gaps: vals.gapRoutes.size,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [data]);
@@ -57,7 +57,7 @@ export function BunchingGapTrendChart() {
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <TrendingUp className="h-4 w-4" />
-          Bunching & Gap Trends
+          Routes with Bunching / Gaps
         </CardTitle>
         <div className="flex gap-1">
           {(['7d', '30d'] as Period[]).map((p) => (
@@ -85,31 +85,34 @@ export function BunchingGapTrendChart() {
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis dataKey="label" className="text-xs" tick={{ fontSize: 11 }} />
-              <YAxis className="text-xs" tick={{ fontSize: 11 }} />
+              <YAxis className="text-xs" tick={{ fontSize: 11 }} allowDecimals={false} />
               <Tooltip
+                wrapperStyle={{ zIndex: 50 }}
                 contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
+                  backgroundColor: '#1a1a1a',
+                  border: '1px solid #333',
                   borderRadius: '8px',
                   fontSize: '12px',
                 }}
+                labelStyle={{ color: '#fff' }}
+                formatter={(value: number, name: string) => [`${value} routes`, name]}
               />
               <Legend wrapperStyle={{ fontSize: '12px' }} />
               <Line
                 type="monotone"
                 dataKey="bunching"
-                name="Bunching"
+                name="Bunching Routes"
                 stroke="#f59e0b"
                 strokeWidth={2}
-                dot={false}
+                dot={{ r: 3 }}
               />
               <Line
                 type="monotone"
                 dataKey="gaps"
-                name="Gaps"
+                name="Gap Routes"
                 stroke="#ef4444"
                 strokeWidth={2}
-                dot={false}
+                dot={{ r: 3 }}
               />
             </LineChart>
           </ResponsiveContainer>
