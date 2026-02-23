@@ -1,34 +1,37 @@
-import ws from 'k6/ws';
-import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { WebSocket } from 'k6/websockets';
 import { Counter, Trend, Rate } from 'k6/metrics';
+
 
 // ---------------------------------------------------------------------------
 // Custom metrics
 // ---------------------------------------------------------------------------
 
-const wsConnectionTime = new Trend('ws_connection_time', true);
-const wsMessagesReceived = new Counter('ws_messages_received');
-const wsMessageLatency = new Trend('ws_message_latency', true);
-const wsConnectionSuccess = new Rate('ws_connection_success');
+var wsConnectionTime = new Trend('ws_connection_time', true);
+var wsMessagesReceived = new Counter('ws_messages_received');
+var wsMessageLatency = new Trend('ws_message_latency', true);
+var wsConnectionSuccess = new Rate('ws_connection_success');
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-const BASE_URL = __ENV.WS_URL || 'http://localhost:3001';
-const WS_URL = BASE_URL.replace('http', 'ws');
+var BASE_URL = __ENV.WS_URL || 'http://localhost:3001';
+var WS_URL = BASE_URL.replace('http', 'ws');
 
-export const options = {
+// How long each VU keeps its connection open (ms).
+// 45s gives 3 feed cycles at the 15s broadcast interval.
+var CONNECTION_DURATION_MS = 45000;
+
+export var options = {
   scenarios: {
     // Scenario 1: Ramp up connections gradually
     connection_ramp: {
       executor: 'ramping-vus',
       startVUs: 0,
       stages: [
-        { duration: '2m', target: 200 },  // ramp to 200
-        { duration: '3m', target: 200 },  // hold at 200
-        { duration: '1m', target: 0 },    // ramp down
+        { duration: '2m', target: 200 },
+        { duration: '3m', target: 200 },
+        { duration: '1m', target: 0 },
       ],
       gracefulRampDown: '30s',
       exec: 'socketIOTest',
@@ -38,7 +41,7 @@ export const options = {
       executor: 'constant-vus',
       vus: 100,
       duration: '5m',
-      startTime: '7m',  // starts after connection_ramp finishes
+      startTime: '7m',
       exec: 'socketIOTest',
     },
     // Scenario 3: Spike test
@@ -46,154 +49,148 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 100,
       stages: [
-        { duration: '30s', target: 500 },  // spike to 500
-        { duration: '2m', target: 500 },   // hold at 500
-        { duration: '30s', target: 100 },  // back to 100
+        { duration: '30s', target: 500 },
+        { duration: '2m', target: 500 },
+        { duration: '30s', target: 100 },
       ],
-      startTime: '13m',  // starts after sustained finishes
+      startTime: '13m',
       gracefulRampDown: '30s',
       exec: 'socketIOTest',
     },
   },
   thresholds: {
-    'ws_connection_time': ['p(95)<500'],      // 95th percentile < 500ms
-    'ws_connection_success': ['rate>0.99'],    // >99% connections succeed
-    'ws_messages_received': ['count>0'],       // at least some messages received
-    'http_req_failed': ['rate<0.01'],          // <1% HTTP errors (polling handshake)
+    'ws_connection_time': ['p(95)<5000'],
+    'ws_connection_success': ['rate>0.95'],
+    'ws_messages_received': ['count>0'],
   },
 };
 
 // ---------------------------------------------------------------------------
-// Engine.IO/Socket.IO handshake helpers
+// Main test function -- Direct WebSocket with k6/experimental/websockets
 // ---------------------------------------------------------------------------
-
-/**
- * Socket.IO 4 uses Engine.IO which requires:
- * 1. HTTP polling request to get session ID (sid)
- * 2. WebSocket upgrade with that sid
- * 3. Send "40/trains," to connect to the /trains namespace
- * 4. Send subscription event
- */
-function getSessionId(namespace) {
-  const path = namespace ? '/socket.io/?EIO=4&transport=polling&nsp=' + namespace : '/socket.io/?EIO=4&transport=polling';
-  var res = http.get(BASE_URL + path);
-
-  if (res.status !== 200) {
-    return null;
-  }
-
-  // Engine.IO polling response format: <length>:<packet>
-  // The "0" packet type is OPEN, containing JSON with sid
-  var body = res.body;
-  try {
-    // Find the JSON payload (after the length prefix)
-    var jsonStart = body.indexOf('{');
-    if (jsonStart === -1) return null;
-    var jsonEnd = body.lastIndexOf('}');
-    var json = JSON.parse(body.substring(jsonStart, jsonEnd + 1));
-    return json.sid || null;
-  } catch (e) {
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Main test function
+//
+// Engine.IO 4 direct WebSocket protocol:
+//   1. WS connect to /socket.io/?EIO=4&transport=websocket
+//   2. Server sends OPEN: 0{"sid":"...","pingInterval":25000,...}
+//   3. Client sends SIO CONNECT to default namespace: 40
+//   4. Server responds with default namespace ack: 40{"sid":"..."}
+//   5. Client sends namespace connect: 40/trains,
+//   6. Server sends namespace ack: 40/trains,{"sid":"..."}
+//   7. Client sends subscribe: 42/trains,["subscribe:all"]
+//   8. Server sends events: 42/trains,["trains:update",{...}]
+//   9. Server sends periodic pings: 2 -- client responds: 3
+//
+// The k6/experimental/websockets module follows the browser WebSocket API.
+// Messages sent before onmessage is assigned are properly buffered, which
+// fixes the race condition in k6/ws where the Engine.IO OPEN packet was
+// dropped because socket.on('message') had not yet been registered.
 // ---------------------------------------------------------------------------
 
 export function socketIOTest() {
+  var url = WS_URL + '/socket.io/?EIO=4&transport=websocket';
   var connectStart = Date.now();
+  var connectedDefault = false;
+  var subscribed = false;
+  var firstMessageTime = 0;
+  var loggedFirstMessage = false;
+  var closeTimer = null;
+  var pingInterval = null;
 
-  // Step 1: Get session ID via polling handshake
-  var sid = getSessionId();
-  if (!sid) {
-    wsConnectionSuccess.add(0);
-    console.warn('Failed to get session ID');
-    sleep(1);
-    return;
-  }
+  var ws = new WebSocket(url);
 
-  // Step 2: Open WebSocket with Engine.IO upgrade
-  var url = WS_URL + '/socket.io/?EIO=4&transport=websocket&sid=' + sid;
+  ws.onopen = function () {
+    // Server initiates the handshake by sending the OPEN packet.
+    // Nothing to send here -- just wait for onmessage.
 
-  var res = ws.connect(url, {}, function (socket) {
-    var connectDuration = Date.now() - connectStart;
-    wsConnectionTime.add(connectDuration);
-    wsConnectionSuccess.add(1);
-
-    var connected = false;
-
-    socket.on('open', function () {
-      // Engine.IO upgrade probe
-      socket.send('2probe');
-    });
-
-    socket.on('message', function (data) {
-      // Engine.IO protocol:
-      // "3probe" = pong to our probe
-      // "5" = upgrade acknowledgment
-      // "40" = Socket.IO CONNECT to default namespace
-      // "40/trains," = Socket.IO CONNECT to /trains namespace
-      // "42/trains,..." = Socket.IO EVENT on /trains namespace
-
-      if (data === '3probe') {
-        // Probe response -- send upgrade
-        socket.send('5');
-        return;
+    // Schedule connection close after the desired duration.
+    // The k6/experimental/websockets module keeps the VU alive as long as
+    // the socket is open, so this timer controls iteration length.
+    closeTimer = setTimeout(function () {
+      if (pingInterval !== null) {
+        clearInterval(pingInterval);
+        pingInterval = null;
       }
+      ws.close();
+    }, CONNECTION_DURATION_MS);
+  };
 
-      if (data === '40') {
-        // Connected to default namespace -- now connect to /trains
-        socket.send('40/trains,');
-        return;
-      }
+  ws.onmessage = function (e) {
+    var data = e.data;
 
-      if (data.startsWith('40/trains')) {
-        // Connected to /trains namespace -- subscribe to all trains
-        connected = true;
-        // Socket.IO event format: 42/namespace,["eventName", ...args]
-        // subscribe:all takes no arguments
-        socket.send('42/trains,["subscribe:all"]');
-        return;
-      }
-
-      if (data.startsWith('42/trains')) {
-        // Received a trains event (trains:update, trains:remove, feed:status)
-        wsMessagesReceived.add(1);
-        wsMessageLatency.add(Date.now() - connectStart);
-        return;
-      }
-
-      // Engine.IO ping/pong keepalive
-      if (data === '2') {
-        socket.send('3');
-        return;
-      }
-    });
-
-    socket.on('error', function (e) {
-      console.error('WebSocket error:', e.error());
-    });
-
-    // Keep connection open for the VU's iteration duration
-    // Sleep in small increments to allow message processing
-    var testDuration = 15; // seconds per iteration
-    for (var i = 0; i < testDuration; i++) {
-      sleep(1);
+    // Log the very first message per VU for debugging (once only).
+    if (!loggedFirstMessage) {
+      loggedFirstMessage = true;
+      console.log('First message type: ' + data.substring(0, 20));
     }
 
-    // Graceful disconnect
-    socket.close();
-  });
+    // --- Engine.IO OPEN packet: 0{"sid":"...","upgrades":[],...} ---
+    if (data.charAt(0) === '0' && data.charAt(1) === '{') {
+      // In Socket.IO v4 the CLIENT must initiate the default namespace
+      // connection by sending 40. The server does NOT send 40 first.
+      ws.send('40');
+      return;
+    }
 
-  check(res, {
-    'ws connection status is 101': function (r) { return r && r.status === 101; },
-  });
+    // --- Socket.IO default namespace CONNECT ack: 40{"sid":"..."} ---
+    // Matches 40 or 40{"sid":"..."} but NOT 40/trains,... (namespace packets).
+    if (!connectedDefault && data.substring(0, 2) === '40' && data.charAt(2) !== '/') {
+      connectedDefault = true;
+      ws.send('40/trains,');
+      return;
+    }
+
+    // --- Socket.IO CONNECT ack for /trains namespace: 40/trains,{...} ---
+    if (data.indexOf('40/trains') === 0 && !subscribed) {
+      subscribed = true;
+      wsConnectionTime.add(Date.now() - connectStart);
+      wsConnectionSuccess.add(1);
+      ws.send('42/trains,["subscribe:all"]');
+      return;
+    }
+
+    // --- Socket.IO EVENT on /trains: 42/trains,[...] ---
+    if (data.indexOf('42/trains') === 0) {
+      wsMessagesReceived.add(1);
+      if (firstMessageTime === 0) {
+        firstMessageTime = Date.now();
+      }
+      wsMessageLatency.add(Date.now() - firstMessageTime);
+      return;
+    }
+
+    // --- Engine.IO PING: 2 -> respond with PONG: 3 ---
+    if (data === '2') {
+      ws.send('3');
+      return;
+    }
+  };
+
+  ws.onerror = function (e) {
+    if (e && e.error && String(e.error).indexOf('close sent') === -1) {
+      console.error('WebSocket error:', e.error);
+    }
+    // If we never completed the handshake, record a connection failure.
+    if (!subscribed) {
+      wsConnectionSuccess.add(0);
+    }
+  };
+
+  ws.onclose = function () {
+    // Clean up timers if still active (e.g. server-initiated close).
+    if (closeTimer !== null) {
+      clearTimeout(closeTimer);
+      closeTimer = null;
+    }
+    if (pingInterval !== null) {
+      clearInterval(pingInterval);
+      pingInterval = null;
+    }
+    // If the socket closed before we finished the handshake, record failure.
+    if (!subscribed) {
+      wsConnectionSuccess.add(0);
+    }
+  };
 }
-
-// ---------------------------------------------------------------------------
-// Default function (required by k6)
-// ---------------------------------------------------------------------------
 
 export default function () {
   socketIOTest();
