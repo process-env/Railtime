@@ -4,6 +4,71 @@ _Last Updated: 2026-02-23_
 
 ---
 
+## Session: Codebase Health Review + Tier 1 Critical Remediation (2026-02-23)
+
+**Goal:** Full-codebase health review across all 6 domains, followed by remediation of all 19 actionable Critical-tier findings.
+
+### Phase 1: Full Codebase Health Review
+
+Ran 6 parallel code architecture review agents across:
+1. API routes & data pipeline (27 routes, `src/lib/mta/`, `src/lib/api/`)
+2. Map components & hooks (`SubwayMap.tsx`, 5 hooks, 6 utility modules)
+3. Trip planner algorithm (Dijkstra, graph builder, Neo4j planner)
+4. UI, state & analytics (5 Zustand stores, 20+ hooks, 14 analytics components)
+5. WebSocket server (25 files: ingestion, namespaces, analytics pipeline)
+6. Test infrastructure (44 test files, mocks, config, CI)
+
+**Results:** 131 findings total (21 Critical, 56 Important, 42 Minor, 12 Strategic)
+
+**Review artifacts:**
+- `dev/review/codebase-health/codebase-health-review.md` — Full structured review
+- `dev/review/codebase-health/codebase-health-context.md` — Scope and methodology
+- `dev/review/codebase-health/codebase-health-tasks.md` — Prioritized task checklist
+- Domain details in `dev/active/{code-review,map-layer-review,trip-planner-review,frontend-deep-review,server-deep-review,test-infra-review}/`
+
+### Phase 2: Tier 1 Critical Remediation (19 of 21 items)
+
+Deployed 6 parallel specialist agents. All changes verified: TypeScript compiles clean, 44 test files / 682 tests passing.
+
+| CRIT | Domain | Fix | Files |
+|------|--------|-----|-------|
+| 01 | API | Sanitized error messages — static strings only, no more `error.message` leakage | 8 route handlers |
+| 02 | API | Migrated conductor/announce audio cache from in-memory Map to Redis with TTL | `conductor/announce/route.ts` |
+| 03 | API | Wired rate limiting to 13 previously unprotected route handlers | 13 route files |
+| 04 | API | Deleted duplicate `load-schedule.ts` (zero consumers) | 1 file deleted |
+| 05 | API | Added lat/lon bounds + category regex validation to POI nearby | `poi/nearby/route.ts` |
+| 06 | Map | Added cancellation flag to `updateApiData` async loop | `useTrainMarkers.ts` |
+| 07 | Map | Added generation counter to `Promise.all` marker update to prevent phantom markers | `useTrainMarkers.ts` |
+| 08 | Map | Stored event listener refs + cleanup in train markers (matching station marker pattern) | `useTrainMarkers.ts`, `useMapAnimation.ts` |
+| 09 | Map | Wrapped `clearMarkers` in `useCallback`, consolidated unmount cleanup | `TripMarkers.tsx` |
+| 10 | Trip | Removed dead `preferFewerTransfers` option from types, algorithm, API, tests | 4 files |
+| 11 | Trip/Map | Added RFC-4180 CSV parser replacing naive `split(',')` | `graph-builder.ts`, `track-index.ts` |
+| 12 | Trip | Added `backend` and `cached` fields to `TripPlanResponse` type | `types.ts` |
+| 13 | Trip | Added `visited` set to Dijkstra — fixed dead stale-entry guard | `dijkstra.ts` |
+| 14 | UI | Replaced manual fetch+setInterval on station detail page with `useArrivals` hook | `stations/[stationId]/page.tsx` |
+| 15 | UI | Lifted `useDailyRollups` to analytics page level — 7→1 Apollo requests | `analytics/page.tsx` + 7 chart components |
+| 16 | UI | Moved `ApolloProvider` from root layout to analytics-only layout | `layout.tsx`, new `analytics/layout.tsx` |
+| 17 | Server | Deferred `activeTripMap.delete()` to try-success path — prevents TRIP_END event loss | `metrics-collector.ts` |
+| 20 | Test | Fixed Redis mock `set()` to handle ioredis v5 variadic signature | `redis-mock.ts` |
+| 21 | Test | Fixed `getTextColorForBackground` case-insensitivity + updated test | `format.ts`, `format.test.ts` |
+
+### Deferred (Effort L — next session)
+- **CRIT-18** [Test] Replace CSV-dump tests with deterministic unit tests for map animation modules
+- **CRIT-19** [Test] Add Socket.IO path coverage for dual-mode hooks
+
+### Quality Gates — ALL PASSED
+- TypeScript: zero errors (app + server)
+- Tests: 44 files, 682 tests passing
+- No API contract changes (response shapes preserved)
+
+### What's Next
+- Deploy to Vercel + rebuild EC2 WS server
+- Complete CRIT-18 and CRIT-19 (test infrastructure overhauls)
+- Begin Tier 2 Important fixes (56 items)
+- Monitor analytics page for reduced GraphQL request volume (7→1)
+
+---
+
 ## Session: Analytics Page Overhaul — Operational Intelligence Dashboard (2026-02-23)
 
 **Goal:** Replace the 5-tab analytics page (25 components, many fabricated data) with a single-page operational intelligence dashboard focused on real ML Lab data.
@@ -69,14 +134,39 @@ TripCompletionChart + LiveSystemDashboard
 | Delete ridership API route | Only consumer was deleted use-ridership hook — orphaned cascade |
 | EquipmentStatusCard preserved | Imported by alerts page — confirmed via grep |
 
+### Post-Deploy Fixes (commits `4cbd33c` + `0ed1417`)
+
+After initial deploy, user-reported issues were fixed in two follow-up commits:
+
+#### Commit `4cbd33c` — Location, formatting, filters
+- **Anomaly event locations**: Loaded 1,497 stop names from GTFS `stops.txt` on server startup. BUNCH/GAP/DELAY events now include station name (e.g., "2 bunching at Canal St", "10m delay at Central Park North (110 St)")
+- **Delay chart tooltip**: Formatted from raw seconds with floating point errors ("−1424.899s") to minutes ("24m early" / "5m late"). Y-axis also shows minutes.
+- **Anomaly feed filter**: Switched from server-side to client-side filtering — eliminates re-fetch lag and keeps route dropdown populated when type filter is active
+- **Anomaly feed height**: Increased scroll area from 350px to 500px
+- **Stats bar metrics**: Changed from inflated cumulative instance counts (5,293 bunching) to distinct routes affected (e.g., "18 routes")
+
+#### Commit `0ed1417` — Chart polish
+- **Delay chart tooltip z-index**: Tooltip now renders above legend text
+- **Bunching/Gap trend chart**: Changed from cumulative instances (5,377) to distinct routes affected per day. Title updated to "Routes with Bunching / Gaps". Tooltip shows "X routes" label.
+
+#### Redis cache flush
+- Cleared stale pre-rebuild anomaly events from Redis that lacked location data
+
 ### Deployment Status
-- NOT YET DEPLOYED — needs `git push` + `vercel --prod --yes` + EC2 server rebuild
+- **Vercel**: deployed (`https://traintracker-kappa.vercel.app`) — commits `7bb48c7`, `4cbd33c`, `0ed1417`
+- **EC2 WS server**: rebuilt with stop name loading (1,497 stops), anomaly feed endpoint active
+- **Anomaly feed**: verified live with 200 events, all with station names
+
+### Commits
+- `7bb48c7` — feat: replace 5-tab analytics page with single-page operational intelligence dashboard
+- `4cbd33c` — fix: add location to anomaly events, format delays to minutes, fix filters
+- `0ed1417` — fix: tooltip z-index on delay chart, show routes affected in bunching trend
 
 ### What's Next
-- Deploy to Vercel
-- Rebuild WS server on EC2 (anomaly-feed endpoint + Redis ZADD in metrics-collector)
-- Verify anomaly feed populates after 5-minute flush cycle
-- Monitor for any runtime issues on the new page
+- Monitor anomaly feed for data quality (stop name resolution, event volume)
+- Consider tuning BUNCHING_THRESHOLD_SECONDS (120s) — may be too aggressive for express routes
+- Consider adding click-to-filter on anomaly feed (click route pill → filters to that route)
+- Address remaining 38 deferred code review items from `dev/active/code-review/`
 
 ---
 

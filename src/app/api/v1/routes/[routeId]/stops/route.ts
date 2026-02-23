@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadStops, filterStopsByRoute } from '@/lib/mta';
-import { apiError, internalError } from '@/lib/api/errors';
+import { apiError, internalError, rateLimited } from '@/lib/api/errors';
+import {
+  checkRateLimit,
+  getClientId,
+  createRateLimitKey,
+  RATE_LIMITS,
+} from '@/lib/api/rate-limit';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ routeId: string }> }
 ) {
+  // Rate limit check
+  const clientId = getClientId(request);
+  const key = createRateLimitKey(clientId, '/api/v1/routes');
+  const limit = checkRateLimit(key, RATE_LIMITS.static);
+  if (!limit.success) {
+    return rateLimited(limit.resetIn);
+  }
+
   try {
     const { routeId } = await params;
 

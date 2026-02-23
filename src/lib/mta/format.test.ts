@@ -132,7 +132,7 @@ describe('getTextColorForBackground', () => {
   });
 
   it('handles lowercase hex colors', () => {
-    expect(getTextColorForBackground('#fccc0a')).toBe('#fff'); // doesn't match - case sensitive
+    expect(getTextColorForBackground('#fccc0a')).toBe('#000'); // case-insensitive match for NQRW yellow
   });
 });
 

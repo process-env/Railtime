@@ -15,7 +15,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BarChart3 } from 'lucide-react';
-import { useDailyRollups } from '@/hooks/use-analytics-data';
+import type { RollupDataProp } from '@/lib/graphql/types';
 
 function getBarColor(onTimePercent: number | null): string {
   if (onTimePercent == null) return '#6b7280';
@@ -30,9 +30,24 @@ interface ChartDatum {
   onTimePercent: number | null;
 }
 
-export function TripCompletionChart() {
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const { data, loading } = useDailyRollups(today, today);
+interface TripCompletionChartProps {
+  rollupData?: RollupDataProp;
+}
+
+export function TripCompletionChart({ rollupData: sharedRollup }: TripCompletionChartProps) {
+  // Filter shared 30-day data to today only
+  const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+
+  const data = useMemo(() => {
+    if (!sharedRollup?.data) return sharedRollup?.data;
+    return {
+      getDailyRollups: sharedRollup.data.getDailyRollups.filter(
+        (r) => r.date.split('#')[0] === today
+      ),
+    };
+  }, [sharedRollup?.data, today]);
+
+  const loading = sharedRollup?.loading ?? false;
 
   const chartData = useMemo(() => {
     const rollups = data?.getDailyRollups ?? [];

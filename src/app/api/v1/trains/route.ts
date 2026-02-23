@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchFeed, fetchAllFeeds } from '@/lib/mta/fetch-feed';
 import { calculateTrainPositions } from '@/lib/mta/train-positions';
-import { internalError, badRequest } from '@/lib/api/errors';
+import { internalError, badRequest, rateLimited } from '@/lib/api/errors';
 import { getCache, setCache } from '@/lib/redis';
+import {
+  checkRateLimit,
+  getClientId,
+  createRateLimitKey,
+  RATE_LIMITS,
+} from '@/lib/api/rate-limit';
 import type { TrainPosition } from '@/types/mta';
 
 const FEED_GROUP_IDS = ['ACE', 'BDFM', 'G', 'JZ', 'NQRW', 'L', 'SI', '1234567'];
@@ -69,6 +75,14 @@ function routeToFeedGroup(routeId: string): string | null {
 }
 
 export async function GET(request: NextRequest) {
+  // Rate limit check
+  const clientId = getClientId(request);
+  const key = createRateLimitKey(clientId, '/api/v1/trains');
+  const limit = checkRateLimit(key, RATE_LIMITS.realtime);
+  if (!limit.success) {
+    return rateLimited(limit.resetIn);
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const groupId = searchParams.get('groupId');
@@ -102,6 +116,6 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error('Error fetching trains:', error);
-    return internalError(error instanceof Error ? error.message : 'Failed to fetch trains');
+    return internalError('Failed to fetch trains');
   }
 }

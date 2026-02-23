@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useSelectedTrip } from '@/stores/trip-store';
 import { useStaticData } from '@/hooks';
@@ -94,11 +94,11 @@ export function TripMarkers({ map, mapLoaded }: TripMarkersProps) {
   const { stations } = useStaticData();
   const markersRef = useRef<TripMarker[]>([]);
 
-  // Clear all markers
-  const clearMarkers = () => {
+  // Clear all markers — stable reference via useCallback
+  const clearMarkers = useCallback(() => {
     markersRef.current.forEach(({ marker }) => marker.remove());
     markersRef.current = [];
-  };
+  }, []);
 
   // Create markers when trip changes
   useEffect(() => {
@@ -193,18 +193,11 @@ export function TripMarkers({ map, mapLoaded }: TripMarkersProps) {
       markersRef.current.push({ marker, type: 'transfer' });
     });
 
-    // Cleanup function
+    // Single cleanup — clears markers on dependency change and on unmount
     return () => {
       clearMarkers();
     };
-  }, [map, mapLoaded, selectedTrip, stations]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      clearMarkers();
-    };
-  }, []);
+  }, [map, mapLoaded, selectedTrip, stations, clearMarkers]);
 
   // This component doesn't render anything - it just manages markers
   return null;

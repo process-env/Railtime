@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, MapPin, RefreshCw, ExternalLink, Store } from 'lucide-react';
@@ -11,9 +11,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ArrivalBoard } from '@/components/stations';
 import { POIList } from '@/components/poi';
 import { useStaticData } from '@/hooks';
+import { useArrivals } from '@/hooks/use-arrivals';
 import { useUIStore } from '@/stores';
 import { getRouteColor } from '@/lib/constants';
-import type { ArrivalItem } from '@/types/mta';
+import { getFeedGroupForRoute } from '@/lib/mta/feed-groups';
 
 export default function StationDetailPage() {
   const params = useParams();
@@ -23,41 +24,24 @@ export default function StationDetailPage() {
   const { stations, isLoading: stationsLoading } = useStaticData();
   const { setSelectedStation } = useUIStore();
 
-  const [arrivals, setArrivals] = useState<ArrivalItem[]>([]);
-  const [arrivalsLoading, setArrivalsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const station = stations[stationId];
   const routes = station?.routes?.split(/[,\s]+/).filter(Boolean) || [];
 
-  // Fetch arrivals for this station using optimized single endpoint
-  const fetchArrivals = useCallback(async () => {
-    if (!station) return;
+  // Derive feed group from the station's first route
+  const feedGroup = useMemo(() => {
+    if (routes.length === 0) return '';
+    return getFeedGroupForRoute(routes[0]) ?? '';
+  }, [routes]);
 
-    setArrivalsLoading(true);
-    setError(null);
+  // Use the shared arrivals hook (handles polling, socket, and fallback)
+  const {
+    arrivals: arrivalBoard,
+    isLoading: arrivalsLoading,
+    error,
+    refetch,
+  } = useArrivals(feedGroup, stationId, { enabled: !!station && !!feedGroup });
 
-    try {
-      const response = await fetch(`/api/v1/arrivals/station/${stationId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch arrivals');
-      }
-      const data = await response.json();
-      setArrivals(data.arrivals || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load arrivals');
-    } finally {
-      setArrivalsLoading(false);
-    }
-  }, [station, stationId]);
-
-  useEffect(() => {
-    if (station) {
-      fetchArrivals();
-      const interval = setInterval(fetchArrivals, 30000); // Refresh every 30s
-      return () => clearInterval(interval);
-    }
-  }, [station, fetchArrivals]);
+  const arrivals = arrivalBoard?.arrivals ?? [];
 
   // Show on map
   const handleShowOnMap = () => {
@@ -138,7 +122,7 @@ export default function StationDetailPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={fetchArrivals}
+            onClick={() => refetch()}
             disabled={arrivalsLoading}
           >
             <RefreshCw

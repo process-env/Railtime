@@ -6,579 +6,531 @@ Last Updated: 2026-02-23
 
 ## Executive Summary
 
-The Railtime frontend is a thoughtfully architected real-time application with a high degree of engineering maturity. The dual-mode WebSocket/polling pattern is clearly structured, the imperative MapLibre marker system is well-separated from React's rendering cycle, and the Zustand/React Query boundary is correctly drawn. The codebase reflects iterative refinement: the alpha-beta-gamma motion system, the train state machine, and the route-dedup logic all show careful design work.
+This review covers the complete UI layer: five Zustand stores, 20+ custom hooks, 14 analytics components, all layout/alert/station/trip-planner components, the four providers, all dashboard page routes, and the ErrorBoundary. The code is architecturally mature and the dual-mode (Socket.IO / React Query polling) data pipeline is well-engineered for resilience. The separation between server state (React Query / Apollo) and client UI state (Zustand) is largely respected. Component composition is clean, shadcn/ui primitives are used consistently, and loading/error/empty state coverage is thorough across most surfaces.
 
-The two areas of greatest risk are security and operational correctness. The `/api/v1/conductor/announce` POST endpoint accepts arbitrary JSON with no rate limiting, no input length validation, and proxies user-supplied content directly to OpenAI and ElevenLabs — making it the highest-cost attack surface in the codebase. On the correctness side, a race condition exists in all three dual-mode hooks (`useTrainPositions`, `useAlerts`, `useArrivals`) where a socket disconnect/reconnect cycle during a pending `fallbackTimerRef` can arm a second timer without clearing the first, eventually forcing the wrong data source. There are also several dead-code and dead-state items (`_dashOffset`, `LIVENESS_TIMEOUT_MS` for trains, the disabled state machine) that should be cleaned up or commented as intentional deferrals.
+Three recurring patterns require attention before this layer is considered production-ready. First, a dual-client data architecture (Apollo Client for analytics, React Query for everything else) introduces a significant hidden cost: every analytics chart independently calls `useDailyRollups` with identical date ranges, firing multiple identical GraphQL requests in one render cycle with no deduplication coordination between components. Second, the station detail page (`/stations/[stationId]/page.tsx`) bypasses React Query entirely and manages arrivals with raw `useState` + `setInterval`, creating an architectural inconsistency and a real memory-leak risk. Third, several accessibility gaps (missing `aria-expanded`, unlabeled interactive elements, and non-semantic heading hierarchy) need remediation.
 
----
-
-## Strengths
-
-- Dual-mode WS/polling fallback is cleanly structured across all three hooks with consistent lifecycle patterns.
-- Zustand stores maintain tight scope: trains store holds only positions, alerts store holds only dismissed IDs, trip store holds only planner state.
-- React Query is used correctly as the server-state layer; direct `fetch` is only used in `use-trip-planner.ts` where the mutation semantics (`planTrip`) justify it.
-- Validation schemas (`src/lib/validation/schemas.ts`) with Zod are thorough and reusable.
-- Error boundary wrapping of the map component with a domain-specific fallback is a production-quality pattern.
-- The imperative marker/animation architecture (refs, not React state) is the correct approach for 300+ animated DOM elements at 60 fps.
-- Dynamic imports for all MapLibre heavy utilities avoid SSR failures and large initial bundles.
-- Rate limiter has two independent implementations (`src/lib/rate-limit.ts` and `src/lib/api/rate-limit.ts`) both technically correct — the duplication is the issue, not the logic.
-- XSS protection on alert HTML descriptions via DOMPurify is present and correctly configured.
-- Train dedup logic (winner-takes-all per segment, stability via `dedupWinnersRef`) is clever and avoids visual flickering.
+The overall quality is high. The critical and important findings below are specific and actionable; most can be resolved in one or two focused sessions.
 
 ---
 
 ## Critical Issues (must fix)
 
-### C-1: Conductor announce endpoint has no rate limiting, no input length validation, and no body schema enforcement
+### C-1: Station detail page bypasses React Query — raw fetch + setInterval creates memory-leak risk
 
-**File:** `src/app/api/v1/conductor/announce/route.ts`
-**Lines:** 236-340
+**File:** `src/app/(dashboard)/stations/[stationId]/page.tsx` (lines 26-60)
 
-The `POST /api/v1/conductor/announce` endpoint reads `request.json()` and passes the body directly to `generateAnnouncement`, which calls OpenAI chat completions and then `synthesizeSpeech` (OpenAI TTS). There is no:
-- Rate limit check per IP
-- Maximum length on `stationName`, `headsign`, `poiName`, or `crossStreet`
-- Schema validation (any JSON with the right shape is accepted; extra fields are silently ignored)
-- Authentication
+The page manages arrival data with `useState<ArrivalItem[]>` + a raw `setInterval(fetchArrivals, 30000)` + a manual `useCallback(fetchArrivals)`. This is the only page in the entire app that does not use React Query for server state and it introduces two real risks:
 
-A single unauthenticated caller can trigger unlimited OpenAI API calls. A `stationName` of 10,000 characters will be inserted into the prompt template and charged accordingly.
+1. If the component unmounts between the `fetch` response resolving and `setArrivals` executing, React will warn about state updates on unmounted components (and in strict-mode double-invoke, this is nearly certain to fire).
+2. The `setInterval` depends on `station` in the `useEffect` dependency array. If `station` changes identity (e.g., due to a parent re-render), a new interval is registered without the cleanup effect having fired first — producing duplicate polling.
 
-```ts
-// Current — no validation at all
-const body: AnnounceRequest = await request.json();
-const { routeId, stationId, stationName, ... } = body;
-if (!routeId || !stationName) { /* only basic check */ }
+The `useArrivals` hook already exists in `src/hooks/use-arrivals.ts` and handles polling, socket subscriptions, and fallback. The station detail page should use it.
+
+**Risk:** Data staleness under navigation, stale closure bugs, potential duplicate network calls.
+
+**Fix:** Replace the manual fetch block with:
+```tsx
+// Remove useState for arrivals, arrivalsLoading, error
+// Remove fetchArrivals callback and the useEffect that sets the interval
+
+// Add:
+const { arrivals: arrivalBoard, isLoading: arrivalsLoading, error } = useArrivals(
+  station?.feedGroup ?? '',   // requires feedGroup on Stop type, or derive from route
+  stationId
+);
+const arrivals = arrivalBoard?.arrivals ?? [];
 ```
-
-**Fix:** Add Zod schema validation at the top of the handler, enforce field length limits (e.g., `stationName` max 100 chars), and call the existing `checkRateLimit` from `src/lib/rate-limit.ts`.
-
-```ts
-const AnnounceBodySchema = z.object({
-  routeId: z.string().min(1).max(3).regex(/^[A-Z0-9]+$/i),
-  stationName: z.string().min(1).max(100),
-  stationId: z.string().max(10).optional(),
-  headsign: z.string().max(100).optional(),
-  poiName: z.string().max(100).optional(),
-  crossStreet: z.string().max(100).optional(),
-  direction: z.string().max(10).optional(),
-  announcementType: z.enum(ANNOUNCEMENT_TYPES).optional(),
-});
-```
-
-The same gap exists in `src/app/api/v1/conductor/weather/route.ts` and `src/app/api/v1/conductor/news/route.ts` — all three conductor endpoints should be similarly hardened.
 
 ---
 
-### C-2: Fallback timer double-arming race condition in dual-mode hooks
+### C-2: Multiple analytics components issue duplicate Apollo `useDailyRollups` requests with the same variables
 
 **Files:**
-- `src/hooks/use-train-positions.ts` lines 87-107
-- `src/hooks/use-alerts.ts` lines 99-113
-- `src/hooks/use-arrivals.ts` lines 96-113
+- `src/components/analytics/DelayTrendChart.tsx` (line 36)
+- `src/components/analytics/BunchingGapTrendChart.tsx` (line 29)
+- `src/components/analytics/RoutePerformanceTable.tsx` (line 61)
+- `src/components/analytics/DelayDistributionChart.tsx` (line 86)
+- `src/components/analytics/SystemHealthTimeline.tsx` (line 23)
+- `src/components/analytics/BestWorstRouteCard.tsx` (line 93)
+- `src/components/analytics/TripCompletionChart.tsx` (line 35)
 
-In the socket lifecycle `useEffect`, the disconnect branch creates a `fallbackTimerRef.current` without first checking whether one already exists. The cleanup of the previous effect run clears it, but the `isConnected` value can change from `true` → `false` → `true` → `false` between renders faster than the effect cleanup runs in certain StrictMode or React 19 concurrent rendering scenarios. The result is two overlapping timers both calling `setSocketActive(false)` and `queryClient.invalidateQueries`, which fires duplicate polling invalidations.
+Each of these components independently calls `useDailyRollups(from, to)`. For a 7-day range, five of them compute `from = format(subDays(new Date(), 7), 'yyyy-MM-dd')` and `to = format(new Date(), 'yyyy-MM-dd')` independently and each fires its own Apollo query.
 
-```ts
-// Current — in use-train-positions.ts line 95
-fallbackTimerRef.current = setTimeout(() => {
-  setSocketActive(false);
-  queryClient.invalidateQueries({ queryKey: queryKeys.trains });
-}, FALLBACK_DELAY_MS);
-// No guard: if already set, the old timer is not cleared here
+Apollo's InMemoryCache will deduplicate identical in-flight requests, but only when `keyArgs` match exactly. Each component computes `from` and `to` independently using `new Date()` at render time. If any component renders a millisecond apart (e.g., during React concurrent rendering), the date strings will still match, but there is no guarantee that the date string construction happens in the same tick. More critically, the `cache-and-network` fetch policy (set in the Apollo client's `defaultOptions`) means every one of these components also triggers a background network refetch on mount even when the cache already has fresh data.
+
+**Risk:** Up to 7 simultaneous identical GraphQL requests on analytics page load; potential AppSync cost and rate-limit exposure.
+
+**Fix:** Lift the shared `useDailyRollups` call to the analytics page level and pass data down as props, or create a shared context provider:
+
+```tsx
+// analytics/page.tsx
+const rollupData = useDailyRollups(sevenDaysAgo, today);
+
+<DelayTrendChart rollupData={rollupData} />
+<BunchingGapTrendChart rollupData={rollupData} />
+<RoutePerformanceTable rollupData={rollupData} />
+// etc.
 ```
 
-The returned cleanup only clears on *effect re-run*, but if the same branch runs twice before the effect's cleanup fires, the first timer leaks.
-
-**Fix:** Clear before setting in the disconnect branch:
-
-```ts
-} else {
-  if (disconnectedAtRef.current === null) {
-    disconnectedAtRef.current = Date.now();
-  }
-  // Guard: always clear before arming
-  if (fallbackTimerRef.current) {
-    clearTimeout(fallbackTimerRef.current);
-  }
-  fallbackTimerRef.current = setTimeout(() => {
-    setSocketActive(false);
-    queryClient.invalidateQueries({ queryKey: queryKeys.trains });
-  }, FALLBACK_DELAY_MS);
-}
-```
-
-This pattern should be applied identically in `use-alerts.ts` and `use-arrivals.ts`.
+Alternatively, add a custom `useSharedDailyRollups` hook that uses React Query (not Apollo) with `staleTime: Infinity` for the day and shares one fetch.
 
 ---
 
-### C-3: POI popup in SubwayMap inserts unsanitized URL parameter content into the DOM
+### C-3: ApolloProvider wraps the entire app but is used only on the analytics page
 
-**File:** `src/components/map/SubwayMap.tsx`
-**Lines:** 300-304
+**File:** `src/app/layout.tsx` (line 57)
 
-The `poiName` query parameter from the URL is inserted into a MapLibre popup `setHTML` call without sanitization:
+The `ApolloProvider` is placed in the root layout, wrapping every page (map, stations, alerts) with the Apollo client and its InMemoryCache even though GraphQL/AppSync is only consumed by analytics-layer hooks (`use-analytics-data.ts`). The Apollo client is also a module-level singleton (`apolloClient` instantiated at import time in `src/lib/graphql/client.ts`), which means it is included in every page's JS bundle.
 
-```ts
-const poiName = searchParams.get('poiName');
-// ...
-const popup = new maplibregl.Popup({ offset: 25, closeButton: true })
-  .setHTML(`<div style="padding: 4px 8px; font-weight: 500;">${poiName}</div>`);
-```
+**Risk:** Unnecessary bundle weight and memory overhead on non-analytics pages. The singleton pattern also makes the Apollo client untestable in isolation (no per-render instantiation).
 
-`poiName` is raw user-supplied URL input. MapLibre's `setHTML` sets `innerHTML` directly. An attacker can craft a URL like:
-```
-/map?poi=40.7,-73.9&poiName=<img src=x onerror=alert(document.cookie)>
-```
-
-This is a stored-URL XSS vector, exploitable via shared links.
-
-**Fix:** Sanitize before interpolation:
-
-```ts
-import { sanitizeHtml } from '@/lib/utils/sanitize';
-
-const safeName = sanitizeHtml(poiName);
-const popup = new maplibregl.Popup({ offset: 25, closeButton: true })
-  .setHTML(`<div style="padding: 4px 8px; font-weight: 500;">${safeName}</div>`);
-```
-
----
-
-### C-4: Rate limiting is entirely disabled at the middleware layer
-
-**File:** `src/middleware.ts`
-**Lines:** 8-11
-
-```ts
-export function middleware(_request: NextRequest) {
-  // Rate limiting disabled for now — the limits need tuning
-  return NextResponse.next();
-}
-```
-
-The project has two well-implemented rate-limiting modules (`src/lib/rate-limit.ts`, `src/lib/api/rate-limit.ts`) and a proper `RATE_LIMITS` configuration. They are dead code as long as middleware passes all requests unconditionally. All API routes are fully open to abuse.
-
-**Risk:** In production, this means `/api/v1/conductor/announce` (see C-1), `/api/v1/trains`, and all other routes have zero request throttling.
-
-**Fix:** Re-enable middleware with the existing `checkRateLimit` infrastructure, tuned to the real-time polling frequency. The comment acknowledges this but the fix has been deferred indefinitely.
+**Fix:** Move `ApolloProvider` into the analytics layout or the analytics page's subtree. If the analytics section gets its own `app/(dashboard)/analytics/layout.tsx`, wrap only that subtree.
 
 ---
 
 ## Important Improvements (should fix)
 
-### I-1: `useTrainMarkers` effect fires `async/await` inside `forEach` — unawaited async operations
+### I-1: `useOperationalStats` calls three separate data hooks causing cascading re-renders
 
-**File:** `src/components/map/hooks/useTrainMarkers.ts`
-**Line:** 394
+**File:** `src/hooks/use-operational-stats.ts` (lines 19-25)
 
-```ts
-displayTrains.forEach(async (train) => {
-  // await calls inside forEach — the effect body does NOT await these
-  const motionState = await createMotionState(...);
-});
-```
+`useOperationalStats` internally calls `useAnalytics()`, `useAlerts()`, and `useDailyRollups()`. Each of these has its own subscription model. When any one of them updates, `useOperationalStats` re-runs its `useMemo`, which re-renders every consumer of the stats bar. The `useAnalytics` hook itself internally calls `useTrainPositions` which polls every 15 seconds, meaning `OperationalStatsBar` re-renders at the map's polling cadence even when none of its displayed values change.
 
-`Array.prototype.forEach` ignores the return value of its callback. The `await` calls inside run, but the `useEffect` body has already completed. This means:
-1. If the component unmounts while async operations are in flight, they will still resolve and attempt to mutate `trainMotionRef.current` and add markers to the (now-removed) map.
-2. The `scheduleAnimation()` call at line 558 happens synchronously *before* any of the `createMotionState` promises resolve, so the first animation frame may have zero motion-based trains populated.
-
-**Fix:** Replace `forEach(async ...)` with a `Promise.all` over an async IIFE guarded by a mounted flag:
-
-```ts
-useEffect(() => {
-  let mounted = true;
-  const run = async () => {
-    // ... setup code ...
-    await Promise.all(displayTrains.map(async (train) => {
-      if (!mounted) return;
-      // ... existing per-train logic ...
-    }));
-    if (mounted) scheduleAnimation();
-  };
-  run();
-  return () => { mounted = false; };
-}, [...deps]);
-```
+**Fix:** Extract only the specific selectors needed. For `useAnalytics`, only `data.stats.totalTrains` and `data.stats.feedHealth` are consumed. Separate those into narrower selectors or memoize the comparison at the hook boundary.
 
 ---
 
-### I-2: `disconnectAll()` in SocketProvider cleanup disconnects namespace sockets owned by child hooks
+### I-2: `useAlerts` is instantiated 5+ times on the analytics page without data sharing
 
-**File:** `src/components/providers/SocketProvider.tsx`
-**Lines:** 63-68
+**Files:** `AlertStatusCard.tsx`, `AlertBanner.tsx` (via layout), `AlertBadge.tsx` (via sidebar), `AppSidebar.tsx`, `AnalyticsPage` (direct call)
 
-```ts
-return () => {
-  s.off('connect', onConnect);
-  s.off('disconnect', onDisconnect);
-  disconnectAll();  // <-- kills ALL namespace sockets
-  setIsConnected(false);
-  setSocket(null);
-};
-```
+Each instance creates its own React Query subscription to `queryKeys.alerts()`. While React Query deduplicates the network request, each hook still runs its `useMemo` for `activeAlerts`, `visibleAlerts`, and `counts` independently. With ~100+ service alerts, this is five separate passes through the alert array per polling cycle.
 
-`disconnectAll()` calls `disconnectSocket()` (root) AND clears every namespace socket in `namespaceSockets`. But `useTrainPositions`, `useAlerts`, and `useArrivals` each hold their own namespace socket reference obtained via `connectNamespaceSocket`. When `SocketProvider` unmounts (e.g., during hot reload in dev or a parent route change), it kills all namespace sockets, but the child hook effects have already captured stale socket references and will not reconnect because their `isAvailable` effect deps have not changed.
-
-**Consequence:** After a SocketProvider re-mount, the three data hooks remain in a zombie state: `isConnected=false`, no reconnect attempt, no polling fallback (because `socketActive` is still `true` from the previous session), until the FALLBACK_DELAY_MS timer fires.
-
-**Fix:** Either:
-- Expose a "reset" event from SocketProvider that child hooks can listen to, or
-- Remove `disconnectAll()` from the SocketProvider cleanup (since namespace sockets are independently owned by child hooks), and add explicit namespace socket disconnect in each hook's cleanup:
-
-```ts
-// In use-train-positions.ts useEffect cleanup:
-return () => {
-  s.off('connect', onConnect);
-  s.off('disconnect', onDisconnect);
-  s.disconnect();  // Disconnect only this namespace socket
-};
-```
+**Fix:** The `useAlerts` data path is a strong candidate for a React context. Create an `AlertsDataContext` that holds `alerts`, `visibleAlerts`, and `counts`, populated by a single `useAlerts()` call, and consumed by all subscribers. The dismissal actions can remain on the Zustand store.
 
 ---
 
-### I-3: `use-analytics.ts` generates fabricated timeline data presented as real historical data
+### I-3: `AlertsUIState` uses `Set<string>` in Zustand — `persist` middleware will silently drop it
 
-**File:** `src/hooks/use-analytics.ts`
-**Lines:** 84-103
+**File:** `src/stores/alerts-store.ts` (line 12)
 
-```ts
-const timeline = useMemo<TimelineData[]>(() => {
-  const currentCount = trains.length;
-  for (let i = 11; i >= 0; i--) {
-    // Use current train count for all time slots (historical disabled)
-    result.push({
-      time: time.toLocaleTimeString(...),
-      arrivals: currentCount,   // same value for all 12 slots
-      departures: currentCount, // same value for all 12 slots
-    });
-  }
-  return result;
-}, [trains.length]);
-```
+`dismissedIds` is typed as `Set<string>`. Zustand's `persist` middleware serializes state to JSON. `JSON.stringify(new Set(['a', 'b']))` produces `{}` — the Set is silently lost. Currently, `useAlertsStore` does not use `persist`, so this is not an active bug. However, if someone adds persistence later (which is natural for a "dismissed alerts" feature), the data will silently vanish on every page load.
 
-The arrivals timeline chart will render a flat horizontal line at the current train count for all 12 time points going back 1 hour. This looks like real historical data to users but is meaningless. The `avgDelay` is hardcoded to `2` (line 124). These values are misleading.
-
-**Fix:** Either:
-- Replace with explicit placeholder UI that communicates "historical data unavailable", or
-- Remove these fields from the returned `AnalyticsData` type and the corresponding chart components while the feature is disabled.
+**Fix:** Either document the non-persistence explicitly in a JSDoc comment, or store `dismissedIds` as `string[]` and convert to a `Set` inside the selector. A sorted array round-trips through JSON correctly and the lookup cost is only meaningful at very large scales.
 
 ---
 
-### I-4: `useMapAnimation` stale closure for `animateTrains` — `options.refreshInterval` captured at creation
+### I-4: `useCanPlanTrip` and `useSelectedTrip` each call `useTripStore` twice unnecessarily
 
-**File:** `src/components/map/hooks/useMapAnimation.ts`
-**Lines:** 270-456
+**File:** `src/stores/trip-store.ts` (lines 86-100)
 
-`animateTrains` is memoized with `useCallback` and captures `options.refreshInterval` at the time of creation. The legacy animation loop uses it to compute `progress`:
+```typescript
+export function useSelectedTrip(): TripPlan | null {
+  const trips = useTripStore((state) => state.trips);           // subscription 1
+  const selectedTripIndex = useTripStore((state) => state.selectedTripIndex); // subscription 2
+  return trips[selectedTripIndex] ?? null;
+}
 
-```ts
-const progress = Math.min(elapsed / options.refreshInterval, 1);
+export function useCanPlanTrip(): boolean {
+  const originStationId = useTripStore((state) => state.originStationId);      // subscription 1
+  const destinationStationId = useTripStore((state) => state.destinationStationId); // subscription 2
+  const isPlanning = useTripStore((state) => state.isPlanning);                // subscription 3
+  return Boolean(originStationId && destinationStationId && !isPlanning);
+}
 ```
 
-`options` is passed by value as a plain object from `SubwayMap.tsx`. If `refreshInterval` changes (which it currently does not, but could if passed as a prop), the stale value will be used inside the animation loop until the next `useCallback` invalidation. More critically, `animateTrainsRef.current` is updated to the latest `animateTrains` (line 461), but the rAF loop calls `animateTrainsRef.current?.()` which is the latest ref — so this particular path is actually safe. However, the `hasMovingTrains` callback (line 251) captures `options.refreshInterval` without it being in its deps, meaning it can check progress against an old interval value.
+Each `useTripStore(selector)` call creates an independent subscription. For `useCanPlanTrip`, three Zustand subscriptions are created. Use a single combined selector with shallow equality:
 
-**Fix:** Either pass `refreshInterval` as a `useRef` so it's always current, or add it to all `useCallback` dependency arrays where it's used.
+```typescript
+import { useShallow } from 'zustand/react/shallow';
 
----
-
-### I-5: `ConductorProvider` leaks `setInterval` for news and `setTimeout` chains for hourly weather — no cleanup IDs stored
-
-**File:** `src/components/conductor/ConductorProvider.tsx`
-**Lines:** 190-186**
-
-```ts
-// No return value stored:
-setInterval(playNews, 10 * 60 * 1000);
-
-// scheduleHourlyWeather uses nested setTimeout without cleanup
-const scheduleHourlyWeather = () => {
-  setTimeout(() => {
-    playWeather();
-    scheduleHourlyWeather();  // Recurses — no stop condition, no ID stored
-  }, msUntilNextHour);
-};
-```
-
-The effect cleanup (line 200-205) only clears `announcementTimerRef` and pauses audio. The `setInterval` for news and the recursive `setTimeout` chain for hourly weather are never cleared on unmount. In Next.js App Router, components can remount (e.g., during navigation to another route and back), creating duplicate interval/timer stacks with each mount.
-
-**Fix:** Store all timer IDs in refs and clear them in the cleanup:
-
-```ts
-const newsIntervalRef = useRef<NodeJS.Timeout | null>(null);
-const weatherTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-// In startOnInteraction:
-newsIntervalRef.current = setInterval(playNews, 10 * 60 * 1000);
-
-// Cleanup:
-return () => {
-  if (newsIntervalRef.current) clearInterval(newsIntervalRef.current);
-  if (weatherTimeoutRef.current) clearTimeout(weatherTimeoutRef.current);
-  // ...
-};
-```
-
----
-
-### I-6: `trainPositions` data source split — trains array is returned from `useTrainPositions` but also written to Zustand `trainsStore`; consumers use both in parallel
-
-**Files:**
-- `src/hooks/use-train-positions.ts` lines 120-128 (writes to Zustand)
-- `src/components/map/SubwayMap.tsx` line 63 (reads from hook return value, not store)
-- `src/components/layout/AppSidebar.tsx` (may read from store directly — need to verify)
-
-The hook both writes to the Zustand store (`updateTrains`) AND returns `socketTrains` / `query.data.trains` directly. The map page passes `trains` from the hook return value to `SubwayMap`. But the Zustand store is also maintained in parallel. This creates two canonical sources for train data:
-1. Hook return value (what the map uses)
-2. `useTrainsStore().trains` (what components calling `getTrainsByRoute` use)
-
-In WS mode, the hook returns `socketTrains` (state local to the hook) while also calling `updateTrains` on the Zustand store. These should be identical, but they go through separate `useState` update cycles, so the Zustand store and the hook's local state can be one render behind each other.
-
-**Recommendation:** Choose one source of truth. Either:
-- Make the hook the authority: remove Zustand `trainsStore` writes from the hook and have all consumers call `useTrainPositions()`, or
-- Make Zustand the authority: have the hook write to Zustand and return `useTrainsStore(s => Object.values(s.trains))`.
-
-The current hybrid increases complexity without benefit.
-
----
-
-### I-7: POI marker coordinates are in lat/lon order from URL but the comment implies lon/lat for MapLibre
-
-**File:** `src/components/map/SubwayMap.tsx`
-**Lines:** 272-314
-
-```ts
-const [lat, lon] = poiParam.split(',').map(Number);
-// ...
-new maplibregl.Marker({ element: el, anchor: 'bottom' })
-  .setLngLat([lon, lat])   // Correct: MapLibre uses [lng, lat]
-// ...
-map.current.flyTo({
-  center: [lon, lat],       // Correct
-```
-
-This is actually correctly handled — URL is `lat,lon` order and MapLibre gets `[lon, lat]`. However, there is no bounds validation on the parsed coordinates. A URL `?poi=999,999` will call `flyTo` with out-of-bounds coordinates and trigger a MapLibre error. Add a NYC bounding box check:
-
-```ts
-if (!isNaN(lat) && !isNaN(lon) &&
-    lat >= 40.4 && lat <= 41.0 &&
-    lon >= -74.3 && lon <= -73.6) {
-  // Proceed with marker creation
+export function useCanPlanTrip(): boolean {
+  return useTripStore(
+    useShallow((s) => Boolean(s.originStationId && s.destinationStationId && !s.isPlanning))
+  );
 }
 ```
 
 ---
 
-### I-8: Two duplicate rate-limit modules with different APIs — dead code risk
+### I-5: `useGeolocationStore` stores `watchId` in Zustand — side-effect state belongs in a ref
+
+**File:** `src/stores/geolocation-store.ts` (line 23)
+
+`watchId: number | null` is stored in Zustand state. Every time `watchLocation()` runs, it calls `set({ watchId: id })` which triggers a Zustand state update and re-renders all subscribers, even though no component should ever need to render based on the watch ID. This is a side-effect resource handle, not UI state. It belongs in a module-level `ref` or closure variable inside the store.
+
+**Fix:**
+```typescript
+// Outside create():
+let _watchId: number | null = null;
+
+// Inside watchLocation:
+_watchId = navigator.geolocation.watchPosition(...);
+// No set({ watchId }) call — remove watchId from state entirely
+
+// Inside stopWatching:
+if (_watchId !== null) {
+  navigator.geolocation.clearWatch(_watchId);
+  _watchId = null;
+  set({ status: 'idle' });
+}
+```
+
+---
+
+### I-6: `use-transit-analysis` and `use-anomaly-feed` call raw `fetch` directly — inconsistent with project pattern
 
 **Files:**
-- `src/lib/rate-limit.ts` — `checkRateLimit(identifier, pathname)` style (path-based config lookup)
-- `src/lib/api/rate-limit.ts` — `checkRateLimit(identifier, config)` style (caller provides config)
+- `src/hooks/use-transit-analysis.ts` (line 38)
+- `src/hooks/use-anomaly-feed.ts` (line 27)
+- `src/hooks/use-trip-planner.ts` (line 104)
 
-Both exist, neither is called from middleware (which is disabled). Individual routes do not import either. This is dead code for both files. When rate limiting is eventually re-enabled, the team will need to decide which API to use, and the duplication increases the chance of only partially enabling it.
+The CLAUDE.md and BEST_PRACTICES pattern for this codebase is to use `mtaApi` (from `@/lib/api`) as the API abstraction layer for all requests. These three hooks call `fetch()` directly. This means they bypass any API-level error normalisation, any request interceptors, and they cannot be mocked via the `mtaApi` mock in tests.
 
-**Fix:** Pick one module and delete the other. The `src/lib/rate-limit.ts` variant (path-based config) is better suited to middleware-level enforcement.
-
----
-
-### I-9: `useArrivals` unsubscribes from the wrong `stopId` on cleanup when `stopId` changes
-
-**File:** `src/hooks/use-arrivals.ts`
-**Lines:** 116-124
-
-```ts
-useEffect(() => {
-  return () => {
-    if (socket?.connected && prevStopIdRef.current) {
-      socket.emit('unsubscribe:station', prevStopIdRef.current);
-      prevStopIdRef.current = null;
-    }
-  };
-}, [socket, stopId]);  // <-- stopId in deps triggers this on every stopId change
-```
-
-When `stopId` changes, this effect's cleanup runs and emits `unsubscribe:station` for `prevStopIdRef.current` (which is the OLD stop). But the lifecycle effect (lines 76-113) has already subscribed to the NEW stopId and updated `prevStopIdRef.current` to the new stop. Because React runs cleanup before the next effect, `prevStopIdRef.current` at cleanup time is the NEW stop (just set by the lifecycle effect), not the old one. The wrong stop gets unsubscribed.
-
-**Fix:** Capture the stop to unsubscribe before it changes:
-
-```ts
-useEffect(() => {
-  const stationToUnsubscribe = prevStopIdRef.current;
-  return () => {
-    if (socket?.connected && stationToUnsubscribe && stationToUnsubscribe !== stopId) {
-      socket.emit('unsubscribe:station', stationToUnsubscribe);
-    }
-  };
-}, [socket, stopId]);
-```
+**Fix:** Add `getTransitAnalysis` and `getAnomalyFeed` functions to `mtaApi` and update the hooks to call through it. For `use-trip-planner.ts`, the trip planning `fetch` call should similarly move to `mtaApi.planTrip(params)`.
 
 ---
 
-### I-10: `ArrivalBoard.stopName` is set to `null` by socket path but typed as `string | null` — consumers may not handle `null`
+### I-7: `useBackgroundSync` creates a competing `setInterval` for trains data, racing with `useTrainPositions`
 
-**File:** `src/hooks/use-arrivals.ts`
-**Lines:** 138-143**
+**File:** `src/hooks/use-background-sync.ts` (lines 30-46)
 
-```ts
-setSocketArrivals({
-  stopId: data.stationId,
-  stopName: null,           // Always null from WS path
-  updatedAt: data.updatedAt,
-  now: new Date().toISOString(),
-  arrivals: data.arrivals,
-});
+`useBackgroundSync` runs on all non-map pages and calls `queryClient.prefetchQuery` for trains every 30 seconds. However, the stations page (`/stations/page.tsx`) also calls `useTrainPositions({ refreshInterval: 15000 })` directly (line 14), which is enabled and polling. On the stations page, trains data is being fetched at both 15-second intervals (via `useTrainPositions`) and 30-second prefetch intervals (via `useBackgroundSync`). The React Query cache deduplicates the actual network requests, but the 30s background interval is completely redundant on this page.
+
+**Fix:** In `useBackgroundSync`, check whether the trains query is already actively polling before registering the background interval:
+```typescript
+const trainsQueryState = queryClient.getQueryState(queryKeys.trains);
+const isAlreadyPolling = trainsQueryState?.fetchStatus === 'fetching' || ...
+if (!isMapPage && !isAlreadyPolling) { ... }
+```
+Or, simpler: remove the background sync for trains from `useBackgroundSync` entirely and let individual pages manage their own polling. The background sync pattern is only valuable when a page genuinely has no active query for the data.
+
+---
+
+### I-8: `DelayTrendChart` date range recomputed on every render without memoization
+
+**File:** `src/components/analytics/DelayTrendChart.tsx` (lines 33-34)
+
+```typescript
+const to = format(new Date(), 'yyyy-MM-dd');
+const from = format(subDays(new Date(), RANGE_DAYS[range]), 'yyyy-MM-dd');
 ```
 
-The polling path populates `stopName` from the API response. The WS path always sets it to `null`. Any component that uses `arrivals.stopName` will render nothing in WS mode. Verify `ArrivalBoard.tsx` handles this (it probably does, but it's an implicit contract violation).
+`new Date()` is called at the top of the render function. Every time the component re-renders (which happens on any parent state change, including 15-second train polling), two new date strings are computed and passed to `useDailyRollups`. Since `from` and `to` are the same string values between renders (they only change at midnight), Apollo's cache will hit, but the `variables` object passed to `useQuery` is a new object reference each render. Apollo compares `variables` by value, so this is safe functionally, but it is semantically misleading and adds minor overhead.
+
+Same pattern appears in `BunchingGapTrendChart.tsx`, `RoutePerformanceTable.tsx`, `DelayDistributionChart.tsx`, `SystemHealthTimeline.tsx`, and `BestWorstRouteCard.tsx`.
+
+**Fix:** Wrap date computation in `useMemo` with `[range]` dependency:
+```typescript
+const { from, to } = useMemo(() => ({
+  to: format(new Date(), 'yyyy-MM-dd'),
+  from: format(subDays(new Date(), RANGE_DAYS[range]), 'yyyy-MM-dd'),
+}), [range]);
+```
+
+---
+
+### I-9: `TickerSection` (AlertBanner) stops the animation on pause but restarts from the beginning on un-pause
+
+**File:** `src/components/alerts/AlertBanner.tsx` (lines 73-92)
+
+When the user hovers, `controls.stop()` is called. When they leave, `setIsPaused(false)` triggers the `useEffect` that restarts the animation with `controls.start({ x: -contentWidth, ... repeat: Infinity })`. Because `x: 0` is the `style` prop initial value and the animation restarts from `x: 0`, the ticker jumps back to the start rather than resuming from where it stopped.
+
+**Fix:** Track the current `x` position and restart from there, or use `controls.pause()` / `controls.resume()` (Framer Motion's animation controls support this).
+
+---
+
+### I-10: `StationSearch` dropdown is not keyboard navigable and has no ARIA combobox semantics
+
+**File:** `src/components/trip-planner/StationSearch.tsx`
+
+The search dropdown is a `<div>` containing `<button>` elements. It has no `role="listbox"`, no `aria-expanded` on the input, no `aria-activedescendant` tracking, and no keyboard arrow-key navigation between results. Screen reader users will hear the input but get no indication that a dropdown has appeared, and cannot navigate results without a mouse.
+
+**Fix:** Either use Radix UI's `Combobox` primitive (which shadcn/ui exposes as `Command` + `CommandInput` + `CommandList`) or manually add:
+- `role="combobox"` and `aria-expanded={isOpen}` on the `<Input>` wrapper
+- `role="listbox"` on the dropdown `<div>`
+- `role="option"` on each result `<button>`
+- `aria-activedescendant` pointing to the focused option
+- `keydown` handling for `ArrowDown`/`ArrowUp`/`Enter`/`Escape`
+
+The shadcn `Command` component would handle all of this automatically and is already a project dependency.
+
+---
+
+### I-11: `ErrorBoundary` does not report errors to any observability sink
+
+**File:** `src/components/ErrorBoundary.tsx` (lines 28-30)
+
+```typescript
+componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  console.error('ErrorBoundary caught an error:', error, errorInfo);
+}
+```
+
+Errors are only logged to `console.error`. There is no integration with Vercel's built-in error tracking, Sentry, or any other sink. Errors that hit the boundary in production are invisible unless a developer manually checks the browser console or server logs.
+
+**Fix:** Add error reporting. Vercel Analytics does not capture JS errors automatically. The minimum fix is:
+```typescript
+componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  console.error('ErrorBoundary caught an error:', error, errorInfo);
+  // Report to observability
+  if (typeof window !== 'undefined' && window.__analytics) {
+    window.__analytics.trackException(error);
+  }
+}
+```
+Or integrate `@vercel/speed-insights` / Sentry's `captureException`.
+
+---
+
+### I-12: `use-analytics.ts` timeline data is fabricated — misleading to users
+
+**File:** `src/hooks/use-analytics.ts` (lines 84-103)
+
+The `timeline` computation creates 12 time slots spanning the last hour and assigns `arrivals: currentCount, departures: currentCount` to every slot. This means all 12 bars in any timeline chart render as identical values — a flat line representing only the current train count. The comment acknowledges this: "Use current train count for all time slots (historical disabled)."
+
+This data is consumed by `LiveSystemDashboard` but the timeline is not currently rendered there (the component only shows totals and feed groups). However, `data.timeline` is exported from `useAnalytics` and could be picked up by future consumers who would receive fabricated historical data.
+
+**Fix:** Either remove `timeline` from the `AnalyticsData` interface entirely until historical data is re-enabled, or clearly type it as `null` when historical data is disabled:
+```typescript
+timeline: null, // Historical data disabled — see analytics-v2 plan
+```
+
+---
+
+### I-13: `AlertCard.formatTimeRange` is defined as a nested function inside the component body — recreated every render
+
+**File:** `src/components/alerts/AlertCard.tsx` (lines 33-56)
+
+`formatTimeRange` is defined as a function with `const formatTimeRange = () => {...}` inside the component body. It has no dependencies on props or state, yet it is recreated on every render. Because `AlertList` renders all active alerts and re-renders on every `useAlerts` polling cycle, this is a real cost at scale with 50+ alerts.
+
+**Fix:** Move `formatTimeRange` outside the component or make it a standalone utility function in `@/lib/mta/format.ts`.
+
+---
+
+### I-14: `useMultiStationArrivals` uses a hardcoded non-namespaced query key
+
+**File:** `src/hooks/use-multi-station-arrivals.ts` (line 45)
+
+```typescript
+queryKey: ['multi-arrivals', station.id],
+```
+
+The rest of the codebase uses `queryKeys` from `@/lib/api/query-keys` for all React Query cache keys. This hardcoded string bypasses the centralised key registry, making it invisible to cache invalidation strategies and impossible to find via search.
+
+**Fix:** Add `multiArrivals: (stationId: string) => ['arrivals', 'multi', stationId] as const` to `queryKeys` in `@/lib/api/query-keys.ts` and use it here.
+
+---
+
+### I-15: `AnomalyFeed` event list uses a composite key that includes the array index
+
+**File:** `src/components/analytics/AnomalyFeed.tsx` (line 139)
+
+```tsx
+key={`${event.pk}-${event.timestamp}-${i}`}
+```
+
+Including `i` (the array index) in the key means React cannot reuse DOM nodes when the array is sorted or filtered. If `typeFilter` or `routeFilter` changes, all existing items get unmounted and new ones mounted even when the underlying event data is identical. The `pk` + `timestamp` combination should already be unique; `i` adds nothing and actively harms reconciliation.
+
+**Fix:** `key={`${event.pk}-${event.timestamp}`}`
 
 ---
 
 ## Minor Suggestions (nice to have)
 
-### M-1: `eslint-disable-next-line react-hooks/exhaustive-deps` in SubwayMap.tsx map init effect is hiding missing dep on `mapCenter`/`mapZoom`
+### M-1: `RouteFilter` `checkScroll` function leaks a resize listener that is not associated with the scroll container's actual content changes
 
-**File:** `src/components/map/SubwayMap.tsx` lines 242-244
+**File:** `src/components/layout/RouteFilter.tsx` (lines 20-32)
 
-The map init effect intentionally runs only once. The suppression is valid but undocumented. Add a comment explaining why `mapCenter` and `mapZoom` are intentionally excluded (they represent the *initial* viewport, not a reactive one):
+`checkScroll` is called on `window.resize` but not when the scrollable container's content height changes (e.g., when the sidebar transitions from expanded to compact). The initial `checkScroll()` call in `useEffect` runs once on mount, but the compact/expanded transition that changes content height is not tracked. The `canScrollUp/Down` state may be stale after a sidebar state change. Consider also calling `checkScroll` when `compact` prop changes.
 
-```ts
-// eslint-disable-next-line react-hooks/exhaustive-deps
-// Intentional: mapCenter/mapZoom are initial viewport only; map manages its own state after init
-}, []);
+---
+
+### M-2: `SubwayMapModal` configures PDF.js worker from an unpkg CDN URL — fragile for production
+
+**File:** `src/components/layout/SubwayMapModal.tsx` (line 40)
+
+```typescript
+pdfjs.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.pdfjs.version}/build/pdf.worker.min.mjs`;
 ```
 
-### M-2: Dead state in `useTripRouteLayer` — `_dashOffset` and `_setDashOffset`
+This fetches the PDF worker from unpkg at runtime. If unpkg is unavailable or rate-limits the request, PDF loading fails silently (the spinner never resolves). Vendor the worker file in `public/` or use the Next.js public CDN for reliability.
 
-**File:** `src/components/map/hooks/useTripRouteLayer.ts` line 571
+---
 
-```ts
-const [_dashOffset, _setDashOffset] = useState(0);
+### M-3: `html lang="en"` is hardcoded to dark mode — theme system is disconnected
+
+**File:** `src/app/layout.tsx` (line 30)
+
+```tsx
+<html lang="en" className="dark">
 ```
 
-This state was presumably for an animated dash pattern that was not implemented. The `_` prefix acknowledges it's unused. Remove it.
+The `useUIStore` has a `theme` field with `'light' | 'dark' | 'system'` values, but the root `<html>` element has `className="dark"` hardcoded. The theme preference is persisted to localStorage but never applied to the DOM. This means the dark/light toggle in the UI store has no visual effect.
 
-### M-3: Module-level `refreshInterval` constant at bottom of `useTrainMarkers.ts` shadows the hook parameter
+**Fix:** Add a theme-applier component that reads `useUIStore((s) => s.theme)` and syncs `document.documentElement.classList` accordingly (standard next-themes pattern).
 
-**File:** `src/components/map/hooks/useTrainMarkers.ts` line 1084
+---
 
-```ts
-// Module-level constant for refresh interval fallback
-const refreshInterval = 15000;
+### M-4: `StationCard` uses `<span role="button">` for the map navigation trigger — a real `<button>` is more appropriate
+
+**File:** `src/components/stations/StationCard.tsx` (lines 84-90)
+
+The location name span uses `role="button"` and `tabIndex={0}` with a manual `onKeyDown` handler. This is a valid ARIA pattern but it is more work than a `<button>` element that handles keyboard semantics automatically and participates in the standard focus order. The nested interactive element (a `<button>` inside a `<Link>`) requires care — use `e.stopPropagation()` on the button click, which is already done, so a real `<button>` is fine here.
+
+---
+
+### M-5: `AlertList` has a redundant null-check after the guard clause
+
+**File:** `src/components/alerts/AlertList.tsx` (lines 20, 31)
+
+```typescript
+if (!alerts?.length) { return ... }
+// ...
+{(alerts ?? []).map(...)}
 ```
 
-This is declared at module scope at the bottom of the file, shadowing the `refreshInterval` parameter of the `createMotionState` function which uses `refreshInterval` from an outer reference. The module-level constant is unused (the function uses the outer-scope `refreshInterval` from the hook). Remove it.
+The early return already guarantees `alerts` is a non-empty array at line 31. The `?? []` fallback is dead code. Remove it for clarity.
 
-### M-4: `loadRouteTerminals` and `loadTrackUtils` in `useTrainMarkers.ts` store results in module-level mutable singletons — no error retry on failure
+---
 
-**File:** `src/components/map/hooks/useTrainMarkers.ts` lines 54-82, 121-138
+### M-6: `TransitAnalysisCard` has a dead code path — the `!data && !isLoading` branch can never render
 
-If `loadRouteTerminals()` fails (network error on `/data/route-segments.json`), `routeTerminals` remains `null` and `isAtFirstStop`/`isAtLastStop` will silently return `false` for all trains, meaning the entry/exit gates are effectively disabled. The same applies to `loadTrackUtils`. Add error logging and consider a retry mechanism.
+**File:** `src/components/analytics/TransitAnalysisCard.tsx` (lines 74-93)
 
-### M-5: `useAnalytics.ts` hardcodes `totalStations: 472` — should come from `useStaticData`
-
-**File:** `src/hooks/use-analytics.ts` line 133
-
-```ts
-totalStations: 472,
+```typescript
+if (error || (!data && !isLoading)) {
+  return <...error/no-data state...>
+}
+if (!data) {
+  return <...loading state...>
+}
 ```
 
-The actual station count is available at runtime from `useStaticData()`. Using a hardcoded constant will go stale as station data changes.
+The second guard (`if (!data)`) can only be reached when `error` is falsy AND `(!data && !isLoading)` is also falsy AND `!data` is truthy. That means `isLoading` must be `true`. So the second branch is the "loading with no cached data" state — but the label on this branch says "Loading state (no cached data yet)" which is correct. The issue is that the first guard's `(!data && !isLoading)` case represents a permanently-failed state that shows the error card, not a loading card. This logic is correct but the two `!data` branches with different intents could be collapsed and clarified.
 
-### M-6: `ConductorProvider` `playAnnouncement` and `scheduleNextAnnouncement` are declared inside the component but called by `scheduleHourlyWeather`/`setInterval` closures — stale closure risk
+---
 
-**File:** `src/components/conductor/ConductorProvider.tsx` lines 50-155
+### M-7: `EquipmentStatusCard` inline SVG for escalator icon should be an extracted component or a proper icon
 
-The `playAnnouncement` and `scheduleNextAnnouncement` functions are recreated on every render but the `setTimeout`/`setInterval` callbacks captured at `startOnInteraction` time hold references to the initial render's versions. Since `trainsRef` and `stationsRef` are used (which are always current), the data stale closure risk is mitigated, but any future changes to these functions that capture component state will silently break.
+**File:** `src/components/analytics/EquipmentStatusCard.tsx` (lines 41-46)
 
-### M-7: `AlertCard.tsx` — `formatTimeRange` function is defined inside the component and called on every render without `useCallback` or extraction
-
-**File:** `src/components/alerts/AlertCard.tsx` lines 33-56
-
-`formatTimeRange` uses `alert` from the outer scope but has no dependencies that change independently — it is purely a derived value from `alert`. Extract as a pure function outside the component or `useMemo`/`useCallback` it.
-
-### M-8: `use-analytics.ts` — `feedStatus` memoization creates a new `fallbackTimestamp` on every render cycle, breaking memo stability
-
-**File:** `src/hooks/use-analytics.ts` lines 107-118
-
-```ts
-const feedStatus = useMemo<FeedStatus[]>(() => {
-  const fallbackTimestamp = new Date().toISOString();  // New string on every memo run
-  return feedQueries.map((q, i) => {
-    if (q.data) return q.data;
-    return { feedId: ..., lastPoll: fallbackTimestamp, ... };
-  });
-}, [feedQueries]);
+```tsx
+<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+  <path d="M4 18h4l3-6 3 6h6" />
+  <path d="M4 6h4l3 6" />
+  <path d="M14 6h6" />
+</svg>
 ```
 
-The comment says "stable fallback timestamp to avoid memoization breaks" but `new Date().toISOString()` inside `useMemo` actually produces a new value on every memo invalidation. It is not stable — it only *appears* stable because `feedQueries` changes when queries resolve. This is misleading but not harmful.
+This inline SVG has no `title`, no `aria-hidden`, and no `aria-label`. Screen readers will announce the SVG as a nameless image. Either add `aria-hidden="true"` (if decorative) or extract it as a named icon component with an accessible label.
+
+---
+
+### M-8: `RoutePerformanceTable` IIFE inside JSX for grade rendering adds visual noise
+
+**File:** `src/components/analytics/RoutePerformanceTable.tsx` (lines 187-195)
+
+```tsx
+{(() => {
+  const gradeResult = calculateGrade(row);
+  return gradeResult ? (
+    <span ...>{gradeResult.grade}</span>
+  ) : (
+    <span ...>-</span>
+  );
+})()}
+```
+
+This IIFE pattern creates a new function closure per row per render. The same result can be achieved with a small `GradeCell` sub-component or by computing `gradeResult` outside the JSX:
+
+```tsx
+function GradeCell({ row }: { row: RouteSummary }) {
+  const result = calculateGrade(row);
+  return result ? (
+    <span className={`font-bold text-lg ${result.color}`}>{result.grade}</span>
+  ) : (
+    <span className="text-muted-foreground">-</span>
+  );
+}
+```
+
+---
+
+### M-9: `DelayDistributionChart.computeDistribution` approximation is documented nowhere
+
+**File:** `src/components/analytics/DelayDistributionChart.tsx` (lines 40-77)
+
+The distribution computation uses `avgDelay` to bucket the late fraction of trips into delay categories. This is a statistical approximation — if a route has 30% late trips and an avgDelay of 90s, all 30% are bucketed into "0-2 min" even though the actual distribution could be bimodal. The chart will display this as if it is measured data. A brief disclaimer comment in the UI (or a `(estimated)` label) would prevent the data from being misread.
+
+---
+
+### M-10: `use-mobile.ts` missing `'use client'` directive
+
+**File:** `src/hooks/use-mobile.ts` (line 1)
+
+All other hooks in `src/hooks/` start with `'use client'`. `use-mobile.ts` does not have this directive. It uses `React.useEffect` and `window`, which are client-only APIs. While Next.js will likely infer client-only context from usage, the missing directive is an inconsistency that could cause confusing server-side build errors if the file is ever imported outside a `'use client'` tree boundary.
 
 ---
 
 ## Architecture Considerations
 
-### Data Source Duality — Single Source of Truth Needed
+### Dual data-client architecture (Apollo + React Query)
 
-The most significant architectural issue is the train data living in two places simultaneously: `useTrainPositions` hook state and `useTrainsStore` Zustand store. The hook writes to the store on every WS push, and the store is also consumed by other components. This means any bug that causes the hook's local state and the store to diverge will manifest as visual inconsistency between the map (which uses hook state) and any other component reading from the store. Resolving this to a single canonical source would simplify the entire data flow.
+The co-existence of Apollo Client (for AppSync/GraphQL analytics) and React Query (for REST/MTA data) is architecturally justified by the different backend services they target. However, the two clients have separate caches with no cross-talk. The `useOperationalStats` hook bridges them — it reads from `useAnalytics` (React Query) and `useDailyRollups` (Apollo) in the same hook. This makes it impossible to write a unified loading state without knowing which cache is stale. Consider establishing a clear rule: Apollo is for AppSync historical/aggregated analytics only; React Query is for everything else. Document this at the top of `src/hooks/use-analytics-data.ts`.
 
-### Rate Limiting Architecture
+### `SocketProvider` cleanup calls `disconnectAll()` on unmount
 
-The application has sophisticated rate-limiting infrastructure that is entirely inactive in production. The middleware comment says "limits need tuning" — the correct fix is to tune them (perhaps by reading actual production request patterns) and re-enable. The conductor endpoints in particular are high-cost and should be gated regardless of tuning uncertainty.
+**File:** `src/components/providers/SocketProvider.tsx` (line 66)
 
-### Socket Client Singleton vs. Module Lifecycle
+The root `SocketProvider` cleanup function calls `disconnectAll()`. In development with React strict mode, this effect runs twice — connect, then immediately disconnect all sockets including namespace sockets that individual hooks may have opened. The namespace sockets (`/trains`, `/alerts`, `/arrivals`) are each managed by their own `useEffect` in the consuming hooks, but `disconnectAll()` from the parent provider will tear them down unexpectedly. Verify that `disconnectAll` only disconnects the root socket managed by this provider, not namespace sockets opened by hooks.
 
-The socket client (`src/lib/socket/client.ts`) uses module-level mutable singletons (`let socket`, `const namespaceSockets`). In Next.js App Router, server-side module instances are reused across requests, but the 'use client' directive means these run client-side only. However, in development with Turbopack hot reload, module singletons can persist across hot reloads while React component trees are torn down and rebuilt. This creates a scenario where `connectNamespaceSocket` returns an already-connected socket to a newly-mounted hook that hasn't set up its event handlers yet — which is why the `queueMicrotask(() => setSocket(s))` pattern exists. This is a reasonable mitigation but the root cause (mutable module singletons) is fragile.
+### `PrefetchProvider` renders `null` for `ConductorProvider`
 
-### Performance — Station Markers at Zoom
+**File:** `src/app/(dashboard)/layout.tsx` (line 39)
 
-`useStationMarkers` correctly gates display at `MAP_CONSTANTS.STATION_MIN_ZOOM` and calls `clearAllMarkers()` when below the threshold. However, it re-creates all station markers on every zoom change above the threshold (the entire `filteredStations` array is reprocessed). With 472 parent stations, this could produce 472 marker operations on every zoom event. Consider using MapLibre native GeoJSON layers for stations instead of individual `maplibregl.Marker` instances to reduce DOM pressure.
+```tsx
+<ConductorProvider>{null}</ConductorProvider>
+```
 
-### `createPopupHTML` Duplication
+This renders a provider with no children that renders nothing. Either `ConductorProvider` has side effects (in which case the pattern is unusual but intentional and should be documented with a comment) or it is dead code pending removal. If it is an AI tour guide provider, the intent should be made explicit.
 
-The `createPopupHTML` function and `createPopupHTMLForAnimation` in `useTrainMarkers.ts` and `useMapAnimation.ts` respectively contain nearly identical HTML template logic with overlapping phase detection. This represents the same business logic expressed twice with subtle differences (one accepts `currentS/nextS`, the other reads from `state`). Extract to a shared utility in `src/lib/map/popup-html.ts`.
+### `useTrainPositionsSuspense` hook is defined but never imported by any component
 
----
+**File:** `src/hooks/use-train-positions-suspense.ts`
 
-## Testing Gaps
+This hook exists as a standalone file and is exported from `src/hooks/index.ts` (presumably). No component in the reviewed codebase calls it. If this was a planned enhancement for Suspense-based loading boundaries, it should be documented. If it is superseded by the current `useTrainPositions` approach, it should be removed to avoid confusion.
 
-### No tests for:
-- `src/hooks/use-alerts.ts` — WS socket path (only polling path is tested)
-- `src/hooks/use-arrivals.ts` — WS socket path (tests only cover polling)
-- `src/components/map/hooks/useStationMarkers.ts` — zero tests
-- `src/components/map/hooks/useTripRouteLayer.ts` — zero tests
-- `src/components/map/SubwayMap.tsx` — zero tests (high blast radius, zero coverage)
-- `src/app/api/v1/conductor/announce/route.ts` — zero tests (most expensive endpoint)
-- `src/app/api/v1/trains/route.ts` — zero tests
-- `src/app/api/v1/trip/route.ts` has tests but they do not test the Neo4j → in-memory fallback path
-- `src/lib/mta/train-positions.ts` — zero tests for `calculateTrainPositions`
-- `src/stores/geolocation-store.ts` — zero tests
-- `src/components/analytics/` — zero tests for any analytics component
+### `use-analytics.ts` timeline is placeholder data, yet `avgDelay` is hardcoded to `2`
 
-### Weak tests:
-- `src/hooks/use-arrivals.test.ts` — mocks `SocketProvider` as always returning `isAvailable: false` (line not shown, but inferred from no WS test cases), so the WS branch of `useArrivals` is never exercised
-- `src/hooks/__tests__/use-train-positions-ws.test.ts` — `connectNamespaceSocket` mock returns `null` when `mockSocketConnected = false` but the real function returns a non-connected socket (calls `connect()` on it). The mock contract doesn't match the real behavior.
+**File:** `src/hooks/use-analytics.ts` (line 124)
 
----
+```typescript
+const avgDelay = 2;
+```
 
-## Top 10 Actionable Recommendations (Prioritized)
+A hardcoded magic number `2` is assigned to `avgDelay` and fed into `data.stats.avgDelay`. This value is displayed nowhere currently visible in the analytics page, but it is exported in the `AnalyticsData` type. If it were rendered, it would show a permanent "2 minute average delay" regardless of actual conditions. Either compute this from the Apollo rollup data or set it to `null` with a `number | null` type.
 
-1. **[Security/Critical] Add input validation and rate limiting to all three `/api/v1/conductor` endpoints.** These proxy to paid AI APIs with no per-IP throttle and no field length limits. Use the existing Zod schema infrastructure and re-enable `checkRateLimit` from `src/lib/rate-limit.ts`. Time estimate: 2-4 hours.
+### Recharts tooltip `wrapperStyle={{ zIndex: 50 }}` hardcoded across 6 chart components
 
-2. **[Security/Critical] Sanitize `poiName` URL parameter before inserting into MapLibre `setHTML` popup.** Use the existing `sanitizeHtml` from `src/lib/utils/sanitize.ts`. One-line fix. Time estimate: 15 minutes.
+**Files:** `DelayTrendChart.tsx`, `BunchingGapTrendChart.tsx`, `SystemHealthTimeline.tsx`, `TripCompletionChart.tsx`
 
-3. **[Security/High] Re-enable rate limiting middleware.** Start with conservative limits (2x current polling rate), then tune. The infrastructure exists in `src/lib/rate-limit.ts`; the middleware just needs to call it. Time estimate: 1-2 hours.
-
-4. **[Correctness/High] Fix the fallback timer double-arming race condition in all three dual-mode hooks.** Add `if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current)` before every `fallbackTimerRef.current = setTimeout(...)` assignment in the disconnect branch. Time estimate: 30 minutes.
-
-5. **[Correctness/High] Fix `useArrivals` unsubscribing the wrong station on stopId change.** Capture `prevStopIdRef.current` in a local variable before the cleanup closure runs. Time estimate: 30 minutes.
-
-6. **[Correctness/High] Fix `useTrainMarkers` `forEach(async ...)` — add mounted guard and `Promise.all`.** Prevents attempting to add markers to an unmounted map component. Time estimate: 1-2 hours.
-
-7. **[Correctness/Medium] Fix `ConductorProvider` timer/interval leaks on unmount.** Store `setInterval` and recursive `setTimeout` IDs in refs and clear them in the effect cleanup. Time estimate: 1 hour.
-
-8. **[Architecture/Medium] Fix `disconnectAll()` in `SocketProvider` cleanup — it kills namespace sockets owned by child hooks.** Replace with individual namespace socket disconnect in each hook's cleanup, and remove `disconnectAll()` from `SocketProvider`. Time estimate: 2-3 hours (needs careful regression testing).
-
-9. **[Maintainability/Medium] Resolve the two rate-limit modules duplication.** Delete `src/lib/api/rate-limit.ts` (which has a worse API for middleware use) and standardize on `src/lib/rate-limit.ts`. Update all imports. Time estimate: 1 hour.
-
-10. **[Analytics Integrity/Medium] Remove or explicitly label the fabricated timeline data in `useAnalytics`.** Replace the flat "all slots = current count" timeline with a skeleton/empty state that communicates that historical data is unavailable. Remove hardcoded `avgDelay: 2` and `totalStations: 472`. Time estimate: 2-3 hours.
+The z-index value `50` is repeated across chart tooltips with inline `wrapperStyle` objects. Inline style objects create new object references each render and Recharts uses them directly. A shared `CHART_TOOLTIP_STYLE` constant object would prevent object churn and centralise any future z-index adjustments.
 
 ---
 
-*Review conducted against: 253 files across `src/`, git branch `main`, commit `1d850fe`.*
+## Next Steps
+
+1. (Critical) Replace manual `fetch + setInterval` in `StationDetailPage` with `useArrivals` hook — this is a single-file change.
+2. (Critical) Lift `useDailyRollups` to the analytics page level and pass data as props to all chart components — eliminates 6+ redundant Apollo requests per page load.
+3. (Critical) Move `ApolloProvider` down to the analytics route subtree — remove it from root layout.
+4. (Important) Remove `watchId` from Zustand geolocation store state — use a module-level variable.
+5. (Important) Add `multiArrivals` to the centralised `queryKeys` registry.
+6. (Important) Replace `StationSearch` dropdown with shadcn `Command`/`Combobox` for proper a11y.
+7. (Important) Add error reporting to `ErrorBoundary.componentDidCatch`.
+8. (Important) Fix `AlertBanner` ticker resume-from-position on un-pause.
+9. (Minor) Add `'use client'` to `use-mobile.ts`.
+10. (Minor) Add `aria-hidden="true"` to the escalator SVG icon in `EquipmentStatusCard`.
+11. (Minor) Clarify or remove `ConductorProvider>{null}</ConductorProvider>` in dashboard layout.
+12. (Minor) Delete or document `useTrainPositionsSuspense` — currently dead code.

@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PieChart as PieChartIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useDailyRollups } from '@/hooks/use-analytics-data';
+import type { RollupDataProp } from '@/lib/graphql/types';
 
 const COLORS: Record<string, string> = {
   on_time: '#22c55e',
@@ -78,12 +78,23 @@ function computeDistribution(rollups: { onTimePercent: number | null; avgDelay: 
 
 interface DelayDistributionChartProps {
   compact?: boolean;
+  rollupData?: RollupDataProp;
 }
 
-export function DelayDistributionChart({ compact = false }: DelayDistributionChartProps) {
-  const to = format(new Date(), 'yyyy-MM-dd');
-  const from = format(subDays(new Date(), 7), 'yyyy-MM-dd');
-  const { data: rollupData, loading } = useDailyRollups(from, to);
+export function DelayDistributionChart({ compact = false, rollupData: sharedRollup }: DelayDistributionChartProps) {
+  // Filter shared 30-day data to 7-day window
+  const sevenDaysAgo = useMemo(() => format(subDays(new Date(), 7), 'yyyy-MM-dd'), []);
+
+  const rollupData = useMemo(() => {
+    if (!sharedRollup?.data) return sharedRollup?.data;
+    return {
+      getDailyRollups: sharedRollup.data.getDailyRollups.filter(
+        (r) => r.date.split('#')[0] >= sevenDaysAgo
+      ),
+    };
+  }, [sharedRollup?.data, sevenDaysAgo]);
+
+  const loading = sharedRollup?.loading ?? false;
 
   const height = compact ? 180 : 250;
   const innerRadius = compact ? 35 : 50;

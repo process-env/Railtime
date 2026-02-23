@@ -2,17 +2,13 @@ import { promises as fs } from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import { checkRateLimit, getClientIdentifier, createRateLimitHeaders } from "@/lib/rate-limit";
+import { getCache, setCache } from "@/lib/redis";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 // OpenAI TTS voices: alloy, echo, fable, onyx, nova, shimmer
 const OPENAI_TTS_VOICE = process.env.OPENAI_TTS_VOICE || "fable";
 
-// Simple in-memory cache for audio (expires after 5 minutes)
-const audioCache = new Map<
-  string,
-  { text: string; audioUrl: string; expires: number }
->();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_SECONDS = 300; // 5 minutes
 
 // Route data cache
 let routeDataCache: Map<
@@ -316,12 +312,10 @@ export async function POST(request: NextRequest) {
       announcementType ||
       ANNOUNCEMENT_TYPES[Math.floor(Math.random() * ANNOUNCEMENT_TYPES.length)];
 
-    // Create cache key
-    const cacheKey = `${routeId}-${stationName}-${direction}-${headsign}-${
-      poiName || ""
-    }-${type}`;
-    const cached = audioCache.get(cacheKey);
-    if (cached && cached.expires > Date.now()) {
+    // Create cache key (sanitize undefined tokens)
+    const cacheKey = `conductor:audio:${[routeId, stationName, direction ?? 'nd', headsign ?? 'none', poiName ?? '', type].join(':')}`;
+    const cached = await getCache<{ text: string; audioUrl: string }>(cacheKey);
+    if (cached) {
       return NextResponse.json({
         text: cached.text,
         audioUrl: cached.audioUrl,
@@ -345,22 +339,8 @@ export async function POST(request: NextRequest) {
     const audioBase64 = await synthesizeSpeech(announcementText);
     const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
 
-    // Cache the result
-    audioCache.set(cacheKey, {
-      text: announcementText,
-      audioUrl: audioUrl,
-      expires: Date.now() + CACHE_TTL,
-    });
-
-    // Clean old cache entries
-    if (audioCache.size > 100) {
-      const now = Date.now();
-      for (const [key, value] of audioCache.entries()) {
-        if (value.expires < now) {
-          audioCache.delete(key);
-        }
-      }
-    }
+    // Cache the result in Redis with TTL
+    await setCache(cacheKey, { text: announcementText, audioUrl }, CACHE_TTL_SECONDS);
 
     return NextResponse.json({
       text: announcementText,

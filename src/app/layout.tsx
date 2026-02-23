@@ -4,7 +4,6 @@ import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { SocketProvider } from '@/components/providers/SocketProvider';
-import { ApolloProvider } from '@/components/providers/ApolloProvider';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -54,7 +53,7 @@ export default function RootLayout({
       >
         <QueryProvider>
           <SocketProvider>
-            <ApolloProvider>{children}</ApolloProvider>
+            {children}
           </SocketProvider>
         </QueryProvider>
         <Analytics />

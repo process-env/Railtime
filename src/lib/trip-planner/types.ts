@@ -114,8 +114,6 @@ export interface TripPlan {
 export interface TripPlannerOptions {
   /** Maximum number of transfers allowed (default: 3) */
   maxTransfers?: number;
-  /** Prefer routes with fewer transfers even if slightly longer */
-  preferFewerTransfers?: boolean;
   /** Routes to avoid (e.g., due to delays) */
   avoidRoutes?: string[];
   /** Weight for transfer penalty in seconds (default: 300 = 5 min) */
@@ -209,7 +207,6 @@ export interface TripPlanRequest {
   destination: string;
   alternatives?: number;
   maxTransfers?: number;
-  preferFewerTransfers?: boolean;
   avoidRoutes?: string[];
 }
 
@@ -221,6 +218,8 @@ export interface TripPlanResponse {
   origin: string;
   destination: string;
   requestedAt: string;
+  backend?: 'neo4j' | 'in-memory';
+  cached?: boolean;
 }
 
 // ============================================

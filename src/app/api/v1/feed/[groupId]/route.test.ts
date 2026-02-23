@@ -9,6 +9,14 @@ vi.mock('@/lib/mta', () => ({
   fetchFeed: vi.fn(),
 }));
 
+// Mock rate limiting to always allow
+vi.mock('@/lib/api/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockReturnValue({ success: true, remaining: 119, resetIn: 60000 }),
+  getClientId: vi.fn().mockReturnValue('test-client'),
+  createRateLimitKey: vi.fn().mockReturnValue('test-client:/api/v1/feed'),
+  RATE_LIMITS: { realtime: { limit: 120, windowMs: 60000 } },
+}));
+
 import { fetchFeed } from '@/lib/mta';
 
 describe('GET /api/v1/feed/[groupId]', () => {
@@ -51,7 +59,7 @@ describe('GET /api/v1/feed/[groupId]', () => {
 
     expect(response.status).toBe(500);
     const data = await response.json();
-    expect(data.error.message).toBe('Invalid feed group');
+    expect(data.error.message).toBe('Failed to fetch feed');
   });
 
   it('bypasses cache when nocache=true', async () => {
@@ -68,7 +76,7 @@ describe('GET /api/v1/feed/[groupId]', () => {
     expect(fetchFeed).toHaveBeenCalledWith('ACE', { useCache: true });
   });
 
-  it('returns 500 on fetch error', async () => {
+  it('returns 500 on fetch error with sanitized message', async () => {
     vi.mocked(fetchFeed).mockRejectedValue(new Error('MTA API Error'));
 
     const request = new NextRequest('http://localhost/api/v1/feed/ACE');
@@ -76,7 +84,7 @@ describe('GET /api/v1/feed/[groupId]', () => {
 
     expect(response.status).toBe(500);
     const data = await response.json();
-    expect(data.error.message).toBe('MTA API Error');
+    expect(data.error.message).toBe('Failed to fetch feed');
   });
 
   it('handles non-Error thrown values', async () => {

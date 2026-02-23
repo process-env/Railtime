@@ -1,5 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getScheduleStats, getRouteSchedule } from '@/lib/mta/load-stop-times';
+import { rateLimited } from '@/lib/api/errors';
+import {
+  checkRateLimit,
+  getClientId,
+  createRateLimitKey,
+  RATE_LIMITS,
+} from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +17,15 @@ export const dynamic = 'force-dynamic';
  * Query params:
  * - routeId: Optional. If provided, returns stats for specific route only.
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Rate limit check
+  const clientId = getClientId(request);
+  const key = createRateLimitKey(clientId, '/api/v1/schedule');
+  const limit = checkRateLimit(key, RATE_LIMITS.search);
+  if (!limit.success) {
+    return rateLimited(limit.resetIn);
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const routeId = searchParams.get('routeId');

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchAlerts, filterAlertsByRoutes } from '@/lib/mta';
-import { internalError } from '@/lib/api/errors';
+import { internalError, rateLimited } from '@/lib/api/errors';
+import {
+  checkRateLimit,
+  getClientId,
+  createRateLimitKey,
+  RATE_LIMITS,
+} from '@/lib/api/rate-limit';
 
 /**
  * GET /api/v1/alerts
@@ -11,6 +17,14 @@ import { internalError } from '@/lib/api/errors';
  *   - nocache: Set to "true" to bypass cache
  */
 export async function GET(request: NextRequest) {
+  // Rate limit check
+  const clientId = getClientId(request);
+  const key = createRateLimitKey(clientId, '/api/v1/alerts');
+  const limit = checkRateLimit(key, RATE_LIMITS.search);
+  if (!limit.success) {
+    return rateLimited(limit.resetIn);
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const noCache = searchParams.get('nocache') === 'true';
@@ -31,6 +45,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error fetching alerts:', error);
-    return internalError(error instanceof Error ? error.message : 'Failed to fetch alerts');
+    return internalError('Failed to fetch alerts');
   }
 }

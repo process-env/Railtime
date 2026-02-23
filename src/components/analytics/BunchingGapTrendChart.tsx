@@ -16,17 +16,34 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TrendingUp } from 'lucide-react';
-import { useDailyRollups } from '@/hooks/use-analytics-data';
+import type { RollupDataProp } from '@/lib/graphql/types';
 
 type Period = '7d' | '30d';
 
-export function BunchingGapTrendChart() {
-  const [period, setPeriod] = useState<Period>('7d');
-  const days = period === '7d' ? 7 : 30;
+interface BunchingGapTrendChartProps {
+  rollupData?: RollupDataProp;
+}
 
-  const to = format(new Date(), 'yyyy-MM-dd');
-  const from = format(subDays(new Date(), days), 'yyyy-MM-dd');
-  const { data, loading } = useDailyRollups(from, to);
+export function BunchingGapTrendChart({ rollupData: sharedRollup }: BunchingGapTrendChartProps) {
+  const [period, setPeriod] = useState<Period>('7d');
+
+  // Filter shared 30-day data to selected period
+  const cutoff = useMemo(
+    () => format(subDays(new Date(), period === '7d' ? 7 : 30), 'yyyy-MM-dd'),
+    [period]
+  );
+
+  const data = useMemo(() => {
+    if (!sharedRollup?.data) return sharedRollup?.data;
+    if (period === '30d') return sharedRollup.data; // Full shared data
+    return {
+      getDailyRollups: sharedRollup.data.getDailyRollups.filter(
+        (r) => r.date.split('#')[0] >= cutoff
+      ),
+    };
+  }, [sharedRollup?.data, period, cutoff]);
+
+  const loading = sharedRollup?.loading ?? false;
 
   const chartData = useMemo(() => {
     const rollups = data?.getDailyRollups ?? [];

@@ -17,8 +17,25 @@ export const createMockRedisClient = () => ({
     return entry.value;
   }),
 
-  set: vi.fn(async (key: string, value: string, mode?: string, ttl?: number) => {
-    const expiresAt = ttl ? Date.now() + (ttl * 1000) : Date.now() + (3600 * 1000);
+  set: vi.fn(async (key: string, value: string, ...args: unknown[]) => {
+    let ttlSeconds: number | null = null;
+    // Handle ioredis v5 call signatures:
+    //   set(key, value, 'EX', seconds)  — positional args
+    //   set(key, value, { EX: seconds }) — options object
+    if (args[0] === 'EX' && typeof args[1] === 'number') {
+      ttlSeconds = args[1];
+    } else if (args[0] === 'PX' && typeof args[1] === 'number') {
+      ttlSeconds = args[1] / 1000;
+    } else if (typeof args[0] === 'object' && args[0] !== null) {
+      const opts = args[0] as Record<string, unknown>;
+      if (typeof opts.EX === 'number') ttlSeconds = opts.EX;
+      else if (typeof opts.PX === 'number') ttlSeconds = opts.PX / 1000;
+      else if (typeof opts.ex === 'number') ttlSeconds = opts.ex;
+      else if (typeof opts.px === 'number') ttlSeconds = opts.px / 1000;
+    }
+    const expiresAt = ttlSeconds != null
+      ? Date.now() + (ttlSeconds * 1000)
+      : Date.now() + (3600 * 1000); // default 1 hour
     cacheStore.set(key, { value, expiresAt });
     return 'OK';
   }),

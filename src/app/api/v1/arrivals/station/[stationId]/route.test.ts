@@ -9,6 +9,14 @@ vi.mock('@/lib/mta', () => ({
   getArrivalsForStop: vi.fn(),
 }));
 
+// Mock rate limiting to always allow
+vi.mock('@/lib/api/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockReturnValue({ success: true, remaining: 119, resetIn: 60000 }),
+  getClientId: vi.fn().mockReturnValue('test-client'),
+  createRateLimitKey: vi.fn().mockReturnValue('test-client:/api/v1/arrivals'),
+  RATE_LIMITS: { realtime: { limit: 120, windowMs: 60000 } },
+}));
+
 const mockGetArrivalsForStop = vi.mocked(mta.getArrivalsForStop);
 
 // Helper to create a mock ArrivalItem
@@ -124,7 +132,7 @@ describe('GET /api/v1/arrivals/station/[stationId]', () => {
     expect(data.arrivals).toEqual([]);
   });
 
-  it('handles errors gracefully', async () => {
+  it('handles errors gracefully with sanitized message', async () => {
     mockGetArrivalsForStop.mockRejectedValue(new Error('Network error'));
 
     const request = new NextRequest('http://localhost:3000/api/v1/arrivals/station/101');
@@ -132,7 +140,7 @@ describe('GET /api/v1/arrivals/station/[stationId]', () => {
     const data = await response.json();
 
     expect(response.status).toBe(500);
-    expect(data.error.message).toBe('Network error');
+    expect(data.error.message).toBe('Failed to get arrivals');
   });
 
   it('handles non-Error thrown values', async () => {

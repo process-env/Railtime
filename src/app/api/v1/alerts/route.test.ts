@@ -11,6 +11,14 @@ vi.mock('@/lib/mta', () => ({
   ),
 }));
 
+// Mock rate limiting to always allow
+vi.mock('@/lib/api/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockReturnValue({ success: true, remaining: 29, resetIn: 60000 }),
+  getClientId: vi.fn().mockReturnValue('test-client'),
+  createRateLimitKey: vi.fn().mockReturnValue('test-client:/api/v1/alerts'),
+  RATE_LIMITS: { search: { limit: 30, windowMs: 60000 } },
+}));
+
 import { fetchAlerts, filterAlertsByRoutes } from '@/lib/mta';
 
 describe('GET /api/v1/alerts', () => {
@@ -66,7 +74,7 @@ describe('GET /api/v1/alerts', () => {
     expect(fetchAlerts).toHaveBeenCalledWith({ useCache: true });
   });
 
-  it('returns 500 on fetch error', async () => {
+  it('returns 500 on fetch error with sanitized message', async () => {
     vi.mocked(fetchAlerts).mockRejectedValue(new Error('API Error'));
 
     const request = new NextRequest('http://localhost/api/v1/alerts');
@@ -74,7 +82,7 @@ describe('GET /api/v1/alerts', () => {
 
     expect(response.status).toBe(500);
     const data = await response.json();
-    expect(data.error.message).toBe('API Error');
+    expect(data.error.message).toBe('Failed to fetch alerts');
   });
 
   it('handles non-Error thrown values', async () => {

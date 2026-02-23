@@ -8,6 +8,14 @@ vi.mock('@/lib/mta', () => ({
   getArrivalBoard: vi.fn(),
 }));
 
+// Mock rate limiting to always allow
+vi.mock('@/lib/api/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockReturnValue({ success: true, remaining: 119, resetIn: 60000 }),
+  getClientId: vi.fn().mockReturnValue('test-client'),
+  createRateLimitKey: vi.fn().mockReturnValue('test-client:/api/v1/arrivals'),
+  RATE_LIMITS: { realtime: { limit: 120, windowMs: 60000 } },
+}));
+
 import { getArrivalBoard } from '@/lib/mta';
 
 describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
@@ -40,7 +48,7 @@ describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
 
     expect(response.status).toBe(500);
     const data = await response.json();
-    expect(data.error.message).toBe('Invalid feed group');
+    expect(data.error.message).toBe('Failed to get arrivals');
   });
 
   it('handles invalid stop ID gracefully', async () => {
@@ -53,7 +61,7 @@ describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
 
     expect(response.status).toBe(500);
     const data = await response.json();
-    expect(data.error.message).toBe('Stop not found');
+    expect(data.error.message).toBe('Failed to get arrivals');
   });
 
   it('accepts stop IDs with N suffix', async () => {
@@ -92,7 +100,7 @@ describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
     expect(getArrivalBoard).toHaveBeenCalledWith('ACE', 'A24N', { useCache: true });
   });
 
-  it('returns 500 on fetch error', async () => {
+  it('returns 500 on fetch error with sanitized message', async () => {
     vi.mocked(getArrivalBoard).mockRejectedValue(new Error('MTA API Error'));
 
     const request = new NextRequest('http://localhost/api/v1/arrivals/ACE/A24N');
@@ -102,7 +110,7 @@ describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
 
     expect(response.status).toBe(500);
     const data = await response.json();
-    expect(data.error.message).toBe('MTA API Error');
+    expect(data.error.message).toBe('Failed to get arrivals');
   });
 
   it('accepts all valid feed group IDs', async () => {

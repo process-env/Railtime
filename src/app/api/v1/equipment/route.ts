@@ -1,4 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { rateLimited } from '@/lib/api/errors';
+import {
+  checkRateLimit,
+  getClientId,
+  createRateLimitKey,
+  RATE_LIMITS,
+} from '@/lib/api/rate-limit';
 import type {
   EquipmentOutage,
   Equipment,
@@ -103,7 +110,15 @@ async function fetchEquipmentData(): Promise<EquipmentStatusResponse> {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Rate limit check
+  const clientId = getClientId(request);
+  const key = createRateLimitKey(clientId, '/api/v1/equipment');
+  const limit = checkRateLimit(key, RATE_LIMITS.search);
+  if (!limit.success) {
+    return rateLimited(limit.resetIn);
+  }
+
   try {
     // Check cache
     const now = Date.now();
@@ -148,7 +163,7 @@ export async function GET() {
       {
         error: {
           code: 'FETCH_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to fetch equipment status'
+          message: 'Failed to fetch equipment status'
         }
       },
       { status: 500 }

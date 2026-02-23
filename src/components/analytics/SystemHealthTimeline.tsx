@@ -10,17 +10,20 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HeartPulse } from 'lucide-react';
-import { useDailyRollups } from '@/hooks/use-analytics-data';
+import type { RollupDataProp } from '@/lib/graphql/types';
 
-export function SystemHealthTimeline() {
-  const to = format(new Date(), 'yyyy-MM-dd');
-  const from = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+interface SystemHealthTimelineProps {
+  rollupData?: RollupDataProp;
+}
 
-  const { data, loading } = useDailyRollups(from, to);
+export function SystemHealthTimeline({ rollupData: sharedRollup }: SystemHealthTimelineProps) {
+  // Uses the full 30-day shared data directly (no filtering needed)
+  const data = sharedRollup?.data;
+  const loading = sharedRollup?.loading ?? false;
 
   const chartData = useMemo(() => {
     const rollups = data?.getDailyRollups ?? [];

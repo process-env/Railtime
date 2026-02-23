@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo } from 'react';
+import { format, subDays } from 'date-fns';
 import {
   OperationalStatsBar,
   TransitAnalysisCard,
@@ -16,11 +18,24 @@ import {
 } from '@/components/analytics';
 import { ErrorBoundary, ChartErrorFallback } from '@/components/ErrorBoundary';
 import { useAnalytics, useAlerts } from '@/hooks';
+import { useDailyRollups } from '@/hooks/use-analytics-data';
 
 export default function AnalyticsPage() {
   const { data, loading } = useAnalytics();
   const { alerts } = useAlerts();
   const alertCount = alerts?.length ?? 0;
+
+  // Shared 30-day rollup query — all chart components filter from this superset
+  const { from, to } = useMemo(() => ({
+    from: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
+    to: format(new Date(), 'yyyy-MM-dd'),
+  }), []);
+
+  const { data: rollupData, loading: rollupLoading } = useDailyRollups(from, to);
+  const sharedRollup = useMemo(
+    () => ({ data: rollupData, loading: rollupLoading }),
+    [rollupData, rollupLoading]
+  );
 
   return (
     <div className="p-6 space-y-6 overflow-y-auto overflow-x-hidden h-full w-full">
@@ -47,7 +62,7 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <AnomalyFeed />
           <div className="space-y-6">
-            <BestWorstRouteCard />
+            <BestWorstRouteCard rollupData={sharedRollup} />
             <AlertStatusCard />
           </div>
         </div>
@@ -55,29 +70,29 @@ export default function AnalyticsPage() {
 
       {/* Route Performance Table */}
       <ErrorBoundary fallback={<ChartErrorFallback />}>
-        <RoutePerformanceTable />
+        <RoutePerformanceTable rollupData={sharedRollup} />
       </ErrorBoundary>
 
       {/* Trend Charts Row 1 */}
       <ErrorBoundary fallback={<ChartErrorFallback />}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <BunchingGapTrendChart />
-          <SystemHealthTimeline />
+          <BunchingGapTrendChart rollupData={sharedRollup} />
+          <SystemHealthTimeline rollupData={sharedRollup} />
         </div>
       </ErrorBoundary>
 
       {/* Trend Charts Row 2 */}
       <ErrorBoundary fallback={<ChartErrorFallback />}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <DelayTrendChart />
-          <DelayDistributionChart />
+          <DelayTrendChart rollupData={sharedRollup} />
+          <DelayDistributionChart rollupData={sharedRollup} />
         </div>
       </ErrorBoundary>
 
       {/* Bottom Row */}
       <ErrorBoundary fallback={<ChartErrorFallback />}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <TripCompletionChart />
+          <TripCompletionChart rollupData={sharedRollup} />
           <LiveSystemDashboard
             totalTrains={data?.stats.totalTrains ?? 0}
             feedStatus={data?.feedStatus ?? []}

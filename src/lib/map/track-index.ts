@@ -119,6 +119,40 @@ function projectPointToTrack(
 }
 
 /**
+ * Parse a CSV line respecting quoted fields.
+ * Handles escaped quotes ("") within quoted fields per RFC 4180.
+ */
+function parseCSVLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') {
+        current += '"';
+        i++; // skip escaped quote
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        fields.push(current.trim());
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  fields.push(current.trim());
+  return fields;
+}
+
+/**
  * Parse stops.txt CSV data
  */
 function parseStops(csvText: string): Map<string, { lat: number; lon: number; name: string }> {
@@ -127,7 +161,7 @@ function parseStops(csvText: string): Map<string, { lat: number; lon: number; na
 
   // Skip header
   for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split(',');
+    const parts = parseCSVLine(lines[i]);
     if (parts.length >= 4) {
       const stopId = parts[0].trim();
       const name = parts[1].trim();

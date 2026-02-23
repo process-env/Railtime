@@ -12,6 +12,13 @@ vi.mock('@/lib/trip-planner', () => ({
   getAlternativeTrips: vi.fn(),
 }));
 
+// Mock rate limiting to always allow
+vi.mock('@/lib/api/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockReturnValue({ success: true, remaining: 19, resetIn: 60000 }),
+  getClientId: vi.fn().mockReturnValue('test-client'),
+  createRateLimitKey: vi.fn().mockReturnValue('test-client:/api/v1/trip'),
+}));
+
 import { getAlternativeTrips } from '@/lib/trip-planner';
 
 // Helper to create NextRequest with query params
@@ -405,26 +412,8 @@ describe('GET /api/v1/trip', () => {
     });
   });
 
-  describe('preferFewerTransfers option', () => {
-    it('always passes preferFewerTransfers: true', async () => {
-      const request = createRequest({
-        origin: '127',
-        destination: '635',
-      });
-
-      await GET(request);
-
-      expect(getAlternativeTrips).toHaveBeenCalledWith(
-        '127',
-        '635',
-        3,
-        expect.objectContaining({ preferFewerTransfers: true })
-      );
-    });
-  });
-
   describe('error handling', () => {
-    it('returns 500 on internal error', async () => {
+    it('returns 500 on internal error with sanitized message', async () => {
       vi.mocked(getAlternativeTrips).mockRejectedValue(new Error('Database error'));
 
       const request = createRequest({
@@ -437,7 +426,7 @@ describe('GET /api/v1/trip', () => {
 
       expect(response.status).toBe(500);
       expect(data.error.code).toBe('INTERNAL_ERROR');
-      expect(data.error.message).toBe('Database error');
+      expect(data.error.message).toBe('Failed to plan trip');
     });
 
     it('handles non-Error exceptions', async () => {

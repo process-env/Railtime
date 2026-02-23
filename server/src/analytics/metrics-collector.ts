@@ -783,9 +783,11 @@ async function flush(): Promise<void> {
   }
 
   // Clean up stale trips (not seen for 30 min — likely dead/completed trains)
+  // Collect IDs to delete; actual deletion is deferred to after successful write
   const STALE_TRIP_THRESHOLD = 30 * 60 * 1000;
   const staleNow = Date.now();
   let staleEventCounter = 0;
+  const staleTripIds: string[] = [];
   for (const [tripId, trip] of activeTripMap) {
     if (staleNow - trip.lastSeenAt > STALE_TRIP_THRESHOLD) {
       const duration = Math.round((trip.lastSeenAt - trip.startedAt) / 1000);
@@ -804,7 +806,7 @@ async function flush(): Promise<void> {
         }),
         expireAt,
       });
-      activeTripMap.delete(tripId);
+      staleTripIds.push(tripId);
     }
   }
 
@@ -814,8 +816,11 @@ async function flush(): Promise<void> {
       delayEvents.length > 0 ? writeEvents(delayEvents) : Promise.resolve(),
       rollups.length > 0 ? writeRollups(rollups) : Promise.resolve(),
     ]);
-    // Clear buffers only after successful write — on failure, data is retained for next flush
+    // Clear buffers and stale trips only after successful write — on failure, data is retained for next flush
     buffers.clear();
+    for (const tripId of staleTripIds) {
+      activeTripMap.delete(tripId);
+    }
     const anomalyEvents = delayEvents.filter(e => e.pk.startsWith('BUNCH#') || e.pk.startsWith('GAP#')).length;
     log.info({ metricsCount: metrics.length, eventsCount: delayEvents.length, anomalies: anomalyEvents }, 'flush complete');
     if (rollups.length > 0) {

@@ -1,4 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { rateLimited } from '@/lib/api/errors';
+import {
+  checkRateLimit,
+  getClientId,
+  createRateLimitKey,
+  RATE_LIMITS,
+} from '@/lib/api/rate-limit';
 import type { POI, TomTomSearchResponse, POISearchResponse } from '@/types/poi';
 
 const TOMTOM_API_KEY = process.env.TOMTOM_ADMIN_KEY;
@@ -15,6 +22,14 @@ function getCacheKey(lat: number, lon: number, radius: number, category?: string
 }
 
 export async function GET(request: NextRequest) {
+  // Rate limit check
+  const clientId = getClientId(request);
+  const rlKey = createRateLimitKey(clientId, '/api/v1/poi');
+  const rl = checkRateLimit(rlKey, RATE_LIMITS.search);
+  if (!rl.success) {
+    return rateLimited(rl.resetIn);
+  }
+
   const { searchParams } = new URL(request.url);
 
   const lat = parseFloat(searchParams.get('lat') || '');
@@ -29,6 +44,14 @@ export async function GET(request: NextRequest) {
       { error: 'Missing required parameters: lat and lon' },
       { status: 400 }
     );
+  }
+
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    return NextResponse.json({ error: 'Coordinates out of range' }, { status: 400 });
+  }
+
+  if (category && !/^\d+(,\d+)*$/.test(category)) {
+    return NextResponse.json({ error: 'Invalid category format' }, { status: 400 });
   }
 
   // Validate API key

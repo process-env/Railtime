@@ -185,6 +185,9 @@ export function useTrainMarkers(
   // Track markers that are mid-fade-out so we can cancel if train reappears
   const fadingOutRef = useRef(new Map<string, FadingMarker>());
 
+  // Generation counter for cancelling stale async marker processing
+  const processingGenRef = useRef(0);
+
   // Load track utilities on mount
   useEffect(() => {
     if (useAlphaBetaGamma) {
@@ -199,6 +202,8 @@ export function useTrainMarkers(
   useEffect(() => {
     if (!trackUtilsLoaded.current || !getStopArclength) return;
 
+    let cancelled = false;
+
     const updateApiData = async () => {
       const nowMs = Date.now();
 
@@ -207,7 +212,10 @@ export function useTrainMarkers(
         const prevS = train.prevStopId
           ? await getStopArclength!(train.routeId, train.prevStopId)
           : undefined;
+        if (cancelled) return;
+
         const nextS = await getStopArclength!(train.routeId, train.nextStopId);
+        if (cancelled) return;
 
         if (prevS === undefined || nextS === undefined) continue;
 
@@ -227,6 +235,8 @@ export function useTrainMarkers(
         });
       }
 
+      if (cancelled) return;
+
       // Clean up old entries
       const currentTripIds = new Set(trains.map(t => t.tripId));
       latestApiDataRef.current.forEach((_, tripId) => {
@@ -237,6 +247,7 @@ export function useTrainMarkers(
     };
 
     updateApiData();
+    return () => { cancelled = true; };
   }, [trains]);
 
   // Helper to calculate distance between two points
@@ -258,6 +269,9 @@ export function useTrainMarkers(
     popup.remove();
 
     const timeoutId = setTimeout(() => {
+      // Remove event listeners before removing marker from DOM
+      if (motionState?.cleanupListeners) motionState.cleanupListeners();
+      if (animState?.cleanupListeners) animState.cleanupListeners();
       marker.remove();
       fadingOutRef.current.delete(tripId);
     }, FADE_DURATION_MS);
@@ -268,6 +282,9 @@ export function useTrainMarkers(
   // Update train markers
   useEffect(() => {
     if (!mapLoaded || !map) return;
+
+    // Increment generation to cancel stale async chains from previous renders
+    const generation = ++processingGenRef.current;
 
     // Filter trains by selected routes
     const filteredTrains = selectedRouteIds.length > 0
@@ -392,6 +409,9 @@ export function useTrainMarkers(
 
     // Process each train
     void Promise.all(displayTrains.map(async (train) => {
+      // Bail out if a newer effect has started (stale async chain)
+      if (generation !== processingGenRef.current) return;
+
       // If this train is mid-fade-out, cancel the fade and restore it
       const fading = fadingOutRef.current.get(train.tripId);
       if (fading) {
@@ -454,6 +474,7 @@ export function useTrainMarkers(
 
           // Update motion state with new API data
           await updateMotionState(existingMotion, train, nowMs);
+          if (generation !== processingGenRef.current) return;
 
           // Pass current arclength and next station arclength for distance-based phase
           existingMotion.popup.setHTML(createPopupHTML(train, color, existingMotion.filter.s, existingMotion.nextS));
@@ -486,6 +507,14 @@ export function useTrainMarkers(
             train, map, color, direction, nowMs, setSelectedTrain,
             durationMatrix, scheduledDuration, speedMultiplier
           );
+          if (generation !== processingGenRef.current) {
+            // Stale — clean up the marker we just created so it doesn't become a phantom
+            if (motionState) {
+              motionState.marker.remove();
+              motionState.popup.remove();
+            }
+            return;
+          }
           if (motionState) {
             trainMotionRef.current.set(train.tripId, motionState);
             // Apply clustering offset for overlapping trains
@@ -553,8 +582,10 @@ export function useTrainMarkers(
         }
       }
     })).then(() => {
-      // Restart animation loop after all markers are processed
-      scheduleAnimation();
+      // Only schedule animation if this generation is still current
+      if (generation === processingGenRef.current) {
+        scheduleAnimation();
+      }
     });
   }, [mapLoaded, map, trains, selectedRouteIds, lerp, getDistance, refreshInterval, selectedTrainId, setSelectedTrain, trainAnimsRef, trainMotionRef, scheduleAnimation, useAlphaBetaGamma, durationMatrix, alerts, fadeOutAndRemove]);
 
@@ -562,8 +593,10 @@ export function useTrainMarkers(
   useEffect(() => {
     const fadingOut = fadingOutRef.current;
     return () => {
-      fadingOut.forEach(({ timeoutId, marker }) => {
+      fadingOut.forEach(({ timeoutId, marker, motionState, animState }) => {
         clearTimeout(timeoutId);
+        if (motionState?.cleanupListeners) motionState.cleanupListeners();
+        if (animState?.cleanupListeners) animState.cleanupListeners();
         marker.remove();
       });
       fadingOut.clear();
@@ -686,17 +719,27 @@ async function createMotionState(
     .setLngLat([train.lon, train.lat])
     .addTo(map);
 
-  // Event handlers
-  el.addEventListener('mouseenter', () => {
+  // Event handlers — store references for cleanup on marker removal
+  const handleMouseEnter = () => {
     marker.setPopup(popup).togglePopup();
-  });
-  el.addEventListener('mouseleave', () => {
+  };
+  const handleMouseLeave = () => {
     popup.remove();
-  });
-  el.addEventListener('click', () => {
+  };
+  const handleClick = () => {
     const currentSelectedId = useUIStore.getState().selectedTrainId;
     setSelectedTrain(train.tripId === currentSelectedId ? null : train.tripId);
-  });
+  };
+
+  el.addEventListener('mouseenter', handleMouseEnter);
+  el.addEventListener('mouseleave', handleMouseLeave);
+  el.addEventListener('click', handleClick);
+
+  const cleanupListeners = () => {
+    el.removeEventListener('mouseenter', handleMouseEnter);
+    el.removeEventListener('mouseleave', handleMouseLeave);
+    el.removeEventListener('click', handleClick);
+  };
 
   // DISABLED: State machine causes trains to get stuck in BOARDING phase
   // Using fallback lerp animation instead (see useMapAnimation.ts:220-241)
@@ -734,7 +777,9 @@ async function createMotionState(
     lastRenderedS: initialS,
     lastApiUpdate: nowMs,
     // Phase tracking for popup updates during animation
-    lastPhase: initialPhase
+    lastPhase: initialPhase,
+    // Event listener cleanup
+    cleanupListeners
   };
 }
 
@@ -929,16 +974,27 @@ function createLegacyMarker(
     .setLngLat([train.lon, train.lat])
     .addTo(map);
 
-  el.addEventListener('mouseenter', () => {
+  // Event handlers — store references for cleanup on marker removal
+  const handleMouseEnter = () => {
     marker.setPopup(popup).togglePopup();
-  });
-  el.addEventListener('mouseleave', () => {
+  };
+  const handleMouseLeave = () => {
     popup.remove();
-  });
-  el.addEventListener('click', () => {
+  };
+  const handleClick = () => {
     const currentSelectedId = useUIStore.getState().selectedTrainId;
     setSelectedTrain(train.tripId === currentSelectedId ? null : train.tripId);
-  });
+  };
+
+  el.addEventListener('mouseenter', handleMouseEnter);
+  el.addEventListener('mouseleave', handleMouseLeave);
+  el.addEventListener('click', handleClick);
+
+  const cleanupListeners = () => {
+    el.removeEventListener('mouseenter', handleMouseEnter);
+    el.removeEventListener('mouseleave', handleMouseLeave);
+    el.removeEventListener('click', handleClick);
+  };
 
   trainAnimsRef.current.set(train.tripId, {
     marker,
@@ -954,6 +1010,7 @@ function createLegacyMarker(
     nextStopName: train.nextStopName,
     eta: train.eta,
     direction,
+    cleanupListeners,
   });
 }
 

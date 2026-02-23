@@ -28,6 +28,40 @@ function getDataPath(filename: string): string {
 }
 
 /**
+ * Parse a CSV line respecting quoted fields.
+ * Handles escaped quotes ("") within quoted fields per RFC 4180.
+ */
+function parseCSVLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') {
+        current += '"';
+        i++; // skip escaped quote
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        fields.push(current.trim());
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  fields.push(current.trim());
+  return fields;
+}
+
+/**
  * Load station data from stops.txt
  */
 async function loadStations(): Promise<Map<string, { name: string; lat: number; lon: number }>> {
@@ -38,7 +72,7 @@ async function loadStations(): Promise<Map<string, { name: string; lat: number; 
 
   for (const line of lines) {
     if (!line.trim()) continue;
-    const parts = line.split(',');
+    const parts = parseCSVLine(line);
     const stopId = parts[0]?.trim();
     const name = parts[1]?.trim();
     const lat = parseFloat(parts[2]);

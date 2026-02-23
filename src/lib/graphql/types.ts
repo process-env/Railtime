@@ -70,3 +70,9 @@ export interface GetLatestSystemHealthData {
 export interface OnRouteMetricUpdateData {
   onRouteMetricUpdate: RouteMetric;
 }
+
+/** Shared prop type for components receiving pre-fetched daily rollup data */
+export interface RollupDataProp {
+  data: GetDailyRollupsData | undefined;
+  loading: boolean;
+}

@@ -75,7 +75,6 @@ class PriorityQueue<T> {
  */
 const DEFAULT_OPTIONS: Required<TripPlannerOptions> = {
   maxTransfers: 3,
-  preferFewerTransfers: true,
   avoidRoutes: [],
   transferPenalty: 300, // 5 minutes
 };
@@ -135,6 +134,9 @@ export function findShortestPath(
   // Priority queue
   const pq = new PriorityQueue<string>();
 
+  // Visited set for lazy-deletion correctness
+  const visited = new Set<string>();
+
   // Initialize: add all origin nodes with cost 0
   for (const node of originNodes) {
     // Skip avoided routes
@@ -150,6 +152,11 @@ export function findShortestPath(
   // Dijkstra's main loop
   while (!pq.isEmpty()) {
     const currentKey = pq.extractMin()!;
+
+    // Skip stale entries (lazy deletion): if we already finalized this node, skip it
+    if (visited.has(currentKey)) continue;
+    visited.add(currentKey);
+
     const currentDist = dist.get(currentKey)!;
     const currentNode = graph.nodes.get(currentKey)!;
     const currentTransfers = transferCount.get(currentKey) || 0;
@@ -159,9 +166,6 @@ export function findShortestPath(
       // Reconstruct path
       return reconstructPath(graph, prev, currentKey, currentDist, currentTransfers);
     }
-
-    // Skip if we've found a better path already
-    if (currentDist > (dist.get(currentKey) ?? Infinity)) continue;
 
     // Explore neighbors
     const edges = graph.edges.get(currentKey) || [];

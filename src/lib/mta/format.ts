@@ -73,7 +73,7 @@ export function getDirectionLabel(direction: 'N' | 'S' | null): string {
  * Returns black for yellow backgrounds (NQRW line), white for all others
  */
 export function getTextColorForBackground(bgColor: string): string {
-  return bgColor === '#FCCC0A' ? '#000' : '#fff';
+  return bgColor.toUpperCase() === '#FCCC0A' ? '#000' : '#fff';
 }
 
 /**

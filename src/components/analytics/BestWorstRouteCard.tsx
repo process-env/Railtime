@@ -6,8 +6,8 @@ import { Trophy, TrendingUp, TrendingDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
-import { useDailyRollups } from '@/hooks/use-analytics-data';
 import { getRouteColor } from '@/lib/constants';
+import type { RollupDataProp } from '@/lib/graphql/types';
 
 interface AggregatedRoute {
   routeId: string;
@@ -88,9 +88,24 @@ function RouteRow({
   );
 }
 
-export function BestWorstRouteCard() {
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const { data, loading } = useDailyRollups(today, today);
+interface BestWorstRouteCardProps {
+  rollupData?: RollupDataProp;
+}
+
+export function BestWorstRouteCard({ rollupData: sharedRollup }: BestWorstRouteCardProps) {
+  // Filter shared 30-day data to today only
+  const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+
+  const data = useMemo(() => {
+    if (!sharedRollup?.data) return sharedRollup?.data;
+    return {
+      getDailyRollups: sharedRollup.data.getDailyRollups.filter(
+        (r) => r.date.split('#')[0] === today
+      ),
+    };
+  }, [sharedRollup?.data, today]);
+
+  const loading = sharedRollup?.loading ?? false;
 
   const { best, worst } = useMemo(() => {
     const rollups = data?.getDailyRollups ?? [];

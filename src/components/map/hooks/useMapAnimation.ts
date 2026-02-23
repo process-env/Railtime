@@ -73,6 +73,9 @@ export interface TrainMotionState {
     nextStopName: string;
     eta: string;
   };
+
+  // Event listener cleanup function (removes mouseenter, mouseleave, click)
+  cleanupListeners?: () => void;
 }
 
 /**
@@ -93,6 +96,8 @@ export interface TrainAnimState {
   nextStopName: string;
   eta: string;
   direction: 'N' | 'S' | null;
+  // Event listener cleanup function (removes mouseenter, mouseleave, click)
+  cleanupListeners?: () => void;
 }
 
 interface UseMapAnimationOptions {

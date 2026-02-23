@@ -44,6 +44,13 @@ vi.mock('@/lib/mta/format', () => ({
   getTextColorForBackground: vi.fn(() => 'white'),
 }));
 
+// Mock fetch to prevent Invalid URL errors from loadRouteTerminals()
+// which calls fetch('/data/route-segments.json') — a relative URL invalid in Node.js
+const mockFetch = vi.fn().mockResolvedValue({
+  json: () => Promise.resolve({ routes: {} }),
+});
+vi.stubGlobal('fetch', mockFetch);
+
 // Import hook after mocks are set up
 import { useTrainMarkers } from './useTrainMarkers';
 import type { TrainAnimState, TrainMotionState } from './useMapAnimation';

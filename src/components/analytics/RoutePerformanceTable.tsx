@@ -5,8 +5,8 @@ import { format, subDays } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BarChart3 } from 'lucide-react';
-import { useDailyRollups } from '@/hooks/use-analytics-data';
 import { getRouteColor } from '@/lib/constants';
+import type { RollupDataProp } from '@/lib/graphql/types';
 
 interface RouteSummary {
   routeId: string;
@@ -54,11 +54,24 @@ function calculateGrade(row: RouteSummary): { grade: string; color: string } | n
   return { grade: 'F', color: 'text-rose-500' };
 }
 
-export function RoutePerformanceTable() {
-  const to = format(new Date(), 'yyyy-MM-dd');
-  const from = format(subDays(new Date(), 7), 'yyyy-MM-dd');
+interface RoutePerformanceTableProps {
+  rollupData?: RollupDataProp;
+}
 
-  const { data, loading } = useDailyRollups(from, to);
+export function RoutePerformanceTable({ rollupData: sharedRollup }: RoutePerformanceTableProps) {
+  // Filter shared 30-day data to 7-day window
+  const sevenDaysAgo = useMemo(() => format(subDays(new Date(), 7), 'yyyy-MM-dd'), []);
+
+  const data = useMemo(() => {
+    if (!sharedRollup?.data) return sharedRollup?.data;
+    return {
+      getDailyRollups: sharedRollup.data.getDailyRollups.filter(
+        (r) => r.date.split('#')[0] >= sevenDaysAgo
+      ),
+    };
+  }, [sharedRollup?.data, sevenDaysAgo]);
+
+  const loading = sharedRollup?.loading ?? false;
 
   const rows = useMemo<RouteSummary[]>(() => {
     const rollups = data?.getDailyRollups ?? [];

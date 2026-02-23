@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAlternativeTrips } from '@/lib/trip-planner';
 import { findTripsNeo4j } from '@/lib/trip-planner/neo4j-planner';
 import { getCache, setCache } from '@/lib/redis';
-import { badRequest, notFound, internalError } from '@/lib/api/errors';
+import { badRequest, notFound, internalError, rateLimited } from '@/lib/api/errors';
+import {
+  checkRateLimit,
+  getClientId,
+  createRateLimitKey,
+} from '@/lib/api/rate-limit';
 
 /** Cache TTL for trip results (5 minutes). */
 const CACHE_TTL_SECONDS = 300;
@@ -29,7 +34,18 @@ const CACHE_TTL_SECONDS = 300;
  *   backend: 'neo4j' | 'in-memory'
  * }
  */
+/** Trip planning is expensive — stricter limit than real-time feeds. */
+const TRIP_RATE_LIMIT = { limit: 20, windowMs: 60 * 1000 } as const;
+
 export async function GET(request: NextRequest) {
+  // Rate limit check
+  const clientId = getClientId(request);
+  const key = createRateLimitKey(clientId, '/api/v1/trip');
+  const limit = checkRateLimit(key, TRIP_RATE_LIMIT);
+  if (!limit.success) {
+    return rateLimited(limit.resetIn);
+  }
+
   try {
     const { searchParams } = new URL(request.url);
 
@@ -97,7 +113,6 @@ export async function GET(request: NextRequest) {
       trips = await getAlternativeTrips(origin, destination, alternatives, {
         maxTransfers,
         avoidRoutes,
-        preferFewerTransfers: true,
       });
       backend = 'in-memory';
     }
@@ -124,8 +139,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response);
   } catch (error) {
     console.error('[trip-api] Error planning trip:', error);
-    return internalError(
-      error instanceof Error ? error.message : 'Failed to plan trip',
-    );
+    return internalError('Failed to plan trip');
   }
 }

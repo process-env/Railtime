@@ -18,22 +18,54 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { TrendingDown } from 'lucide-react';
 import { useDailyRollups } from '@/hooks/use-analytics-data';
 import { getRouteColor } from '@/lib/constants';
+import type { RollupDataProp } from '@/lib/graphql/types';
 
 type TimeRange = '7d' | '30d' | '90d';
 
-const RANGE_DAYS: Record<TimeRange, number> = {
-  '7d': 7,
-  '30d': 30,
-  '90d': 90,
-};
+interface DelayTrendChartProps {
+  rollupData?: RollupDataProp;
+}
 
-export function DelayTrendChart() {
+export function DelayTrendChart({ rollupData: sharedRollup }: DelayTrendChartProps) {
   const [range, setRange] = useState<TimeRange>('7d');
 
-  const to = format(new Date(), 'yyyy-MM-dd');
-  const from = format(subDays(new Date(), RANGE_DAYS[range]), 'yyyy-MM-dd');
+  // For 90d, we need a dedicated query since shared data only covers 30 days.
+  // Pass empty strings when not in 90d mode so Apollo's skip logic prevents the request.
+  const ninetyDayFrom = useMemo(
+    () => (range === '90d' ? format(subDays(new Date(), 90), 'yyyy-MM-dd') : ''),
+    [range]
+  );
+  const ninetyDayTo = useMemo(
+    () => (range === '90d' ? format(new Date(), 'yyyy-MM-dd') : ''),
+    [range]
+  );
+  const { data: extendedData, loading: extendedLoading } = useDailyRollups(
+    ninetyDayFrom,
+    ninetyDayTo,
+  );
 
-  const { data, loading } = useDailyRollups(from, to);
+  // For 7d/30d, filter from the shared 30-day data; for 90d, use the dedicated query
+  const { data, loading } = useMemo(() => {
+    if (range === '90d') {
+      return { data: extendedData, loading: extendedLoading };
+    }
+    if (!sharedRollup?.data) {
+      return { data: sharedRollup?.data, loading: sharedRollup?.loading ?? false };
+    }
+    if (range === '30d') {
+      return { data: sharedRollup.data, loading: sharedRollup.loading };
+    }
+    // 7d: filter from shared 30-day data
+    const cutoff = format(subDays(new Date(), 7), 'yyyy-MM-dd');
+    return {
+      data: {
+        getDailyRollups: sharedRollup.data.getDailyRollups.filter(
+          (r) => r.date.split('#')[0] >= cutoff
+        ),
+      },
+      loading: sharedRollup.loading,
+    };
+  }, [range, sharedRollup, extendedData, extendedLoading]);
 
   const { chartData, routeIds } = useMemo(() => {
     const rollups = data?.getDailyRollups ?? [];
