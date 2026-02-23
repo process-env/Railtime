@@ -82,6 +82,7 @@ services:
       - DYNAMODB_TABLE_METRICS=${DYNAMODB_TABLE_METRICS:-railtime-metrics}
       - DYNAMODB_TABLE_EVENTS=${DYNAMODB_TABLE_EVENTS:-railtime-events}
       - DYNAMODB_TABLE_ROLLUPS=${DYNAMODB_TABLE_ROLLUPS:-railtime-rollups}
+      - S3_ANALYTICS_BUCKET=${S3_ANALYTICS_BUCKET:-}
       - DATA_DIR=/app/public/data
     volumes:
       - ../public/data:/app/public/data:ro
