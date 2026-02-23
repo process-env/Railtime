@@ -112,6 +112,97 @@ def read_recent_json(base_path, days=7):
     return result
 
 
+def build_windowed_features(metrics, events, metric_aggs, event_types):
+    """Build a windowed feature DataFrame from metrics and events.
+
+    Shared logic used by both delay_prediction and anomaly_detection:
+      1. Window metrics into 5-minute windows with hour/day_of_week
+      2. Group by routeId/window_start with the provided metric_aggs
+      3. Window events into 5-minute windows, extract event_type, count by
+         provided event_types
+      4. Left-join metrics with events
+      5. Fill nulls with 0
+
+    Args:
+        metrics: DataFrame of raw metrics (must have timestamp, routeId, and
+                 the columns referenced by metric_aggs values).
+        events:  DataFrame of raw events (may be None).  Must have timestamp
+                 and pk columns when present.
+        metric_aggs: list of (agg_expression, alias) tuples, e.g.
+                     [(F.avg("headwayAvgSeconds"), "headway_avg"), ...].
+        event_types: list of event type strings to count, e.g.
+                     ["BUNCHING", "GAP", "DELAY", "ALERT"].
+
+    Returns:
+        A DataFrame with windowed metric aggregates, event counts per type,
+        and a total event_count column.  All event count columns are filled
+        with 0 where events were missing.
+    """
+    # --- Metrics features ---
+    metrics_feat = (
+        metrics.withColumn(
+            "ts",
+            F.from_unixtime(F.col("timestamp") / 1000).cast("timestamp"),
+        )
+        .withColumn(
+            "window_start",
+            F.window("ts", "5 minutes").getField("start"),
+        )
+        .withColumn("hour", F.hour("ts"))
+        .withColumn("day_of_week", F.dayofweek(F.to_date("ts")))
+        .groupBy("routeId", "window_start", "hour", "day_of_week")
+        .agg(*[expr.alias(name) for expr, name in metric_aggs])
+    )
+
+    # Build the list of event count column names
+    event_count_cols = ["event_count"] + [
+        f"{et.lower()}_count" for et in event_types
+    ]
+
+    # --- Events features ---
+    if events is not None:
+        events_windowed = (
+            events.withColumn(
+                "ts",
+                F.from_unixtime(F.col("timestamp") / 1000).cast("timestamp"),
+            )
+            .withColumn(
+                "window_start",
+                F.window("ts", "5 minutes").getField("start"),
+            )
+            .withColumn(
+                "routeId",
+                F.regexp_replace(F.col("pk"), "^[A-Z]+#", ""),
+            )
+            .withColumn(
+                "event_type",
+                F.regexp_extract(F.col("pk"), "^([A-Z]+)#", 1),
+            )
+        )
+
+        event_agg_exprs = [F.count("*").alias("event_count")]
+        for et in event_types:
+            event_agg_exprs.append(
+                F.sum(
+                    F.when(F.col("event_type") == et, 1).otherwise(0)
+                ).alias(f"{et.lower()}_count")
+            )
+
+        events_feat = events_windowed.groupBy("routeId", "window_start").agg(
+            *event_agg_exprs
+        )
+
+        result = metrics_feat.join(
+            events_feat, ["routeId", "window_start"], "left"
+        ).fillna(0, subset=event_count_cols)
+    else:
+        result = metrics_feat
+        for col_name in event_count_cols:
+            result = result.withColumn(col_name, F.lit(0))
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Haversine UDF (used by position_trajectory)
 # ---------------------------------------------------------------------------
@@ -261,94 +352,29 @@ def build_delay_prediction():
 
         events = read_recent_json(events_base, days=7)
 
-        # --- Metrics features ---
-        metrics_feat = (
-            metrics.withColumn(
-                "ts",
-                F.from_unixtime(F.col("timestamp") / 1000).cast("timestamp"),
-            )
-            .withColumn(
-                "window_start",
-                F.window("ts", "5 minutes").getField("start"),
-            )
-            .withColumn("hour", F.hour("ts"))
-            .withColumn("day_of_week", F.dayofweek(F.to_date("ts")))
-            .groupBy("routeId", "window_start", "hour", "day_of_week")
-            .agg(
-                F.avg("headwayAvgSeconds").alias("headway_avg"),
-                F.max("trainCount").alias("train_count"),
-                F.avg("avgDelaySeconds").alias("delay_seconds"),
-            )
+        result = build_windowed_features(
+            metrics,
+            events,
+            metric_aggs=[
+                (F.avg("headwayAvgSeconds"), "headway_avg"),
+                (F.max("trainCount"), "train_count"),
+                (F.avg("avgDelaySeconds"), "delay_seconds"),
+            ],
+            event_types=["BUNCHING", "GAP", "DELAY", "ALERT"],
         )
 
-        # --- Events features (optional) ---
-        if events is not None:
-            events_feat = (
-                events.withColumn(
-                    "ts",
-                    F.from_unixtime(F.col("timestamp") / 1000).cast("timestamp"),
-                )
-                .withColumn(
-                    "window_start",
-                    F.window("ts", "5 minutes").getField("start"),
-                )
-                .withColumn(
-                    "routeId",
-                    F.regexp_replace(F.col("pk"), "^[A-Z]+#", ""),
-                )
-                .withColumn(
-                    "event_type",
-                    F.regexp_extract(F.col("pk"), "^([A-Z]+)#", 1),
-                )
-                .groupBy("routeId", "window_start")
-                .agg(
-                    F.count("*").alias("event_count"),
-                    F.sum(
-                        F.when(F.col("event_type") == "BUNCHING", 1).otherwise(0)
-                    ).alias("bunching_count"),
-                    F.sum(
-                        F.when(F.col("event_type") == "GAP", 1).otherwise(0)
-                    ).alias("gap_count"),
-                    F.sum(
-                        F.when(F.col("event_type") == "DELAY", 1).otherwise(0)
-                    ).alias("delay_event_count"),
-                    F.sum(
-                        F.when(F.col("event_type") == "ALERT", 1).otherwise(0)
-                    ).alias("alert_count"),
-                )
-            )
-
-            result = metrics_feat.join(
-                events_feat, ["routeId", "window_start"], "left"
-            ).fillna(
-                0,
-                subset=[
-                    "event_count",
-                    "bunching_count",
-                    "gap_count",
-                    "delay_event_count",
-                    "alert_count",
-                ],
-            )
-            result = result.withColumn(
-                "alert_active", F.col("alert_count") > 0
-            )
-        else:
-            result = (
-                metrics_feat.withColumn("event_count", F.lit(0))
-                .withColumn("bunching_count", F.lit(0))
-                .withColumn("gap_count", F.lit(0))
-                .withColumn("delay_event_count", F.lit(0))
-                .withColumn("alert_count", F.lit(0))
-                .withColumn("alert_active", F.lit(False))
-            )
+        # Derived column specific to delay_prediction
+        result = result.withColumn(
+            "alert_active", F.col("alert_count") > 0
+        )
 
         # Add partition columns
         result = result.withColumn(
             "year", F.year("window_start")
         ).withColumn("month", F.month("window_start"))
 
-        result.write.mode("overwrite").partitionBy("year", "month").parquet(
+        result = result.withColumn("processing_date", F.current_date())
+        result.write.mode("append").partitionBy("year", "month", "processing_date").parquet(
             f"s3://{ML_BUCKET}/datasets/delay_prediction/"
         )
 
@@ -378,101 +404,25 @@ def build_anomaly_detection():
 
         events = read_recent_json(events_base, days=7)
 
-        # --- Metrics features ---
-        metrics_feat = (
-            metrics.withColumn(
-                "ts",
-                F.from_unixtime(F.col("timestamp") / 1000).cast("timestamp"),
-            )
-            .withColumn(
-                "window_start",
-                F.window("ts", "5 minutes").getField("start"),
-            )
-            .withColumn("hour", F.hour("ts"))
-            .withColumn("day_of_week", F.dayofweek(F.to_date("ts")))
-            .groupBy("routeId", "window_start", "hour", "day_of_week")
-            .agg(
-                F.avg("headwayAvgSeconds").alias("headway_avg"),
-                F.max("trainCount").alias("train_count"),
-                F.avg("onTimePercent").alias("on_time_pct"),
-                F.stddev("headwayAvgSeconds").alias("headway_stddev"),
-            )
+        result = build_windowed_features(
+            metrics,
+            events,
+            metric_aggs=[
+                (F.avg("headwayAvgSeconds"), "headway_avg"),
+                (F.max("trainCount"), "train_count"),
+                (F.avg("onTimePercent"), "on_time_pct"),
+                (F.stddev("headwayAvgSeconds"), "headway_stddev"),
+            ],
+            event_types=["BUNCHING", "GAP", "DELAY", "ALERT", "SLOWZONE", "REROUTE"],
         )
-
-        # --- Events features (all event types as counts) ---
-        if events is not None:
-            events_feat = (
-                events.withColumn(
-                    "ts",
-                    F.from_unixtime(F.col("timestamp") / 1000).cast("timestamp"),
-                )
-                .withColumn(
-                    "window_start",
-                    F.window("ts", "5 minutes").getField("start"),
-                )
-                .withColumn(
-                    "routeId",
-                    F.regexp_replace(F.col("pk"), "^[A-Z]+#", ""),
-                )
-                .withColumn(
-                    "event_type",
-                    F.regexp_extract(F.col("pk"), "^([A-Z]+)#", 1),
-                )
-                .groupBy("routeId", "window_start")
-                .agg(
-                    F.count("*").alias("event_count"),
-                    F.sum(
-                        F.when(F.col("event_type") == "BUNCHING", 1).otherwise(0)
-                    ).alias("bunching_count"),
-                    F.sum(
-                        F.when(F.col("event_type") == "GAP", 1).otherwise(0)
-                    ).alias("gap_count"),
-                    F.sum(
-                        F.when(F.col("event_type") == "DELAY", 1).otherwise(0)
-                    ).alias("delay_event_count"),
-                    F.sum(
-                        F.when(F.col("event_type") == "ALERT", 1).otherwise(0)
-                    ).alias("alert_count"),
-                    F.sum(
-                        F.when(F.col("event_type") == "SLOWZONE", 1).otherwise(0)
-                    ).alias("slowzone_count"),
-                    F.sum(
-                        F.when(F.col("event_type") == "REROUTE", 1).otherwise(0)
-                    ).alias("reroute_count"),
-                )
-            )
-
-            result = metrics_feat.join(
-                events_feat, ["routeId", "window_start"], "left"
-            ).fillna(
-                0,
-                subset=[
-                    "event_count",
-                    "bunching_count",
-                    "gap_count",
-                    "delay_event_count",
-                    "alert_count",
-                    "slowzone_count",
-                    "reroute_count",
-                ],
-            )
-        else:
-            result = (
-                metrics_feat.withColumn("event_count", F.lit(0))
-                .withColumn("bunching_count", F.lit(0))
-                .withColumn("gap_count", F.lit(0))
-                .withColumn("delay_event_count", F.lit(0))
-                .withColumn("alert_count", F.lit(0))
-                .withColumn("slowzone_count", F.lit(0))
-                .withColumn("reroute_count", F.lit(0))
-            )
 
         # Add partition columns
         result = result.withColumn(
             "year", F.year("window_start")
         ).withColumn("month", F.month("window_start"))
 
-        result.write.mode("overwrite").partitionBy("year", "month").parquet(
+        result = result.withColumn("processing_date", F.current_date())
+        result.write.mode("append").partitionBy("year", "month", "processing_date").parquet(
             f"s3://{ML_BUCKET}/datasets/anomaly_detection/"
         )
 
@@ -584,7 +534,8 @@ def build_position_trajectory():
             )
         )
 
-        result.write.mode("overwrite").partitionBy("year", "month").parquet(
+        result = result.withColumn("processing_date", F.current_date())
+        result.write.mode("append").partitionBy("year", "month", "processing_date").parquet(
             f"s3://{ML_BUCKET}/datasets/position_trajectory/"
         )
 

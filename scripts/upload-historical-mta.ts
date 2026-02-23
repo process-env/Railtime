@@ -115,7 +115,7 @@ function trimOrNull(value: string): string | null {
 // Dataset Configurations
 // ---------------------------------------------------------------------------
 
-const CSV_SOURCE_DIR = 'C:\\Users\\User\\Downloads\\mtaData';
+const CSV_SOURCE_DIR = process.argv[2] ?? 'C:\\Users\\User\\Downloads\\mtaData';
 
 const DATASETS: DatasetConfig[] = [
   // 1. Daily Ridership and Traffic

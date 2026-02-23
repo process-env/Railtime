@@ -19,6 +19,7 @@ import * as path from 'path';
 
 export class AnalyticsStack extends cdk.Stack {
   public readonly analyticsBucket: s3.Bucket;
+  public readonly alertTopic: sns.Topic;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -65,8 +66,19 @@ export class AnalyticsStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       lifecycleRules: [
         {
-          id: 'raw-lifecycle',
-          prefix: 'raw/',
+          id: 'raw-metrics-lifecycle',
+          prefix: 'raw/metrics/',
+          transitions: [
+            {
+              storageClass: s3.StorageClass.INFREQUENT_ACCESS,
+              transitionAfter: cdk.Duration.days(30),
+            },
+          ],
+          expiration: cdk.Duration.days(365),
+        },
+        {
+          id: 'raw-events-lifecycle',
+          prefix: 'raw/events/',
           transitions: [
             {
               storageClass: s3.StorageClass.INFREQUENT_ACCESS,
@@ -342,10 +354,11 @@ export class AnalyticsStack extends cdk.Stack {
     // Pipeline Alerting — SNS + CloudWatch Alarms
     // -----------------------------------------------------------------------
 
-    const alertTopic = new sns.Topic(this, 'AlertTopic', {
+    this.alertTopic = new sns.Topic(this, 'AlertTopic', {
       topicName: 'railtime-pipeline-alerts',
       displayName: 'Railtime Pipeline Alerts',
     });
+    const alertTopic = this.alertTopic;
 
     // --- Lambda Alarms ---
 
@@ -422,25 +435,19 @@ export class AnalyticsStack extends cdk.Stack {
     glueFailureRule.addTarget(new targets.SnsTopic(alertTopic));
 
     // -----------------------------------------------------------------------
-    // IAM: WS Server write role (for reference)
+    // IAM: EC2 role grants (existing role, manually created & attached to EC2)
     // -----------------------------------------------------------------------
 
-    const wsServerRole = new iam.Role(this, 'WsServerWriteRole', {
-      roleName: 'railtime-ws-server-dynamodb',
-      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
-    });
+    // Import the existing EC2 role (manually created, attached to EC2 instance profile)
+    const ec2Role = iam.Role.fromRoleName(this, 'Ec2Role', 'railtime-ec2-dynamodb');
 
-    new iam.CfnInstanceProfile(this, 'WsServerInstanceProfile', {
-      instanceProfileName: 'railtime-ws-server',
-      roles: [wsServerRole.roleName],
-    });
+    // Grant DynamoDB write access
+    metricsTable.grantWriteData(ec2Role);
+    eventsTable.grantWriteData(ec2Role);
+    rollupsTable.grantWriteData(ec2Role);
 
-    metricsTable.grantWriteData(wsServerRole);
-    eventsTable.grantWriteData(wsServerRole);
-    rollupsTable.grantWriteData(wsServerRole);
-
-    // Allow WS server to write position data to S3
-    this.analyticsBucket.grantPut(wsServerRole, 'raw/positions/*');
+    // Grant S3 write access for position archiver
+    this.analyticsBucket.grantPut(ec2Role, 'raw/positions/*');
 
     // -----------------------------------------------------------------------
     // Outputs
@@ -468,8 +475,8 @@ export class AnalyticsStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'WsServerRoleArn', {
-      value: wsServerRole.roleArn,
-      description: 'IAM role ARN for WS server DynamoDB access',
+      value: ec2Role.roleArn,
+      description: 'IAM role ARN for EC2 DynamoDB access',
     });
 
     new cdk.CfnOutput(this, 'AlertTopicArn', {

@@ -7,11 +7,13 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
+import * as sns from 'aws-cdk-lib/aws-sns';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
 export interface MlLabStackProps extends cdk.StackProps {
   analyticsBucket: s3.Bucket;
+  alertTopic: sns.Topic;
 }
 
 const GLUE_DB = 'railtime_analytics';
@@ -27,6 +29,7 @@ export class MlLabStack extends cdk.Stack {
     const mlBucket = new s3.Bucket(this, 'MlBucket', {
       bucketName: `railtime-ml-${this.account}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       lifecycleRules: [
         {
@@ -316,9 +319,6 @@ export class MlLabStack extends cdk.Stack {
 
     const notebookRole = new iam.Role(this, 'SageMakerRole', {
       assumedBy: new iam.ServicePrincipal('sagemaker.amazonaws.com'),
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSageMakerFullAccess'),
-      ],
     });
 
     // S3 read on analytics bucket (raw/, historical/)
@@ -363,6 +363,30 @@ export class MlLabStack extends cdk.Stack {
 
     // Athena results bucket access
     mlBucket.grantReadWrite(notebookRole, 'athena-results/*');
+
+    // Scoped SageMaker permissions (replaces AmazonSageMakerFullAccess)
+    notebookRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'sagemaker:CreatePresignedNotebookInstanceUrl',
+          'sagemaker:DescribeNotebookInstance',
+          'sagemaker:StopNotebookInstance',
+        ],
+        resources: [`arn:aws:sagemaker:${this.region}:${this.account}:notebook-instance/railtime-ml-lab`],
+      }),
+    );
+
+    // CloudWatch Logs permissions for SageMaker
+    notebookRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'logs:CreateLogGroup',
+          'logs:CreateLogStream',
+          'logs:PutLogEvents',
+        ],
+        resources: [`arn:aws:logs:${this.region}:${this.account}:log-group:/aws/sagemaker/*`],
+      }),
+    );
 
     // Lifecycle config: auto-stop after 1 hour idle + package install on create
     const lifecycleConfig =
@@ -504,6 +528,20 @@ export class MlLabStack extends cdk.Stack {
       ruleName: 'railtime-ml-dataset-trigger',
       schedule: events.Schedule.cron({ minute: '0', hour: '2' }),
       targets: [new targets.LambdaFunction(mlTriggerFn)],
+    });
+
+    // Glue ML Dataset Job failure alerting
+    new events.Rule(this, 'MlDatasetJobFailureRule', {
+      ruleName: 'railtime-ml-dataset-failure',
+      eventPattern: {
+        source: ['aws.glue'],
+        detailType: ['Glue Job State Change'],
+        detail: {
+          jobName: ['railtime-ml-datasets'],
+          state: ['FAILED', 'TIMEOUT', 'ERROR'],
+        },
+      },
+      targets: [new targets.SnsTopic(props.alertTopic)],
     });
 
     // -----------------------------------------------------------------------

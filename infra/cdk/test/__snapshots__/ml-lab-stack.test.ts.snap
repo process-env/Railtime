@@ -1,0 +1,1329 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`MlLabStack matches snapshot 1`] = `
+{
+  "Outputs": {
+    "MlBucketName": {
+      "Value": {
+        "Ref": "MlBucketE172714E",
+      },
+    },
+    "SageMakerNotebookName": {
+      "Value": "railtime-ml-lab",
+    },
+    "SageMakerRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "SageMakerRoleD4FCFA3F",
+          "Arn",
+        ],
+      },
+    },
+  },
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "AutoStopConfig": {
+      "Properties": {
+        "NotebookInstanceLifecycleConfigName": "railtime-ml-auto-stop",
+        "OnCreate": [
+          {
+            "Content": {
+              "Fn::Base64": "#!/bin/bash
+set -e
+# Run pip install in background — lifecycle config has 5-min timeout
+nohup pip install pyarrow prophet scikit-learn xgboost matplotlib seaborn plotly awswrangler > /home/ec2-user/install.log 2>&1 &",
+            },
+          },
+        ],
+        "OnStart": [
+          {
+            "Content": {
+              "Fn::Base64": "#!/bin/bash
+set -e
+# Auto-stop idle notebook after 1 hour
+echo "Setting auto-stop to 3600 seconds"
+cat > /home/ec2-user/autostop.py << 'SCRIPT'
+import json, os, time, urllib.request
+def is_idle(last_activity_threshold):
+    try:
+        response = urllib.request.urlopen('http://localhost:8888/api/sessions')
+        sessions = json.loads(response.read())
+        for s in sessions:
+            kernel = s.get('kernel', {})
+            if kernel.get('execution_state', 'idle') != 'idle':
+                return False
+            last_activity = kernel.get('last_activity', '')
+            if last_activity:
+                from datetime import datetime, timezone
+                last = datetime.fromisoformat(last_activity.replace('Z', '+00:00'))
+                if (datetime.now(timezone.utc) - last).total_seconds() < last_activity_threshold:
+                    return False
+    except: pass
+    return True
+while True:
+    time.sleep(300)
+    if is_idle(3600):
+        os.system('sudo shutdown -h now')
+SCRIPT
+nohup python3 /home/ec2-user/autostop.py &",
+            },
+          },
+        ],
+      },
+      "Type": "AWS::SageMaker::NotebookInstanceLifecycleConfig",
+    },
+    "DailyMlDatasetTrigger7EAB91B8": {
+      "Properties": {
+        "Name": "railtime-ml-dataset-trigger",
+        "ScheduleExpression": "cron(0 2 * * ? *)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "MlDatasetTriggerD93D3627",
+                "Arn",
+              ],
+            },
+            "Id": "Target0",
+          },
+        ],
+      },
+      "Type": "AWS::Events::Rule",
+    },
+    "DailyMlDatasetTriggerAllowEventRuleTestMlLabStackMlDatasetTrigger4AE0BD8ED6BE7ED8": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "MlDatasetTriggerD93D3627",
+            "Arn",
+          ],
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "DailyMlDatasetTrigger7EAB91B8",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::Lambda::Permission",
+    },
+    "HistoricalCustomerJourney": {
+      "Properties": {
+        "CatalogId": {
+          "Ref": "AWS::AccountId",
+        },
+        "DatabaseName": "railtime_analytics",
+        "TableInput": {
+          "Name": "historical_customer_journey",
+          "Parameters": {
+            "classification": "parquet",
+            "has_encrypted_data": "false",
+          },
+          "StorageDescriptor": {
+            "Columns": [
+              {
+                "Name": "month",
+                "Type": "string",
+              },
+              {
+                "Name": "division",
+                "Type": "string",
+              },
+              {
+                "Name": "line",
+                "Type": "string",
+              },
+              {
+                "Name": "period",
+                "Type": "string",
+              },
+              {
+                "Name": "num_passengers",
+                "Type": "double",
+              },
+              {
+                "Name": "additional_platform_time",
+                "Type": "double",
+              },
+              {
+                "Name": "additional_train_time",
+                "Type": "double",
+              },
+              {
+                "Name": "total_apt",
+                "Type": "double",
+              },
+              {
+                "Name": "total_att",
+                "Type": "double",
+              },
+              {
+                "Name": "over_five_mins",
+                "Type": "double",
+              },
+              {
+                "Name": "over_five_mins_pct",
+                "Type": "double",
+              },
+              {
+                "Name": "customer_journey_time_performance",
+                "Type": "double",
+              },
+            ],
+            "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+            "Location": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Fn::ImportValue": "MockStack:ExportsOutputRefMockBucket803559C43629AD2C",
+                  },
+                  "/historical/customer_journey/",
+                ],
+              ],
+            },
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+            "SerdeInfo": {
+              "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+            },
+          },
+          "TableType": "EXTERNAL_TABLE",
+        },
+      },
+      "Type": "AWS::Glue::Table",
+    },
+    "HistoricalDailyRidership": {
+      "Properties": {
+        "CatalogId": {
+          "Ref": "AWS::AccountId",
+        },
+        "DatabaseName": "railtime_analytics",
+        "TableInput": {
+          "Name": "historical_daily_ridership",
+          "Parameters": {
+            "classification": "parquet",
+            "has_encrypted_data": "false",
+          },
+          "StorageDescriptor": {
+            "Columns": [
+              {
+                "Name": "date",
+                "Type": "string",
+              },
+              {
+                "Name": "mode",
+                "Type": "string",
+              },
+              {
+                "Name": "count",
+                "Type": "bigint",
+              },
+            ],
+            "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+            "Location": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Fn::ImportValue": "MockStack:ExportsOutputRefMockBucket803559C43629AD2C",
+                  },
+                  "/historical/daily_ridership/",
+                ],
+              ],
+            },
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+            "SerdeInfo": {
+              "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+            },
+          },
+          "TableType": "EXTERNAL_TABLE",
+        },
+      },
+      "Type": "AWS::Glue::Table",
+    },
+    "HistoricalFareEvasion": {
+      "Properties": {
+        "CatalogId": {
+          "Ref": "AWS::AccountId",
+        },
+        "DatabaseName": "railtime_analytics",
+        "TableInput": {
+          "Name": "historical_fare_evasion",
+          "Parameters": {
+            "classification": "parquet",
+            "has_encrypted_data": "false",
+          },
+          "StorageDescriptor": {
+            "Columns": [
+              {
+                "Name": "time_period",
+                "Type": "string",
+              },
+              {
+                "Name": "fare_evasion_pct",
+                "Type": "double",
+              },
+              {
+                "Name": "margin_of_error",
+                "Type": "double",
+              },
+            ],
+            "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+            "Location": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Fn::ImportValue": "MockStack:ExportsOutputRefMockBucket803559C43629AD2C",
+                  },
+                  "/historical/fare_evasion/",
+                ],
+              ],
+            },
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+            "SerdeInfo": {
+              "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+            },
+          },
+          "TableType": "EXTERNAL_TABLE",
+        },
+      },
+      "Type": "AWS::Glue::Table",
+    },
+    "HistoricalMajorIncidents": {
+      "Properties": {
+        "CatalogId": {
+          "Ref": "AWS::AccountId",
+        },
+        "DatabaseName": "railtime_analytics",
+        "TableInput": {
+          "Name": "historical_major_incidents",
+          "Parameters": {
+            "classification": "parquet",
+            "has_encrypted_data": "false",
+          },
+          "StorageDescriptor": {
+            "Columns": [
+              {
+                "Name": "month",
+                "Type": "string",
+              },
+              {
+                "Name": "division",
+                "Type": "string",
+              },
+              {
+                "Name": "line",
+                "Type": "string",
+              },
+              {
+                "Name": "day_type",
+                "Type": "string",
+              },
+              {
+                "Name": "category",
+                "Type": "string",
+              },
+              {
+                "Name": "incident_count",
+                "Type": "bigint",
+              },
+            ],
+            "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+            "Location": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Fn::ImportValue": "MockStack:ExportsOutputRefMockBucket803559C43629AD2C",
+                  },
+                  "/historical/major_incidents/",
+                ],
+              ],
+            },
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+            "SerdeInfo": {
+              "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+            },
+          },
+          "TableType": "EXTERNAL_TABLE",
+        },
+      },
+      "Type": "AWS::Glue::Table",
+    },
+    "HistoricalMdbf": {
+      "Properties": {
+        "CatalogId": {
+          "Ref": "AWS::AccountId",
+        },
+        "DatabaseName": "railtime_analytics",
+        "TableInput": {
+          "Name": "historical_mdbf",
+          "Parameters": {
+            "classification": "parquet",
+            "has_encrypted_data": "false",
+          },
+          "StorageDescriptor": {
+            "Columns": [
+              {
+                "Name": "month",
+                "Type": "string",
+              },
+              {
+                "Name": "division",
+                "Type": "string",
+              },
+              {
+                "Name": "car_class",
+                "Type": "string",
+              },
+              {
+                "Name": "total_miles",
+                "Type": "bigint",
+              },
+              {
+                "Name": "number_of_failures",
+                "Type": "bigint",
+              },
+              {
+                "Name": "number_of_cars",
+                "Type": "bigint",
+              },
+              {
+                "Name": "mdbf",
+                "Type": "double",
+              },
+              {
+                "Name": "twelve_month_avg_mdbf",
+                "Type": "double",
+              },
+            ],
+            "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+            "Location": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Fn::ImportValue": "MockStack:ExportsOutputRefMockBucket803559C43629AD2C",
+                  },
+                  "/historical/mdbf/",
+                ],
+              ],
+            },
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+            "SerdeInfo": {
+              "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+            },
+          },
+          "TableType": "EXTERNAL_TABLE",
+        },
+      },
+      "Type": "AWS::Glue::Table",
+    },
+    "HistoricalServiceDelivered": {
+      "Properties": {
+        "CatalogId": {
+          "Ref": "AWS::AccountId",
+        },
+        "DatabaseName": "railtime_analytics",
+        "TableInput": {
+          "Name": "historical_service_delivered",
+          "Parameters": {
+            "classification": "parquet",
+            "has_encrypted_data": "false",
+          },
+          "StorageDescriptor": {
+            "Columns": [
+              {
+                "Name": "month",
+                "Type": "string",
+              },
+              {
+                "Name": "division",
+                "Type": "string",
+              },
+              {
+                "Name": "line",
+                "Type": "string",
+              },
+              {
+                "Name": "day_type",
+                "Type": "string",
+              },
+              {
+                "Name": "num_sched_trains",
+                "Type": "bigint",
+              },
+              {
+                "Name": "num_actual_trains",
+                "Type": "bigint",
+              },
+              {
+                "Name": "service_delivered_pct",
+                "Type": "double",
+              },
+            ],
+            "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+            "Location": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Fn::ImportValue": "MockStack:ExportsOutputRefMockBucket803559C43629AD2C",
+                  },
+                  "/historical/service_delivered/",
+                ],
+              ],
+            },
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+            "SerdeInfo": {
+              "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+            },
+          },
+          "TableType": "EXTERNAL_TABLE",
+        },
+      },
+      "Type": "AWS::Glue::Table",
+    },
+    "HistoricalTerminalOtp": {
+      "Properties": {
+        "CatalogId": {
+          "Ref": "AWS::AccountId",
+        },
+        "DatabaseName": "railtime_analytics",
+        "TableInput": {
+          "Name": "historical_terminal_otp",
+          "Parameters": {
+            "classification": "parquet",
+            "has_encrypted_data": "false",
+          },
+          "StorageDescriptor": {
+            "Columns": [
+              {
+                "Name": "month",
+                "Type": "string",
+              },
+              {
+                "Name": "division",
+                "Type": "string",
+              },
+              {
+                "Name": "line",
+                "Type": "string",
+              },
+              {
+                "Name": "day_type",
+                "Type": "string",
+              },
+              {
+                "Name": "num_on_time_trips",
+                "Type": "bigint",
+              },
+              {
+                "Name": "num_sched_trips",
+                "Type": "bigint",
+              },
+              {
+                "Name": "terminal_on_time_performance",
+                "Type": "double",
+              },
+            ],
+            "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+            "Location": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Fn::ImportValue": "MockStack:ExportsOutputRefMockBucket803559C43629AD2C",
+                  },
+                  "/historical/terminal_otp/",
+                ],
+              ],
+            },
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+            "SerdeInfo": {
+              "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+            },
+          },
+          "TableType": "EXTERNAL_TABLE",
+        },
+      },
+      "Type": "AWS::Glue::Table",
+    },
+    "MlBucketE172714E": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256",
+              },
+            },
+          ],
+        },
+        "BucketName": {
+          "Fn::Join": [
+            "",
+            [
+              "railtime-ml-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+            ],
+          ],
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "models-lifecycle",
+              "Prefix": "models/",
+              "Status": "Enabled",
+              "Transitions": [
+                {
+                  "StorageClass": "STANDARD_IA",
+                  "TransitionInDays": 30,
+                },
+              ],
+            },
+            {
+              "Id": "datasets-lifecycle",
+              "Prefix": "datasets/",
+              "Status": "Enabled",
+              "Transitions": [
+                {
+                  "StorageClass": "STANDARD_IA",
+                  "TransitionInDays": 60,
+                },
+              ],
+            },
+          ],
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true,
+        },
+      },
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "MlDatasetJob": {
+      "Properties": {
+        "Command": {
+          "Name": "glueetl",
+          "PythonVersion": "3",
+          "ScriptLocation": {
+            "Fn::Join": [
+              "",
+              [
+                "s3://",
+                {
+                  "Fn::ImportValue": "MockStack:ExportsOutputRefMockBucket803559C43629AD2C",
+                },
+                "/glue-scripts/ml-dataset-pipeline.py",
+              ],
+            ],
+          },
+        },
+        "DefaultArguments": {
+          "--ANALYTICS_BUCKET": {
+            "Fn::ImportValue": "MockStack:ExportsOutputRefMockBucket803559C43629AD2C",
+          },
+          "--ML_BUCKET": {
+            "Ref": "MlBucketE172714E",
+          },
+          "--enable-continuous-cloudwatch-log": "true",
+          "--job-language": "python",
+        },
+        "GlueVersion": "4.0",
+        "MaxCapacity": 2,
+        "Name": "railtime-ml-datasets",
+        "Role": {
+          "Fn::GetAtt": [
+            "MlGlueRole4092A6B3",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::Glue::Job",
+    },
+    "MlDatasetJobFailureRule06DDDD30": {
+      "Properties": {
+        "EventPattern": {
+          "detail": {
+            "jobName": [
+              "railtime-ml-datasets",
+            ],
+            "state": [
+              "FAILED",
+              "TIMEOUT",
+              "ERROR",
+            ],
+          },
+          "detail-type": [
+            "Glue Job State Change",
+          ],
+          "source": [
+            "aws.glue",
+          ],
+        },
+        "Name": "railtime-ml-dataset-failure",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::ImportValue": "MockStack:ExportsOutputRefMockTopic233D7A13E830D326",
+            },
+            "Id": "Target0",
+          },
+        ],
+      },
+      "Type": "AWS::Events::Rule",
+    },
+    "MlDatasetTriggerD93D3627": {
+      "DependsOn": [
+        "MlDatasetTriggerServiceRoleDefaultPolicy2975ED21",
+        "MlDatasetTriggerServiceRole15D109D8",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "9f4c479e909013a87590c85ce32ad7f8b9251f3d4bdff476a5b795f6b357e9a6.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "GLUE_JOB_NAME": "railtime-ml-datasets",
+          },
+        },
+        "FunctionName": "railtime-ml-dataset-trigger",
+        "Handler": "index.handler",
+        "MemorySize": 128,
+        "Role": {
+          "Fn::GetAtt": [
+            "MlDatasetTriggerServiceRole15D109D8",
+            "Arn",
+          ],
+        },
+        "Runtime": "nodejs20.x",
+        "Timeout": 30,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "MlDatasetTriggerServiceRole15D109D8": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "MlDatasetTriggerServiceRoleDefaultPolicy2975ED21": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "glue:StartJobRun",
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:aws:glue:",
+                    {
+                      "Ref": "AWS::Region",
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId",
+                    },
+                    ":job/railtime-ml-datasets",
+                  ],
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "MlDatasetTriggerServiceRoleDefaultPolicy2975ED21",
+        "Roles": [
+          {
+            "Ref": "MlDatasetTriggerServiceRole15D109D8",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "MlGlueRole4092A6B3": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "glue.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSGlueServiceRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "MlGlueRoleDefaultPolicyFF09089A": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::ImportValue": "MockStack:ExportsOutputFnGetAttMockBucket803559C4ArnD3395704",
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::ImportValue": "MockStack:ExportsOutputFnGetAttMockBucket803559C4ArnD3395704",
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MlBucketE172714E",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MlBucketE172714E",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "MlGlueRoleDefaultPolicyFF09089A",
+        "Roles": [
+          {
+            "Ref": "MlGlueRole4092A6B3",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "MlNotebook": {
+      "Properties": {
+        "DirectInternetAccess": "Enabled",
+        "InstanceType": "ml.t3.medium",
+        "LifecycleConfigName": "railtime-ml-auto-stop",
+        "NotebookInstanceName": "railtime-ml-lab",
+        "RoleArn": {
+          "Fn::GetAtt": [
+            "SageMakerRoleD4FCFA3F",
+            "Arn",
+          ],
+        },
+        "VolumeSizeInGB": 20,
+      },
+      "Type": "AWS::SageMaker::NotebookInstance",
+    },
+    "RawPositionsTable": {
+      "Properties": {
+        "CatalogId": {
+          "Ref": "AWS::AccountId",
+        },
+        "DatabaseName": "railtime_analytics",
+        "TableInput": {
+          "Name": "raw_positions",
+          "Parameters": {
+            "classification": "json",
+            "compressionType": "gzip",
+          },
+          "PartitionKeys": [
+            {
+              "Name": "year",
+              "Type": "string",
+            },
+            {
+              "Name": "month",
+              "Type": "string",
+            },
+            {
+              "Name": "day",
+              "Type": "string",
+            },
+            {
+              "Name": "hour",
+              "Type": "string",
+            },
+          ],
+          "StorageDescriptor": {
+            "Columns": [
+              {
+                "Name": "tripId",
+                "Type": "string",
+              },
+              {
+                "Name": "routeId",
+                "Type": "string",
+              },
+              {
+                "Name": "lat",
+                "Type": "double",
+              },
+              {
+                "Name": "lon",
+                "Type": "double",
+              },
+              {
+                "Name": "heading",
+                "Type": "double",
+              },
+              {
+                "Name": "nextStopId",
+                "Type": "string",
+              },
+              {
+                "Name": "nextStopName",
+                "Type": "string",
+              },
+              {
+                "Name": "eta",
+                "Type": "string",
+              },
+              {
+                "Name": "headsign",
+                "Type": "string",
+              },
+              {
+                "Name": "prevStopId",
+                "Type": "string",
+              },
+              {
+                "Name": "prevTimeMs",
+                "Type": "bigint",
+              },
+              {
+                "Name": "nextTimeMs",
+                "Type": "bigint",
+              },
+              {
+                "Name": "feedGroupId",
+                "Type": "string",
+              },
+              {
+                "Name": "capturedAt",
+                "Type": "bigint",
+              },
+            ],
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "Location": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Fn::ImportValue": "MockStack:ExportsOutputRefMockBucket803559C43629AD2C",
+                  },
+                  "/raw/positions/",
+                ],
+              ],
+            },
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+              "SerializationLibrary": "org.openx.data.jsonserde.JsonSerDe",
+            },
+          },
+          "TableType": "EXTERNAL_TABLE",
+        },
+      },
+      "Type": "AWS::Glue::Table",
+    },
+    "SageMakerRoleD4FCFA3F": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "sagemaker.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "SageMakerRoleDefaultPolicyF52470B8": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::ImportValue": "MockStack:ExportsOutputFnGetAttMockBucket803559C4ArnD3395704",
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::ImportValue": "MockStack:ExportsOutputFnGetAttMockBucket803559C4ArnD3395704",
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MlBucketE172714E",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MlBucketE172714E",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "glue:GetDatabase",
+                "glue:GetTable",
+                "glue:GetTables",
+                "glue:GetPartitions",
+                "glue:GetPartition",
+                "glue:BatchGetPartition",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:aws:glue:",
+                      {
+                        "Ref": "AWS::Region",
+                      },
+                      ":",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":catalog",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:aws:glue:",
+                      {
+                        "Ref": "AWS::Region",
+                      },
+                      ":",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":database/railtime_analytics",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:aws:glue:",
+                      {
+                        "Ref": "AWS::Region",
+                      },
+                      ":",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":table/railtime_analytics/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "athena:StartQueryExecution",
+                "athena:GetQueryExecution",
+                "athena:GetQueryResults",
+                "athena:StopQueryExecution",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:aws:athena:",
+                    {
+                      "Ref": "AWS::Region",
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId",
+                    },
+                    ":workgroup/primary",
+                  ],
+                ],
+              },
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MlBucketE172714E",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MlBucketE172714E",
+                          "Arn",
+                        ],
+                      },
+                      "/athena-results/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "sagemaker:CreatePresignedNotebookInstanceUrl",
+                "sagemaker:DescribeNotebookInstance",
+                "sagemaker:StopNotebookInstance",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:aws:sagemaker:",
+                    {
+                      "Ref": "AWS::Region",
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId",
+                    },
+                    ":notebook-instance/railtime-ml-lab",
+                  ],
+                ],
+              },
+            },
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:aws:logs:",
+                    {
+                      "Ref": "AWS::Region",
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId",
+                    },
+                    ":log-group:/aws/sagemaker/*",
+                  ],
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "SageMakerRoleDefaultPolicyF52470B8",
+        "Roles": [
+          {
+            "Ref": "SageMakerRoleD4FCFA3F",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;

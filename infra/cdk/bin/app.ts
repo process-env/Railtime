@@ -16,6 +16,7 @@ const analyticsStack = new AnalyticsStack(app, 'RailtimeAnalytics', {
 new MlLabStack(app, 'RailtimeMlLab', {
   description: 'Railtime ML Data Laboratory - SageMaker, Glue ML datasets, historical data catalog',
   analyticsBucket: analyticsStack.analyticsBucket,
+  alertTopic: analyticsStack.alertTopic,
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION ?? 'us-east-1',

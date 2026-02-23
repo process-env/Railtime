@@ -10,13 +10,15 @@
  * swapped), but the error is logged and the archiver continues.
  */
 import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { gzipSync } from 'node:zlib';
+import { gzip } from 'node:zlib';
+import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { getS3Client, getAnalyticsBucket } from '../lib/s3.js';
 import { createLogger } from '../lib/logger.js';
 import type { TrainPosition } from '../types.js';
 
 const log = createLogger('archiver');
+const gzipAsync = promisify(gzip);
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -93,7 +95,7 @@ async function flush(): Promise<void> {
     }
 
     const ndjson = lines.join('\n') + '\n';
-    const compressed = gzipSync(Buffer.from(ndjson, 'utf-8'));
+    const compressed = await gzipAsync(Buffer.from(ndjson, 'utf-8'));
 
     const key = `raw/positions/year=${year}/month=${month}/day=${day}/hour=${hour}/${now}-${randomUUID()}.ndjson.gz`;
 

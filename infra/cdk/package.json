@@ -6,15 +6,19 @@
     "build": "tsc",
     "cdk": "cdk",
     "synth": "cdk synth",
-    "deploy": "cdk deploy"
+    "deploy": "cdk deploy",
+    "test": "jest"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.180.0",
     "constructs": "^10.4.2"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
-    "typescript": "^5",
-    "aws-cdk": "^2.180.0"
+    "aws-cdk": "^2.180.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5"
   }
 }
