@@ -161,14 +161,15 @@ Anomaly events: ${anomalies.length > 0 ? JSON.stringify(anomalies) : 'None'}
 ${alerts.length > 0 ? JSON.stringify(alerts) : 'None'}
 
 ## Task
-Write 3-5 bullet points of NON-OBVIOUS insights. Connect multiple data points. Use minutes for all times. Be specific with route letters/numbers. Examples of good insights:
-- Correlating alerts with actual delay impact (or lack thereof)
-- Direction imbalances suggesting single-tracking or terminal delays
-- Bunching-gap cascades on specific routes
-- Trunk line bottlenecks affecting multiple routes simultaneously
-- Routes ahead of schedule (disruptive for timed transfers)
+Write 3-5 bullet points of NON-OBVIOUS insights. Each bullet MUST start with a **bold summary phrase** followed by a colon and the detailed explanation. Connect multiple data points. Use minutes for all times. Be specific with route letters/numbers.
 
-Do NOT restate raw numbers, list best/worst routes, give generic rider advice, or use section headers.`;
+Format: - **Bold summary phrase**: detailed explanation connecting data points...
+
+Examples of good insights:
+- **Route 4 terminal congestion causing bunching cascade**: despite near-perfect on-time performance, the 2.3x directional imbalance and 379 bunching incidents suggest Brooklyn Bridge terminal delays are compressing headways
+- **Alert-delay disconnect on Q line**: 3 active alerts but actual delays remain under 2 min, indicating precautionary alerts rather than service impact
+
+Do NOT restate raw numbers, list best/worst routes, or give generic rider advice.`;
 }
 
 /**

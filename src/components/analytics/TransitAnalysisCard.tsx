@@ -133,15 +133,21 @@ export function TransitAnalysisCard() {
         </Badge>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-0 divide-y divide-border">
         {insights.map((insight, i) => (
-          <div key={i} className="space-y-1">
-            {insight.title && (
-              <p className="text-sm font-medium leading-snug">
-                {insight.title}
-              </p>
-            )}
-            {insight.content && (
+          <div key={i} className="py-3 first:pt-0 last:pb-0">
+            {insight.title ? (
+              <>
+                <p className="text-sm font-medium leading-snug">
+                  {insight.title}
+                </p>
+                {insight.content && (
+                  <p className="text-sm text-muted-foreground leading-relaxed mt-1.5">
+                    {insight.content}
+                  </p>
+                )}
+              </>
+            ) : (
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {insight.content}
               </p>
