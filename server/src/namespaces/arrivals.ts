@@ -20,6 +20,7 @@ import {
   computeArrivals,
   mergeArrivalMaps,
 } from "../ingestion/arrival-loop.js";
+import { authMiddleware } from "../lib/auth.js";
 import { createLogger } from "../lib/logger.js";
 
 const log = createLogger('ns:arrivals');
@@ -57,6 +58,7 @@ export function getSubscribedStationIds(): Set<string> {
  */
 export function setupArrivalsNamespace(io: Server): void {
   arrivalsNsp = io.of("/arrivals");
+  arrivalsNsp.use(authMiddleware);
 
   arrivalsNsp.on("connection", (socket: Socket) => {
     log.info({ socketId: socket.id }, 'client connected');
@@ -66,6 +68,10 @@ export function setupArrivalsNamespace(io: Server): void {
 
     socket.on("subscribe:station", (stationId: string) => {
       if (typeof stationId !== "string" || !stationId.trim()) return;
+      if (stationId.length > 20) {
+        log.warn({ socketId: socket.id, length: stationId.length }, 'stationId exceeds max length');
+        return;
+      }
 
       const normalizedId = stationId.trim();
       const room = `station:${normalizedId}`;
@@ -77,6 +83,7 @@ export function setupArrivalsNamespace(io: Server): void {
 
     socket.on("unsubscribe:station", (stationId: string) => {
       if (typeof stationId !== "string" || !stationId.trim()) return;
+      if (stationId.length > 20) return;
 
       const normalizedId = stationId.trim();
       const room = `station:${normalizedId}`;

@@ -9,8 +9,9 @@ import { queryKeys } from '@/lib/api/query-keys';
 /**
  * Background sync hook - keeps critical data fresh across all pages
  *
- * - On map page: Full refresh every 15s (handled by useTrainPositions)
- * - On other pages: Background refresh every 30s to keep cache warm
+ * - On map page: trains polling is handled by useTrainPositions (15s)
+ * - On other pages: Background refresh every 30s to keep cache warm,
+ *   but only if the trains query is not already actively polling
  * - Alerts: Always refresh every 60s regardless of page
  */
 export function useBackgroundSync() {
@@ -25,24 +26,38 @@ export function useBackgroundSync() {
       clearInterval(intervalRef.current);
     }
 
-    // On map page, train positions are handled by useTrainPositions
-    // Only do background sync on other pages
+    // On map page, train positions are handled by useTrainPositions.
+    // Only do background sync on other pages.
     if (!isMapPage) {
-      // Background refresh trains every 30s when not on map
       intervalRef.current = setInterval(() => {
+        // Check if the trains query already has active observers (i.e. another
+        // component is polling). If so, skip — that query's refetchInterval
+        // already keeps the cache warm.
+        const trainsQuery = queryClient.getQueryState(queryKeys.trains);
+        const hasActiveObservers =
+          (queryClient.getQueryCache().find({ queryKey: queryKeys.trains })?.getObserversCount() ?? 0) > 0;
+
+        if (hasActiveObservers && trainsQuery && !trainsQuery.isInvalidated) {
+          return; // Another component is actively polling trains
+        }
+
         queryClient.prefetchQuery({
           queryKey: queryKeys.trains,
           queryFn: mtaApi.getTrains,
-          staleTime: 15000, // Same as map page
+          staleTime: 15000,
         });
       }, 30000);
 
-      // Also do an immediate prefetch when leaving the map
-      queryClient.prefetchQuery({
-        queryKey: queryKeys.trains,
-        queryFn: mtaApi.getTrains,
-        staleTime: 15000,
-      });
+      // Immediate prefetch when leaving the map (only if cache is stale)
+      const trainsState = queryClient.getQueryState(queryKeys.trains);
+      const isStale = !trainsState || Date.now() - (trainsState.dataUpdatedAt ?? 0) > 15000;
+      if (isStale) {
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.trains,
+          queryFn: mtaApi.getTrains,
+          staleTime: 15000,
+        });
+      }
     }
 
     return () => {

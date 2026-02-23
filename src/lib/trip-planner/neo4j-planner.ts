@@ -217,9 +217,15 @@ function convertPathToTripPlan(
 
       totalWalkingSeconds += duration;
 
-      const walkTime = toNumber(relProps.walkTime);
+      // Classify transfer type based on the edge's actual duration.
+      // Previously this read relProps.walkTime which may not exist on
+      // every relationship, causing all transfers to default to in-system.
+      // Using relProps.duration (always present) gives correct classification:
+      //   <= 120s  → in-system (cross-platform / stairway)
+      //   > 120s   → out-of-system (street-level walk between stations)
+      const transferDuration = toNumber(relProps.duration);
       const transferType: 'in-system' | 'out-of-system' =
-        walkTime > 120 ? 'out-of-system' : 'in-system';
+        transferDuration > 120 ? 'out-of-system' : 'in-system';
 
       segments.push({
         type: 'transfer',

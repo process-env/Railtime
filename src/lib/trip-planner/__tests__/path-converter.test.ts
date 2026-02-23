@@ -14,6 +14,7 @@ import {
 import {
   createSimplePath,
   createSingleTransferPath,
+  createDoubleTransferPath,
   createMinimalPath,
 } from './fixtures/mock-paths';
 import type { TransitGraph } from '../types';
@@ -170,6 +171,86 @@ describe('convertPathToTrip', () => {
       const transferIndex = types.indexOf('transfer');
       expect(transferIndex).toBeGreaterThan(0);
       expect(transferIndex).toBeLessThan(types.length - 1);
+    });
+  });
+
+  describe('path with consecutive transfers (double transfer)', () => {
+    it('creates two transfer segments for back-to-back transfers', () => {
+      const path = createDoubleTransferPath();
+      const trip = convertPathToTrip(graph, path);
+
+      const transferSegments = trip.segments.filter((s) => s.type === 'transfer');
+      expect(transferSegments.length).toBe(2);
+    });
+
+    it('transfer count is 2', () => {
+      const path = createDoubleTransferPath();
+      const trip = convertPathToTrip(graph, path);
+
+      expect(trip.totalTransfers).toBe(2);
+    });
+
+    it('walking time equals sum of both transfer durations', () => {
+      const path = createDoubleTransferPath();
+      const trip = convertPathToTrip(graph, path);
+
+      // Two transfers at 30 seconds each
+      expect(trip.totalWalkingSeconds).toBe(60);
+    });
+
+    it('creates board segments for all three routes', () => {
+      const path = createDoubleTransferPath();
+      const trip = convertPathToTrip(graph, path);
+
+      const boardSegments = trip.segments.filter((s) => s.type === 'board');
+      // Route 2 (initial ride), Route 3 (after first transfer — but no ride follows on Route 3
+      // in this fixture so the converter may skip it), Route 1 (after second transfer)
+      // The double-transfer path goes: ride(2) -> transfer -> transfer -> ride(1)
+      // The converter emits board+ride for Route 2, then two transfers, then board+ride for Route 1
+      expect(boardSegments.length).toBe(2);
+    });
+
+    it('routes array contains routes used for riding', () => {
+      const path = createDoubleTransferPath();
+      const trip = convertPathToTrip(graph, path);
+
+      expect(trip.routes).toContain(ROUTE_2);
+      expect(trip.routes).toContain(ROUTE_1);
+    });
+
+    it('segments are in correct order with consecutive transfers', () => {
+      const path = createDoubleTransferPath();
+      const trip = convertPathToTrip(graph, path);
+
+      const types = trip.segments.map((s) => s.type);
+      // Expected: board, ride, transfer, transfer, board, ride, exit
+      expect(types[0]).toBe('board');
+      expect(types[types.length - 1]).toBe('exit');
+
+      // Find consecutive transfers
+      let hasConsecutiveTransfers = false;
+      for (let i = 1; i < types.length; i++) {
+        if (types[i] === 'transfer' && types[i - 1] === 'transfer') {
+          hasConsecutiveTransfers = true;
+          break;
+        }
+      }
+      expect(hasConsecutiveTransfers).toBe(true);
+    });
+
+    it('total duration matches path actual duration', () => {
+      const path = createDoubleTransferPath();
+      const trip = convertPathToTrip(graph, path);
+
+      expect(trip.totalDurationSeconds).toBe(path.actualDuration);
+    });
+
+    it('origin is station E and destination is station D', () => {
+      const path = createDoubleTransferPath();
+      const trip = convertPathToTrip(graph, path);
+
+      expect(trip.origin.id).toBe('E');
+      expect(trip.destination.id).toBe(STATION_D);
     });
   });
 

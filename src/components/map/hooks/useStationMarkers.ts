@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import { MAP_CONSTANTS } from '@/lib/constants';
 import { isParentStation } from '@/lib/mta/station-utils';
+import { useUIStore } from '@/stores';
 import type { Station } from '@/types/mta';
 
 export interface UseStationMarkersOptions {
@@ -30,7 +31,7 @@ interface MarkerData {
  * Handles creation, updates, selection state, and cleanup
  */
 export function useStationMarkers(
-  map: maplibregl.Map | null,
+  mapRef: React.RefObject<maplibregl.Map | null>,
   mapLoaded: boolean,
   options: UseStationMarkersOptions
 ): UseStationMarkersReturn {
@@ -69,6 +70,7 @@ export function useStationMarkers(
 
   // Add station markers - only show at zoom >= minZoom
   useEffect(() => {
+    const map = mapRef.current;
     if (!mapLoaded || !map) return;
 
     // Hide stations at low zoom for performance
@@ -148,7 +150,8 @@ export function useStationMarkers(
 
       // Event handlers with proper references for cleanup
       const handleClick = () => {
-        setSelectedStation(station.id === selectedStationId ? null : station.id);
+        const currentSelectedId = useUIStore.getState().selectedStationId;
+        setSelectedStation(station.id === currentSelectedId ? null : station.id);
       };
 
       const handleMouseEnter = () => {
@@ -173,7 +176,7 @@ export function useStationMarkers(
 
       markersRef.current.set(station.id, { marker, popup, cleanup, element: el });
     });
-  }, [mapLoaded, map, filteredStations, currentZoom, selectedStationId, setSelectedStation, arrivingStationIds, removeMarker, clearAllMarkers]);
+  }, [mapLoaded, mapRef, filteredStations, currentZoom, selectedStationId, setSelectedStation, arrivingStationIds, removeMarker, clearAllMarkers]);
 
   // Cleanup on unmount
   useEffect(() => {

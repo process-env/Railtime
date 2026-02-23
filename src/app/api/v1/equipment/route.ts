@@ -6,6 +6,7 @@ import {
   createRateLimitKey,
   RATE_LIMITS,
 } from '@/lib/api/rate-limit';
+import { getCache, setCache } from '@/lib/redis';
 import type {
   EquipmentOutage,
   Equipment,
@@ -19,14 +20,8 @@ const MTA_ENE_UPCOMING = 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds
 const MTA_ENE_EQUIPMENT = 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene_equipments.json';
 
 // Cache configuration
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-interface CacheEntry {
-  data: EquipmentStatusResponse;
-  timestamp: number;
-}
-
-let cache: CacheEntry | null = null;
+const CACHE_KEY = 'equipment:status';
+const CACHE_TTL_SECONDS = 300; // 5 minutes
 
 function parseDate(dateStr: string): Date {
   // Format: "MM/DD/YYYY HH:MM:SS AM/PM"
@@ -120,13 +115,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Check cache
-    const now = Date.now();
-    if (cache && (now - cache.timestamp) < CACHE_TTL_MS) {
-      return NextResponse.json(cache.data, {
+    // Check Redis cache
+    const cached = await getCache<EquipmentStatusResponse>(CACHE_KEY);
+    if (cached) {
+      return NextResponse.json(cached, {
         headers: {
           'X-Cache': 'HIT',
-          'X-Cache-Age': String(Math.floor((now - cache.timestamp) / 1000)),
         },
       });
     }
@@ -134,11 +128,8 @@ export async function GET(request: NextRequest) {
     // Fetch fresh data
     const data = await fetchEquipmentData();
 
-    // Update cache
-    cache = {
-      data,
-      timestamp: now,
-    };
+    // Write to Redis (fire-and-forget)
+    setCache(CACHE_KEY, data, CACHE_TTL_SECONDS).catch(() => {});
 
     return NextResponse.json(data, {
       headers: {
@@ -149,12 +140,12 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Equipment API error:', error);
 
-    // Return stale cache if available
-    if (cache) {
-      return NextResponse.json(cache.data, {
+    // Try stale cache on error
+    const stale = await getCache<EquipmentStatusResponse>(CACHE_KEY);
+    if (stale) {
+      return NextResponse.json(stale, {
         headers: {
           'X-Cache': 'STALE',
-          'X-Cache-Age': String(Math.floor((Date.now() - cache.timestamp) / 1000)),
         },
       });
     }

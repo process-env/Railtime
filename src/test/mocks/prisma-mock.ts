@@ -14,20 +14,41 @@ type ModelMethods = {
   groupBy: ReturnType<typeof vi.fn>;
 };
 
+/**
+ * Apply safe default mock implementations to a model's methods.
+ * Called both on initial creation and after mockReset() to ensure
+ * methods never return undefined.
+ */
+function applyModelDefaults(methods: ModelMethods): void {
+  methods.findMany.mockResolvedValue([]);
+  methods.findFirst.mockResolvedValue(null);
+  methods.findUnique.mockResolvedValue(null);
+  methods.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'mock-id', ...data }));
+  methods.createMany.mockResolvedValue({ count: 0 });
+  methods.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => data);
+  methods.updateMany.mockResolvedValue({ count: 0 });
+  methods.delete.mockResolvedValue({});
+  methods.deleteMany.mockResolvedValue({ count: 0 });
+  methods.count.mockResolvedValue(0);
+  methods.groupBy.mockResolvedValue([]);
+}
+
 function createModelMock(): ModelMethods {
-  return {
-    findMany: vi.fn().mockResolvedValue([]),
-    findFirst: vi.fn().mockResolvedValue(null),
-    findUnique: vi.fn().mockResolvedValue(null),
-    create: vi.fn().mockImplementation(async ({ data }) => ({ id: 'mock-id', ...data })),
-    createMany: vi.fn().mockResolvedValue({ count: 0 }),
-    update: vi.fn().mockImplementation(async ({ data }) => data),
-    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
-    delete: vi.fn().mockResolvedValue({}),
-    deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
-    count: vi.fn().mockResolvedValue(0),
-    groupBy: vi.fn().mockResolvedValue([]),
+  const methods: ModelMethods = {
+    findMany: vi.fn(),
+    findFirst: vi.fn(),
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    createMany: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    count: vi.fn(),
+    groupBy: vi.fn(),
   };
+  applyModelDefaults(methods);
+  return methods;
 }
 
 /**
@@ -46,22 +67,26 @@ export function createMockPrismaClient() {
 // Singleton mock client
 export const mockPrismaClient = createMockPrismaClient();
 
+/** All Prisma model names — must match prisma/schema.prisma */
+const PRISMA_MODELS = ['station', 'route'] as const;
+
 /**
- * Reset all Prisma mocks
+ * Reset all Prisma mocks and re-apply safe defaults.
+ *
+ * After mockReset(), every method returns undefined by default.
+ * We re-apply sensible defaults (findMany -> [], findFirst -> null, etc.)
+ * so tests that don't explicitly mock every method won't crash.
  */
 export function resetPrismaMocks(): void {
-  const models = [
-    'station',
-    'route',
-  ] as const;
-
-  for (const model of models) {
+  for (const model of PRISMA_MODELS) {
     const methods = mockPrismaClient[model] as ModelMethods;
     Object.values(methods).forEach(method => {
       if (typeof method.mockReset === 'function') {
         method.mockReset();
       }
     });
+    // Re-apply safe defaults after reset
+    applyModelDefaults(methods);
   }
 }
 

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getArrivalBoard } from '@/lib/mta';
-import { internalError, rateLimited } from '@/lib/api/errors';
+import { internalError, badRequest, rateLimited } from '@/lib/api/errors';
 import {
   checkRateLimit,
   getClientId,
   createRateLimitKey,
   RATE_LIMITS,
 } from '@/lib/api/rate-limit';
+import { feedGroupIdSchema, stopIdSchema, validate } from '@/lib/validation/schemas';
 
 export async function GET(
   request: NextRequest,
@@ -21,7 +22,20 @@ export async function GET(
   }
 
   try {
-    const { groupId, stopId } = await params;
+    const { groupId: rawGroupId, stopId: rawStopId } = await params;
+
+    // Validate path params
+    const groupResult = validate(feedGroupIdSchema, rawGroupId);
+    if (!groupResult.success) {
+      return badRequest(`Invalid groupId: ${groupResult.error}`);
+    }
+    const stopResult = validate(stopIdSchema, rawStopId);
+    if (!stopResult.success) {
+      return badRequest(`Invalid stopId: ${stopResult.error}`);
+    }
+
+    const groupId = groupResult.data;
+    const stopId = stopResult.data;
     const { searchParams } = new URL(request.url);
     const noCache = searchParams.get('nocache') === 'true';
 

@@ -229,14 +229,20 @@ async function buildGraph(): Promise<TransitGraph> {
         // Skip if same route
         if (nodeA.routeId === nodeB.routeId) continue;
 
-        // Check if this edge already exists from transfer graph
-        const existingEdges = edges.get(nodeKeys[i]) || [];
-        const alreadyHasEdge = existingEdges.some(
+        // Check if this edge already exists from transfer graph (both directions)
+        const existingEdgesAB = edges.get(nodeKeys[i]) || [];
+        const alreadyHasForward = existingEdgesAB.some(
           e => e.type === 'transfer' &&
                e.to.stationId === nodeB.stationId &&
                e.to.routeId === nodeB.routeId
         );
-        if (alreadyHasEdge) continue;
+        const existingEdgesBA = edges.get(nodeKeys[j]) || [];
+        const alreadyHasReverse = existingEdgesBA.some(
+          e => e.type === 'transfer' &&
+               e.to.stationId === nodeA.stationId &&
+               e.to.routeId === nodeA.routeId
+        );
+        if (alreadyHasForward || alreadyHasReverse) continue;
 
         // Same station = cross-platform or same platform transfer (very quick)
         const walkTime = 30; // 30 seconds for same-station transfer

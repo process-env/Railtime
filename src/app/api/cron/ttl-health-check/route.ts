@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ success: true, tables: results });
   } catch (err) {
-    console.error('[cron/cleanup] TTL health check failed:', err);
+    console.error('[cron/ttl-health-check] TTL health check failed:', err);
     return NextResponse.json(
       { error: 'Health check failed' },
       { status: 500 },

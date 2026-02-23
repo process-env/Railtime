@@ -29,7 +29,7 @@ describe('Train State Machine - Full State Output', () => {
     { id: 'R25', name: '46 St', s: 7200 },
   ];
 
-  it('outputs CSV for all initial progress values', () => {
+  it.skip('outputs CSV for all initial progress values', () => {
     console.log('\n=== INITIAL STATE CSV ===');
     console.log(CSV_HEADER);
 
@@ -47,7 +47,7 @@ describe('Train State Machine - Full State Output', () => {
     }
   });
 
-  it('outputs CSV for TICK progression over time', () => {
+  it.skip('outputs CSV for TICK progression over time', () => {
     console.log('\n=== TICK PROGRESSION CSV ===');
     console.log('elapsed_sec,' + CSV_HEADER);
 
@@ -67,7 +67,7 @@ describe('Train State Machine - Full State Output', () => {
     }
   });
 
-  it('outputs CSV for full journey A→B→C→D', () => {
+  it.skip('outputs CSV for full journey A→B→C→D', () => {
     console.log('\n=== FULL JOURNEY CSV ===');
     console.log('time_sec,segment,' + CSV_HEADER);
 

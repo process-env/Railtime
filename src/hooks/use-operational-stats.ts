@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { format, subDays } from 'date-fns';
 import { useAnalytics } from './use-analytics';
-import { useAlerts } from './use-alerts';
+import { useAlertsData } from '@/components/providers/AlertsProvider';
 import { useDailyRollups } from './use-analytics-data';
 
 export interface OperationalStats {
@@ -18,7 +18,14 @@ export interface OperationalStats {
 
 export function useOperationalStats(): OperationalStats {
   const { data, loading: analyticsLoading } = useAnalytics();
-  const { alerts } = useAlerts();
+  const { alerts } = useAlertsData();
+
+  // Narrow selectors: extract only the fields we need so downstream useMemo
+  // does not re-run when unrelated parts of `data` or `alerts` change.
+  const totalTrains = data?.stats.totalTrains ?? 0;
+  const feedHealth = data?.stats.feedHealth ?? 0;
+  const alertCount = alerts?.length ?? 0;
+
   const today = format(new Date(), 'yyyy-MM-dd');
   const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
   const { data: rollupData, loading: rollupLoading } = useDailyRollups(yesterday, today);
@@ -46,13 +53,13 @@ export function useOperationalStats(): OperationalStats {
       : null;
 
     return {
-      activeTrains: data?.stats.totalTrains ?? 0,
+      activeTrains: totalTrains,
       onTimePercent,
       bunchingToday,
       gapsToday,
-      alertCount: alerts?.length ?? 0,
-      feedHealth: data?.stats.feedHealth ?? 0,
+      alertCount,
+      feedHealth,
       loading: analyticsLoading || rollupLoading,
     };
-  }, [data, alerts, rollupData, today, analyticsLoading, rollupLoading]);
+  }, [totalTrains, feedHealth, alertCount, rollupData, today, analyticsLoading, rollupLoading]);
 }

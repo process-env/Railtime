@@ -389,7 +389,58 @@ export async function calculateDelay(
 }
 
 /**
+ * Synchronous scheduled-arrival lookup — requires caches to already be loaded.
+ * Avoids repeated async calls inside tight loops.
+ */
+function getScheduledArrivalSync(
+  tripId: string,
+  stopId: string,
+  referenceDate: Date,
+  routeId?: string
+): Date | null {
+  const baseStopId = normalizeStopId(stopId);
+  let entry: ScheduleEntry | undefined;
+
+  // Tier 1
+  for (const key of [`${tripId}:${stopId}`, `${tripId}:${baseStopId}`]) {
+    entry = scheduleCache!.get(key);
+    if (entry) break;
+  }
+
+  // Tier 2
+  if (!entry && routeId) {
+    const shape = extractShapeFromTripId(tripId);
+    if (shape && shapeScheduleIndex) {
+      for (const key of [`${routeId}:${shape}:${stopId}`, `${routeId}:${shape}:${baseStopId}`]) {
+        entry = shapeScheduleIndex.get(key);
+        if (entry) break;
+      }
+    }
+  }
+
+  // Tier 3
+  if (!entry && routeId) {
+    const shape = extractShapeFromTripId(tripId);
+    const direction = shape ? extractDirectionFromShape(shape) : null;
+    if (direction && directionScheduleIndex) {
+      for (const key of [`${routeId}:${direction}:${stopId}`, `${routeId}:${direction}:${baseStopId}`]) {
+        entry = directionScheduleIndex.get(key);
+        if (entry) break;
+      }
+    }
+  }
+
+  if (!entry) return null;
+
+  const scheduled = new Date(referenceDate);
+  scheduled.setHours(0, 0, 0, 0);
+  scheduled.setMinutes(entry.arrivalMinutes);
+  return scheduled;
+}
+
+/**
  * Calculate delays for multiple arrivals efficiently.
+ * Loads schedule data once, then computes synchronously from in-memory caches.
  * Uses 3-tier fallback for maximum match rate.
  *
  * @param arrivals - Array of arrival events (now includes routeId for fallback)
@@ -404,9 +455,15 @@ export async function calculateDelaysBatch(
 
   for (let i = 0; i < arrivals.length; i++) {
     const arr = arrivals[i];
-    const delay = await calculateDelay(arr.tripId, arr.stationId, arr.predictedArrival, arr.routeId);
-    if (delay !== null) {
-      results.set(i, delay);
+    const scheduled = getScheduledArrivalSync(
+      arr.tripId,
+      arr.stationId,
+      arr.predictedArrival,
+      arr.routeId
+    );
+    if (scheduled !== null) {
+      const delayMs = arr.predictedArrival.getTime() - scheduled.getTime();
+      results.set(i, Math.round(delayMs / 1000));
     }
   }
 

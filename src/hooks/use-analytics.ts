@@ -12,6 +12,11 @@ interface RouteActivityData {
   trainCount: number;
 }
 
+/**
+ * Timeline data placeholder. Currently null because the historical data
+ * endpoint is disabled for performance reasons. This type is retained so the
+ * field can be populated when a lightweight historical source is available.
+ */
 interface TimelineData {
   time: string;
   arrivals: number;
@@ -27,7 +32,8 @@ interface FeedStatus {
 
 interface AnalyticsData {
   routeActivity: RouteActivityData[];
-  timeline: TimelineData[];
+  /** Null until a lightweight historical data source is available. */
+  timeline: TimelineData[] | null;
   feedStatus: FeedStatus[];
   stats: {
     totalTrains: number;
@@ -79,28 +85,10 @@ export function useAnalytics() {
     }));
   }, [trains]);
 
-  // Generate timeline data based on current train count
-  // Shows real-time snapshot - historical data disabled for performance
-  const timeline = useMemo<TimelineData[]>(() => {
-    const now = new Date();
-    const result: TimelineData[] = [];
-    const currentCount = trains.length;
-
-    for (let i = 11; i >= 0; i--) {
-      const time = new Date(now.getTime() - i * 5 * 60 * 1000);
-      // Use current train count for all time slots (historical disabled)
-      // This provides a baseline reference rather than fake random data
-      result.push({
-        time: time.toLocaleTimeString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        arrivals: currentCount,
-        departures: currentCount,
-      });
-    }
-    return result;
-  }, [trains.length]);
+  // Timeline data disabled — the historical endpoint causes 2+ minute load
+  // times. Set to null rather than fabricating flat data from the current
+  // train count, which was misleading.
+  const timeline: TimelineData[] | null = null;
 
   // Compute feed status from parallel queries
   // Note: Using stable fallback timestamp to avoid memoization breaks
@@ -135,7 +123,7 @@ export function useAnalytics() {
         feedHealth: Math.round((healthyFeeds / FEED_GROUPS.length) * 100),
       },
     }),
-    [routeActivity, timeline, feedStatus, trains.length, avgDelay, healthyFeeds]
+    [routeActivity, feedStatus, trains.length, avgDelay, healthyFeeds]
   );
 
   return {

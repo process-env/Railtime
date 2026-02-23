@@ -1,0 +1,325 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { GET } from './route';
+import { NextRequest } from 'next/server';
+import { createMockTrainPosition } from '@/test/factories';
+import type { TrainPosition } from '@/types/mta';
+
+// Mock Redis cache functions
+vi.mock('@/lib/redis', () => ({
+  getCache: vi.fn(),
+  setCache: vi.fn().mockResolvedValue(undefined),
+  deleteCache: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock MTA feed fetching
+vi.mock('@/lib/mta/fetch-feed', () => ({
+  fetchFeed: vi.fn(),
+}));
+
+// Mock train position calculation
+vi.mock('@/lib/mta/train-positions', () => ({
+  calculateTrainPositions: vi.fn(),
+}));
+
+// Mock feed group lookup (used by writeBackToCache)
+vi.mock('@/lib/mta/feed-groups', () => ({
+  routeToFeedGroup: vi.fn((routeId: string) => {
+    const map: Record<string, string> = {
+      A: 'ACE', C: 'ACE', E: 'ACE',
+      B: 'BDFM', D: 'BDFM', F: 'BDFM', M: 'BDFM',
+      G: 'G',
+      J: 'JZ', Z: 'JZ',
+      N: 'NQRW', Q: 'NQRW', R: 'NQRW', W: 'NQRW',
+      L: 'L',
+      SI: 'SI',
+      '1': '1234567', '2': '1234567', '3': '1234567',
+      '4': '1234567', '5': '1234567', '6': '1234567', '7': '1234567',
+    };
+    return map[routeId] || null;
+  }),
+}));
+
+// Mock rate limiting -- allow by default
+vi.mock('@/lib/api/rate-limit', () => ({
+  checkRateLimit: vi.fn().mockReturnValue({ success: true, remaining: 119, resetIn: 60000 }),
+  getClientId: vi.fn().mockReturnValue('test-client'),
+  createRateLimitKey: vi.fn().mockReturnValue('test-client:/api/v1/trains'),
+  RATE_LIMITS: { realtime: { limit: 120, windowMs: 60000 } },
+}));
+
+import { getCache, setCache } from '@/lib/redis';
+import { fetchFeed } from '@/lib/mta/fetch-feed';
+import { calculateTrainPositions } from '@/lib/mta/train-positions';
+import { checkRateLimit } from '@/lib/api/rate-limit';
+
+const FEED_GROUP_IDS = ['ACE', 'BDFM', 'G', 'JZ', 'NQRW', 'L', 'SI', '1234567'];
+
+describe('GET /api/v1/trains', () => {
+  const mockPositions: TrainPosition[] = [
+    createMockTrainPosition({ tripId: 'trip-1', routeId: 'A' }),
+    createMockTrainPosition({ tripId: 'trip-2', routeId: '1' }),
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: cache miss (null for every group)
+    vi.mocked(getCache).mockResolvedValue(null);
+    vi.mocked(setCache).mockResolvedValue(undefined);
+    vi.mocked(fetchFeed).mockResolvedValue([]);
+    vi.mocked(calculateTrainPositions).mockResolvedValue(mockPositions);
+    vi.mocked(checkRateLimit).mockReturnValue({ success: true, remaining: 119, resetIn: 60000 });
+  });
+
+  // --- Full cache hit (all groups) ---
+
+  it('returns cached trains when all feed groups are in Redis', async () => {
+    vi.mocked(getCache).mockResolvedValue(mockPositions);
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.source).toBe('cache');
+    // getCache called once per feed group
+    expect(getCache).toHaveBeenCalledTimes(FEED_GROUP_IDS.length);
+    expect(data.updatedAt).toBeDefined();
+    // Should NOT fetch from MTA when cache hits
+    expect(fetchFeed).not.toHaveBeenCalled();
+  });
+
+  // --- Single-group cache hit ---
+
+  it('returns cached trains for a single group when groupId is provided', async () => {
+    vi.mocked(getCache).mockResolvedValue(mockPositions);
+
+    const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.source).toBe('cache');
+    expect(getCache).toHaveBeenCalledWith('feed:ACE:positions');
+  });
+
+  // --- Full cache miss (all groups) ---
+
+  it('fetches from MTA when cache misses and returns source=mta', async () => {
+    vi.mocked(getCache).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.source).toBe('mta');
+    // All 8 groups should be fetched individually
+    expect(fetchFeed).toHaveBeenCalledTimes(FEED_GROUP_IDS.length);
+    for (const gid of FEED_GROUP_IDS) {
+      expect(fetchFeed).toHaveBeenCalledWith(gid);
+    }
+    expect(calculateTrainPositions).toHaveBeenCalled();
+  });
+
+  // --- Single-group cache miss ---
+
+  it('fetches single feed group from MTA when groupId provided and cache misses', async () => {
+    vi.mocked(getCache).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.source).toBe('mta');
+    expect(fetchFeed).toHaveBeenCalledWith('ACE');
+    expect(fetchFeed).toHaveBeenCalledTimes(1);
+  });
+
+  // --- Partial cache (some groups hit, some miss) ---
+
+  it('returns partial-cache source when some groups are cached', async () => {
+    // ACE returns data, rest return null
+    vi.mocked(getCache)
+      .mockResolvedValueOnce(mockPositions)  // ACE -- hit
+      .mockResolvedValue(null);               // rest -- miss
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.source).toBe('partial-cache');
+    // Should only fetch the missing groups (7 of 8)
+    expect(fetchFeed).toHaveBeenCalledTimes(FEED_GROUP_IDS.length - 1);
+    // ACE should NOT be fetched since it was cached
+    expect(fetchFeed).not.toHaveBeenCalledWith('ACE');
+  });
+
+  it('merges cached and fresh positions in partial cache scenario', async () => {
+    const cachedPositions = [createMockTrainPosition({ tripId: 'cached-1', routeId: 'A' })];
+    const freshPositions = [createMockTrainPosition({ tripId: 'fresh-1', routeId: '1' })];
+
+    // ACE cached, rest miss
+    vi.mocked(getCache)
+      .mockResolvedValueOnce(cachedPositions) // ACE
+      .mockResolvedValue(null);                // rest
+
+    vi.mocked(calculateTrainPositions).mockResolvedValue(freshPositions);
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+    const data = await response.json();
+
+    // Response should contain both cached and fresh
+    expect(data.trains).toHaveLength(2);
+    expect(data.trains.some((t: TrainPosition) => t.tripId === 'cached-1')).toBe(true);
+    expect(data.trains.some((t: TrainPosition) => t.tripId === 'fresh-1')).toBe(true);
+  });
+
+  // --- Cache write-back ---
+
+  it('writes positions back to Redis after MTA fetch', async () => {
+    vi.mocked(getCache).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    await GET(request);
+
+    // setCache should be called for write-back (fire-and-forget)
+    expect(setCache).toHaveBeenCalled();
+  });
+
+  it('writes single group to cache when groupId is provided', async () => {
+    vi.mocked(getCache).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
+    await GET(request);
+
+    expect(setCache).toHaveBeenCalledWith(
+      'feed:ACE:positions',
+      mockPositions,
+      expect.any(Number)
+    );
+  });
+
+  // --- Validation ---
+
+  it('returns 400 for invalid groupId', async () => {
+    const request = new NextRequest('http://localhost/api/v1/trains?groupId=INVALID');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.code).toBe('BAD_REQUEST');
+    expect(data.error.message).toContain('Invalid feed group');
+  });
+
+  it('accepts all valid feed group IDs', async () => {
+    for (const groupId of FEED_GROUP_IDS) {
+      vi.clearAllMocks();
+      vi.mocked(getCache).mockResolvedValue(null);
+      vi.mocked(fetchFeed).mockResolvedValue([]);
+      vi.mocked(calculateTrainPositions).mockResolvedValue([]);
+      vi.mocked(checkRateLimit).mockReturnValue({ success: true, remaining: 119, resetIn: 60000 });
+
+      const request = new NextRequest(`http://localhost/api/v1/trains?groupId=${groupId}`);
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+    }
+  });
+
+  // --- Rate limiting ---
+
+  it('returns 429 when rate limited', async () => {
+    vi.mocked(checkRateLimit).mockReturnValue({ success: false, remaining: 0, resetIn: 30000 });
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(429);
+    expect(data.error.code).toBe('RATE_LIMITED');
+    expect(response.headers.get('Retry-After')).toBe('30');
+  });
+
+  // --- Error handling ---
+
+  it('handles individual feed group fetch failures gracefully', async () => {
+    vi.mocked(getCache).mockResolvedValue(null);
+    // All fetchFeed calls reject
+    vi.mocked(fetchFeed).mockRejectedValue(new Error('MTA API down'));
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+    const data = await response.json();
+
+    // Individual fetchFeed errors are caught inside .catch() and return [],
+    // so the request still succeeds with whatever calculateTrainPositions produces
+    expect(response.status).toBe(200);
+    // The concatenated feed entities are empty, so calculateTrainPositions gets []
+    expect(calculateTrainPositions).toHaveBeenCalledWith([]);
+  });
+
+  it('returns 500 when calculateTrainPositions throws', async () => {
+    vi.mocked(getCache).mockResolvedValue(null);
+    vi.mocked(calculateTrainPositions).mockRejectedValue(new Error('Parse error'));
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('returns 500 when single-group fetchFeed throws (no catch wrapper)', async () => {
+    vi.mocked(getCache).mockResolvedValue(null);
+    vi.mocked(fetchFeed).mockRejectedValue(new Error('MTA API down'));
+
+    // Single-group path does NOT have .catch() wrapper, so error propagates
+    const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.error.code).toBe('INTERNAL_ERROR');
+    expect(data.error.message).toBe('Failed to fetch trains');
+  });
+
+  it('returns 500 when Redis getCache throws', async () => {
+    vi.mocked(getCache).mockRejectedValue(new Error('Redis connection lost'));
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  // --- Response shape ---
+
+  it('includes updatedAt ISO timestamp in response', async () => {
+    vi.mocked(getCache).mockResolvedValue(null);
+
+    const before = new Date().toISOString();
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+    const data = await response.json();
+    const after = new Date().toISOString();
+
+    expect(data.updatedAt).toBeDefined();
+    expect(data.updatedAt >= before).toBe(true);
+    expect(data.updatedAt <= after).toBe(true);
+  });
+
+  it('sets cache-control headers', async () => {
+    vi.mocked(getCache).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+
+    expect(response.headers.get('Cache-Control')).toBe('s-maxage=10, stale-while-revalidate=5');
+  });
+});

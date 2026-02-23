@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { useAlerts } from '@/hooks/use-alerts';
+import { useAlertsData } from '@/components/providers/AlertsProvider';
 import { SEVERITY_COLORS } from '@/lib/constants';
 
 interface AlertBadgeProps {
@@ -10,7 +10,7 @@ interface AlertBadgeProps {
 }
 
 export function AlertBadge({ className, showZero = false }: AlertBadgeProps) {
-  const { counts } = useAlerts();
+  const { counts } = useAlertsData();
 
   const totalCount = counts.critical + counts.warning + counts.info;
 

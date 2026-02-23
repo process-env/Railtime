@@ -6,7 +6,8 @@ import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorBoundary, MapErrorFallback } from '@/components/ErrorBoundary';
 import { useUIStore } from '@/stores';
-import { useTrainPositions, useAlerts } from '@/hooks';
+import { useTrainPositions } from '@/hooks';
+import { useAlertsData } from '@/components/providers/AlertsProvider';
 
 // Dynamic import to avoid SSR issues with MapLibre
 const SubwayMap = dynamic(
@@ -38,7 +39,7 @@ export default function MapPage() {
 
   // Start data fetches immediately — runs in parallel with SubwayMap chunk download
   const { trains } = useTrainPositions({ refreshInterval: 15000 });
-  const { alerts } = useAlerts();
+  const { alerts } = useAlertsData();
 
   // Handle URL params for map navigation (from station cards)
   useEffect(() => {

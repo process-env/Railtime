@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 /**
  * Create a QueryClient optimized for testing
@@ -34,7 +34,7 @@ export function createTestQueryClient() {
  * ```
  */
 export function QueryWrapper({ children }: { children: ReactNode }) {
-  const queryClient = createTestQueryClient();
+  const [queryClient] = useState(() => createTestQueryClient());
   return (
     <QueryClientProvider client={queryClient}>
       {children}

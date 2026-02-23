@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { motion, useAnimationControls } from 'framer-motion';
-import { useAlerts } from '@/hooks';
+import { useAlertsData } from '@/components/providers/AlertsProvider';
 import { cn } from '@/lib/utils';
 import { getRouteColor, SEVERITY_COLORS, ALERT_LIMITS } from '@/lib/constants';
 import { getTextColorForBackground } from '@/lib/mta/format';
@@ -61,21 +61,27 @@ function TickerSection({ alerts, severity }: TickerSectionProps) {
   const controls = useAnimationControls();
   const [contentWidth, setContentWidth] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const pausedXRef = useRef(0);
 
   useEffect(() => {
     if (!contentRef.current) return;
     // Measure the width of the content (one copy)
     const width = contentRef.current.scrollWidth / 2;
     setContentWidth(width);
+    // Reset pause position when content changes
+    pausedXRef.current = 0;
   }, [alerts]);
 
   useEffect(() => {
     if (contentWidth === 0 || isPaused) return;
 
-    // Calculate duration based on content width and speed
-    const duration = contentWidth / TICKER_SPEED;
+    // Calculate remaining distance from paused position
+    const startX = pausedXRef.current;
+    const remaining = contentWidth + startX; // startX is negative or 0
+    const duration = remaining / TICKER_SPEED;
 
-    // Start infinite scroll animation
+    // Start (or resume) infinite scroll from the paused position
+    controls.set({ x: startX });
     controls.start({
       x: -contentWidth,
       transition: {
@@ -100,6 +106,15 @@ function TickerSection({ alerts, severity }: TickerSectionProps) {
       ref={containerRef}
       className={cn('relative overflow-hidden py-1.5 flex items-center', colors.bg, colors.textOnBg)}
       onMouseEnter={() => {
+        // Capture the current x position before stopping
+        if (contentRef.current) {
+          const style = getComputedStyle(contentRef.current);
+          const matrix = new DOMMatrix(style.transform);
+          // Wrap position within one content-width so the loop stays seamless
+          pausedXRef.current = contentWidth > 0
+            ? -((-matrix.m41) % contentWidth)
+            : matrix.m41;
+        }
         setIsPaused(true);
         controls.stop();
       }}
@@ -127,8 +142,8 @@ function TickerSkeleton({ severity }: { severity: AlertSeverity }) {
 }
 
 export function AlertBanner({ className }: AlertBannerProps) {
-  // Use the new hook interface - visibleAlerts comes directly from the hook
-  const { visibleAlerts, isLoading } = useAlerts({ enabled: true });
+  // Consume shared alerts from AlertsProvider context
+  const { visibleAlerts, isLoading } = useAlertsData();
 
   const safeAlerts = visibleAlerts ?? [];
   const criticalAlerts = safeAlerts.filter((a) => a.severity === 'critical');

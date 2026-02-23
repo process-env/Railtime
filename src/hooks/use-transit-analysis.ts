@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { mtaApi } from '@/lib/api';
 import { queryKeys } from '@/lib/api/query-keys';
 
 // ---------------------------------------------------------------------------
@@ -32,18 +33,7 @@ export function useTransitAnalysis() {
 
   return useQuery<TransitAnalysisResponse>({
     queryKey: queryKeys.transitAnalysis,
-    queryFn: async (): Promise<TransitAnalysisResponse> => {
-      if (!wsUrl) throw new Error('WebSocket server URL not configured');
-
-      const res = await fetch(`${wsUrl}/api/transit-analysis`);
-
-      // 202 returns valid JSON with a "pending" placeholder — don't treat as error
-      if (!res.ok && res.status !== 202) {
-        throw new Error(`Server responded with ${res.status}`);
-      }
-
-      return res.json();
-    },
+    queryFn: () => mtaApi.getTransitAnalysis(),
     enabled: !!wsUrl,
     refetchInterval: (query) => {
       // If we got a pending response, poll faster to catch the real analysis

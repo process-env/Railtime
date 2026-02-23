@@ -82,14 +82,14 @@ function findTransferStations(
 }
 
 interface TripMarkersProps {
-  map: maplibregl.Map | null;
+  mapRef: React.RefObject<maplibregl.Map | null>;
   mapLoaded: boolean;
 }
 
 /**
  * Component to render origin, destination, and transfer point markers
  */
-export function TripMarkers({ map, mapLoaded }: TripMarkersProps) {
+export function TripMarkers({ mapRef, mapLoaded }: TripMarkersProps) {
   const selectedTrip = useSelectedTrip();
   const { stations } = useStaticData();
   const markersRef = useRef<TripMarker[]>([]);
@@ -102,6 +102,7 @@ export function TripMarkers({ map, mapLoaded }: TripMarkersProps) {
 
   // Create markers when trip changes
   useEffect(() => {
+    const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
     // Clear existing markers
@@ -197,7 +198,7 @@ export function TripMarkers({ map, mapLoaded }: TripMarkersProps) {
     return () => {
       clearMarkers();
     };
-  }, [map, mapLoaded, selectedTrip, stations, clearMarkers]);
+  }, [mapRef, mapLoaded, selectedTrip, stations, clearMarkers]);
 
   // This component doesn't render anything - it just manages markers
   return null;

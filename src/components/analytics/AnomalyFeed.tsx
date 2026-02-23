@@ -136,7 +136,7 @@ export function AnomalyFeed() {
                 const routeColor = ROUTE_COLORS[routeId] ?? '#888';
 
                 return (
-                  <div key={`${event.pk}-${event.timestamp}-${i}`} className="flex items-center gap-3 px-4 py-2.5">
+                  <div key={`${event.pk}-${event.timestamp}`} className="flex items-center gap-3 px-4 py-2.5">
                     {/* Route pill */}
                     <div
                       className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white shrink-0"

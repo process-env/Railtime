@@ -4,10 +4,10 @@ import Link from 'next/link';
 import { AlertTriangle, AlertCircle, Info, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useAlerts } from '@/hooks/use-alerts';
+import { useAlertsData } from '@/components/providers/AlertsProvider';
 
 export function AlertStatusCard() {
-  const { alerts: activeAlerts, counts } = useAlerts();
+  const { alerts: activeAlerts, counts } = useAlertsData();
 
   const total = (counts?.critical ?? 0) + (counts?.warning ?? 0) + (counts?.info ?? 0);
   const recentAlerts = (activeAlerts ?? []).slice(0, 3);

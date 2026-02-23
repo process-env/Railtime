@@ -4,6 +4,7 @@ import { AppSidebar } from './AppSidebar';
 import { useUIStore, useAlertsStore } from '@/stores';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ServiceAlert } from '@/types/mta';
 
 // Mock window.matchMedia for SidebarProvider's useMobile hook
 beforeAll(() => {
@@ -39,13 +40,26 @@ vi.mock('./SubwayMapModal', () => ({
   SubwayMapModal: () => <button>Subway Map</button>,
 }));
 
-// Mock useAlerts hook with mutable state
-const mockAlertsState = { alerts: [] as { id: string; header: string; description: string; createdAt: string; affectedRoutes: string[] }[] };
+// Mutable mock state for useAlertsData
+const mockAlertsData = {
+  alerts: [] as ServiceAlert[],
+  visibleAlerts: [] as ServiceAlert[],
+  isLoading: false,
+  error: null as string | null,
+  refetch: vi.fn().mockResolvedValue(undefined),
+  counts: { critical: 0, warning: 0, info: 0 },
+  dismissAlert: vi.fn(),
+  clearDismissed: vi.fn(),
+};
+
+vi.mock('@/components/providers/AlertsProvider', () => ({
+  useAlertsData: () => mockAlertsData,
+}));
+
 vi.mock('@/hooks', async () => {
   const actual = await vi.importActual('@/hooks');
   return {
     ...actual,
-    useAlerts: () => ({ alerts: mockAlertsState.alerts, isLoading: false, error: null }),
     usePrefetchAnalytics: () => {},
     usePrefetchMap: () => {},
   };
@@ -78,6 +92,13 @@ describe('AppSidebar', () => {
     useAlertsStore.setState({
       dismissedIds: new Set(),
     });
+
+    // Reset mock alerts data
+    mockAlertsData.alerts = [];
+    mockAlertsData.visibleAlerts = [];
+    mockAlertsData.isLoading = false;
+    mockAlertsData.error = null;
+    mockAlertsData.counts = { critical: 0, warning: 0, info: 0 };
   });
 
   it('renders app title', () => {
@@ -128,13 +149,19 @@ describe('AppSidebar', () => {
   });
 
   it('shows alert badge when there are alerts', () => {
-    // Add alert to mock
-    mockAlertsState.alerts = [{
+    // Set mock alerts data
+    mockAlertsData.alerts = [{
       id: '1',
-      header: 'Test Alert',
-      description: 'Test',
-      createdAt: new Date().toISOString(),
+      alertType: 'Delays',
+      severity: 'warning',
+      headerText: 'Test Alert',
+      descriptionHtml: '<p>Test</p>',
       affectedRoutes: ['A'],
+      affectedStops: [],
+      affectedStopNames: [],
+      activePeriods: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }];
 
     render(<AppSidebar />, { wrapper: TestWrapper });
@@ -142,8 +169,5 @@ describe('AppSidebar', () => {
     const badge = document.querySelector('[data-sidebar="menu-badge"]');
     expect(badge).toBeInTheDocument();
     expect(badge).toHaveTextContent('1');
-
-    // Clean up
-    mockAlertsState.alerts = [];
   });
 });

@@ -26,7 +26,28 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    // Structured error data for debugging and future error reporting services
+    const errorReport = {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack,
+      timestamp: new Date().toISOString(),
+    };
+
+    console.error('[ErrorBoundary]', errorReport);
+
+    // If @vercel/analytics is loaded, track the error event
+    if (typeof window !== 'undefined' && 'va' in window) {
+      try {
+        (window as unknown as { va: (event: string, props: Record<string, string>) => void }).va(
+          'error',
+          { name: error.name, message: error.message }
+        );
+      } catch {
+        // Silently ignore analytics failures
+      }
+    }
   }
 
   handleReset = () => {

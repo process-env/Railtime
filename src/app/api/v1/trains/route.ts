@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchFeed, fetchAllFeeds } from '@/lib/mta/fetch-feed';
+import { fetchFeed } from '@/lib/mta/fetch-feed';
 import { calculateTrainPositions } from '@/lib/mta/train-positions';
+import { routeToFeedGroup } from '@/lib/mta/feed-groups';
 import { internalError, badRequest, rateLimited } from '@/lib/api/errors';
 import { getCache, setCache } from '@/lib/redis';
 import {
@@ -18,18 +19,41 @@ const CACHE_HEADERS = {
 };
 
 /**
- * Try reading pre-computed positions from Redis.
- * The WS server writes these every 15s with key pattern `feed:{groupId}:positions`.
- * Returns null if any group is missing (partial cache = miss).
+ * Try reading pre-computed positions from Redis for a single feed group.
+ * Returns null on cache miss.
  */
-async function tryRedisCache(groupId: string | null): Promise<TrainPosition[] | null> {
-  const groups = groupId ? [groupId] : FEED_GROUP_IDS;
+async function trySingleGroupCache(groupId: string): Promise<TrainPosition[] | null> {
+  return getCache<TrainPosition[]>(`feed:${groupId}:positions`);
+}
+
+/**
+ * Try reading pre-computed positions from Redis for all feed groups.
+ * Returns cached positions and the list of groups that had cache misses,
+ * so we only fetch from MTA for the missing groups.
+ */
+async function tryRedisCachePartial(): Promise<{
+  cached: TrainPosition[];
+  missingGroups: string[];
+}> {
   const results = await Promise.all(
-    groups.map((id) => getCache<TrainPosition[]>(`feed:${id}:positions`))
+    FEED_GROUP_IDS.map(async (id) => ({
+      groupId: id,
+      data: await getCache<TrainPosition[]>(`feed:${id}:positions`),
+    }))
   );
-  // If any group returned null, treat as cache miss
-  if (results.some((r) => r === null)) return null;
-  return results.flat() as TrainPosition[];
+
+  const cached: TrainPosition[] = [];
+  const missingGroups: string[] = [];
+
+  for (const { groupId, data } of results) {
+    if (data) {
+      cached.push(...data);
+    } else {
+      missingGroups.push(groupId);
+    }
+  }
+
+  return { cached, missingGroups };
 }
 
 /**
@@ -56,23 +80,6 @@ function writeBackToCache(positions: TrainPosition[], groupId: string | null): v
   }
 }
 
-/** Map route ID to MTA feed group */
-function routeToFeedGroup(routeId: string): string | null {
-  // Strip express suffix (e.g., 6X → 6, FX → F)
-  const upper = routeId.toUpperCase().replace(/X$/, '');
-  if (['A', 'C', 'E'].includes(upper)) return 'ACE';
-  if (['B', 'D', 'F', 'M'].includes(upper)) return 'BDFM';
-  if (upper === 'G') return 'G';
-  if (['J', 'Z'].includes(upper)) return 'JZ';
-  if (['N', 'Q', 'R', 'W'].includes(upper)) return 'NQRW';
-  if (upper === 'L') return 'L';
-  if (upper === 'SI' || upper === 'SIR') return 'SI';
-  if (['1', '2', '3', '4', '5', '6', '7'].includes(upper)) return '1234567';
-  // Shuttles: S/GS → 1234567 (42nd St), FS → ACE (Franklin Ave), H → ACE (Rockaway)
-  if (['S', 'GS'].includes(upper)) return '1234567';
-  if (['FS', 'H'].includes(upper)) return 'ACE';
-  return null;
-}
 
 export async function GET(request: NextRequest) {
   // Rate limit check
@@ -91,27 +98,62 @@ export async function GET(request: NextRequest) {
       return badRequest(`Invalid feed group: ${groupId}. Valid groups: ${FEED_GROUP_IDS.join(', ')}`);
     }
 
-    // Try Redis cache first (pre-computed by WS server or previous request)
-    const cached = await tryRedisCache(groupId);
-    if (cached) {
+    // --- Single-group path: simple cache-or-fetch ---
+    if (groupId) {
+      const cached = await trySingleGroupCache(groupId);
+      if (cached) {
+        return NextResponse.json(
+          { trains: cached, updatedAt: new Date().toISOString(), source: 'cache' },
+          { headers: CACHE_HEADERS }
+        );
+      }
+
+      const feedEntities = await fetchFeed(groupId);
+      const positions = await calculateTrainPositions(feedEntities);
+      writeBackToCache(positions, groupId);
+
+      return NextResponse.json(
+        { trains: positions, updatedAt: new Date().toISOString(), source: 'mta' },
+        { headers: CACHE_HEADERS }
+      );
+    }
+
+    // --- All-groups path: partial cache with selective MTA fetch ---
+    const { cached, missingGroups } = await tryRedisCachePartial();
+
+    if (missingGroups.length === 0) {
+      // Full cache hit — return immediately
       return NextResponse.json(
         { trains: cached, updatedAt: new Date().toISOString(), source: 'cache' },
         { headers: CACHE_HEADERS }
       );
     }
 
-    // Cache miss — fetch from MTA directly
-    const feedEntities = groupId
-      ? await fetchFeed(groupId)
-      : await fetchAllFeeds();
+    // Fetch only the missing groups from MTA
+    const freshEntities = (
+      await Promise.all(
+        missingGroups.map((gid) =>
+          fetchFeed(gid).catch((err) => {
+            console.error(`Error fetching ${gid}:`, err.message);
+            return [];
+          })
+        )
+      )
+    ).flat();
 
-    const positions = await calculateTrainPositions(feedEntities);
+    const freshPositions = await calculateTrainPositions(freshEntities);
 
-    // Write back to Redis for next request (fire-and-forget)
-    writeBackToCache(positions, groupId);
+    // Write fresh positions back to Redis (fire-and-forget)
+    writeBackToCache(freshPositions, null);
+
+    // Merge cached + fresh
+    const positions = [...cached, ...freshPositions];
+
+    const source =
+      cached.length > 0 ? 'partial-cache' : 'mta';
 
     return NextResponse.json(
-      { trains: positions, updatedAt: new Date().toISOString(), source: 'mta' },
+      { trains: positions, updatedAt: new Date().toISOString(), source },
       { headers: CACHE_HEADERS }
     );
   } catch (error) {

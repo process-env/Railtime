@@ -88,7 +88,7 @@ interface UseUserLocationMarkerOptions {
  * Subscribes to geolocation store and updates marker position
  */
 export function useUserLocationMarker(
-  map: maplibregl.Map | null,
+  mapRef: React.RefObject<maplibregl.Map | null>,
   mapLoaded: boolean,
   _options: UseUserLocationMarkerOptions = {}
 ): void {
@@ -103,6 +103,7 @@ export function useUserLocationMarker(
 
   // Create/update/remove marker based on position
   useEffect(() => {
+    const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
     // Remove marker if no position or not active
@@ -127,7 +128,7 @@ export function useUserLocationMarker(
       // Update position
       markerRef.current.setLngLat([position.lon, position.lat]);
     }
-  }, [map, mapLoaded, position, status]);
+  }, [mapRef, mapLoaded, position, status]);
 
   // Cleanup on unmount
   useEffect(() => {

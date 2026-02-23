@@ -85,7 +85,7 @@ describe('useTrainMarkers', () => {
 
     const { result } = renderHook(() =>
       useTrainMarkers(
-        null,
+        { current: null },
         false,
         refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
         refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -111,7 +111,7 @@ describe('useTrainMarkers', () => {
 
     const { result } = renderHook(() =>
       useTrainMarkers(
-        null,
+        { current: null },
         false,
         refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
         refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -173,7 +173,7 @@ describe('useTrainMarkers', () => {
 
     const { result } = renderHook(() =>
       useTrainMarkers(
-        null,
+        { current: null },
         false,
         refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
         refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -235,7 +235,7 @@ describe('useTrainMarkers', () => {
 
     const { result } = renderHook(() =>
       useTrainMarkers(
-        null,
+        { current: null },
         false,
         refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
         refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -259,7 +259,7 @@ describe('useTrainMarkers', () => {
 
     const { result } = renderHook(() =>
       useTrainMarkers(
-        null,
+        { current: null },
         false,
         refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
         refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -283,7 +283,7 @@ describe('useTrainMarkers', () => {
 
     const { result } = renderHook(() =>
       useTrainMarkers(
-        null,
+        { current: null },
         false,
         refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
         refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -322,7 +322,7 @@ describe('useTrainMarkers', () => {
     const { result, rerender } = renderHook(
       ({ trains }) =>
         useTrainMarkers(
-          null,
+          { current: null },
           false,
           refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
           refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -395,7 +395,7 @@ describe('useTrainMarkers', () => {
     const { result, rerender } = renderHook(
       ({ selectedRouteIds }) =>
         useTrainMarkers(
-          null,
+          { current: null },
           false,
           refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
           refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -439,7 +439,7 @@ describe('useTrainMarkers', () => {
 
     const { result } = renderHook(() =>
       useTrainMarkers(
-        null,
+        { current: null },
         false,
         refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
         refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -516,7 +516,7 @@ describe('Phase detection', () => {
 
     const { result } = renderHook(() =>
       useTrainMarkers(
-        null,
+        { current: null },
         false,
         refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
         refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -581,7 +581,7 @@ describe('Phase detection', () => {
 
     const { result } = renderHook(() =>
       useTrainMarkers(
-        null,
+        { current: null },
         false,
         refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
         refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -646,7 +646,7 @@ describe('Phase detection', () => {
 
     const { result } = renderHook(() =>
       useTrainMarkers(
-        null,
+        { current: null },
         false,
         refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
         refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,

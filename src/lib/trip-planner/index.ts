@@ -19,14 +19,14 @@ export {
 } from './graph-builder';
 
 // Re-export pathfinding
-export { findShortestPath, findAlternativePaths } from './dijkstra';
+export { findShortestPath, findRouteVariants } from './dijkstra';
 
 // Re-export path conversion
 export { convertPathToTrip, generateDirections, getTripSummary } from './path-converter';
 
 import type { TripPlan, TripPlannerOptions } from './types';
 import { getTransitGraph, hasStation } from './graph-builder';
-import { findShortestPath, findAlternativePaths } from './dijkstra';
+import { findShortestPath, findRouteVariants } from './dijkstra';
 import { convertPathToTrip } from './path-converter';
 
 /**
@@ -92,7 +92,7 @@ export async function getAlternativeTrips(
   }
 
   // Find alternative paths
-  const results = findAlternativePaths(graph, originStationId, destStationId, count, options);
+  const results = findRouteVariants(graph, originStationId, destStationId, count, options);
 
   // Convert all to trip plans
   return results.map((result) => convertPathToTrip(graph, result));

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { findShortestPath, findAlternativePaths } from '../dijkstra';
+import { findShortestPath, findRouteVariants } from '../dijkstra';
 import {
   createMockGraph,
   createMinimalGraph,
@@ -284,7 +284,7 @@ describe('findShortestPath', () => {
   });
 });
 
-describe('findAlternativePaths', () => {
+describe('findRouteVariants', () => {
   let graph: TransitGraph;
 
   beforeEach(() => {
@@ -292,31 +292,31 @@ describe('findAlternativePaths', () => {
   });
 
   it('returns array of paths', () => {
-    const results = findAlternativePaths(graph, STATION_A, STATION_D, 3);
+    const results = findRouteVariants(graph, STATION_A, STATION_D, 3);
 
     expect(Array.isArray(results)).toBe(true);
   });
 
   it('returns at least one path when path exists', () => {
-    const results = findAlternativePaths(graph, STATION_A, STATION_D, 3);
+    const results = findRouteVariants(graph, STATION_A, STATION_D, 3);
 
     expect(results.length).toBeGreaterThanOrEqual(1);
   });
 
   it('returns empty array when no path exists', () => {
-    const results = findAlternativePaths(graph, STATION_A, 'NONEXISTENT', 3);
+    const results = findRouteVariants(graph, STATION_A, 'NONEXISTENT', 3);
 
     expect(results).toEqual([]);
   });
 
   it('returns up to k paths', () => {
-    const results = findAlternativePaths(graph, STATION_A, STATION_F, 5);
+    const results = findRouteVariants(graph, STATION_A, STATION_F, 5);
 
     expect(results.length).toBeLessThanOrEqual(5);
   });
 
   it('each path is unique', () => {
-    const results = findAlternativePaths(graph, STATION_A, STATION_D, 3);
+    const results = findRouteVariants(graph, STATION_A, STATION_D, 3);
 
     const pathKeys = results.map((r) =>
       r.path.map((n) => `${n.stationId}:${n.routeId}`).join(',')
@@ -327,7 +327,7 @@ describe('findAlternativePaths', () => {
   });
 
   it('paths are sorted by actual duration', () => {
-    const results = findAlternativePaths(graph, STATION_A, STATION_F, 3);
+    const results = findRouteVariants(graph, STATION_A, STATION_F, 3);
 
     if (results.length > 1) {
       for (let i = 1; i < results.length; i++) {
@@ -339,7 +339,7 @@ describe('findAlternativePaths', () => {
   });
 
   it('first path is the shortest', () => {
-    const results = findAlternativePaths(graph, STATION_A, STATION_D, 3);
+    const results = findRouteVariants(graph, STATION_A, STATION_D, 3);
     const shortestPath = findShortestPath(graph, STATION_A, STATION_D);
 
     expect(results[0].actualDuration).toBe(shortestPath!.actualDuration);
@@ -347,14 +347,14 @@ describe('findAlternativePaths', () => {
 
   it('returns fewer paths if not enough alternatives exist', () => {
     const minimal = createMinimalGraph();
-    const results = findAlternativePaths(minimal, 'X', 'Y', 5);
+    const results = findRouteVariants(minimal, 'X', 'Y', 5);
 
     // Only one possible path in minimal graph
     expect(results.length).toBe(1);
   });
 
   it('respects options in all paths', () => {
-    const results = findAlternativePaths(graph, STATION_A, STATION_F, 3, {
+    const results = findRouteVariants(graph, STATION_A, STATION_F, 3, {
       maxTransfers: 1,
     });
 

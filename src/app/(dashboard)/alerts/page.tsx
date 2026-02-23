@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertList } from '@/components/alerts';
 import { EquipmentStatusCard } from '@/components/analytics';
-import { useAlerts } from '@/hooks/use-alerts';
+import { useAlertsData } from '@/components/providers/AlertsProvider';
 import { SEVERITY_COLORS } from '@/lib/constants';
 import type { ServiceAlert } from '@/types/mta';
 
@@ -29,8 +29,8 @@ function groupAlertsBySeverity(alerts: ServiceAlert[]) {
 }
 
 export default function AlertsPage() {
-  // Use the new hook interface - alerts and counts come directly from the hook
-  const { alerts: activeAlerts, counts, isLoading, error } = useAlerts();
+  // Consume shared alerts from AlertsProvider context
+  const { alerts: activeAlerts, counts, isLoading, error } = useAlertsData();
 
   // Single-pass grouping instead of multiple filter calls
   const {

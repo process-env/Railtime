@@ -39,29 +39,29 @@ describe('GET /api/v1/arrivals/[groupId]/[stopId]', () => {
   });
 
   it('handles invalid group ID gracefully', async () => {
-    // Invalid group IDs are handled by MTA library, not route validation
-    vi.mocked(getArrivalBoard).mockRejectedValue(new Error('Invalid feed group'));
     const request = new NextRequest('http://localhost/api/v1/arrivals/INVALID/A24N');
     const response = await GET(request, {
       params: Promise.resolve({ groupId: 'INVALID', stopId: 'A24N' }),
     });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
     const data = await response.json();
-    expect(data.error.message).toBe('Failed to get arrivals');
+    expect(data.error.code).toBe('BAD_REQUEST');
+    expect(data.error.message).toContain('Invalid groupId');
+    expect(getArrivalBoard).not.toHaveBeenCalled();
   });
 
   it('handles invalid stop ID gracefully', async () => {
-    // Invalid stop IDs are handled by MTA library, not route validation
-    vi.mocked(getArrivalBoard).mockRejectedValue(new Error('Stop not found'));
     const request = new NextRequest('http://localhost/api/v1/arrivals/ACE/INVALID!!');
     const response = await GET(request, {
       params: Promise.resolve({ groupId: 'ACE', stopId: 'INVALID!!' }),
     });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
     const data = await response.json();
-    expect(data.error.message).toBe('Failed to get arrivals');
+    expect(data.error.code).toBe('BAD_REQUEST');
+    expect(data.error.message).toContain('Invalid stopId');
+    expect(getArrivalBoard).not.toHaveBeenCalled();
   });
 
   it('accepts stop IDs with N suffix', async () => {

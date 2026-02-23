@@ -1,4 +1,3 @@
-import axios from 'axios';
 import type { ServiceAlert, AlertSeverity } from '@/types/mta';
 import { getCache, setCache } from '../redis';
 import { ALL_ROUTES } from '../constants';
@@ -119,6 +118,7 @@ async function resolveStopNames(stopIds: string[]): Promise<string[]> {
   if (!stopIds.length) return [];
 
   const { dict, parentNames } = await loadStops();
+  const seen = new Set<string>();
   const names: string[] = [];
 
   for (const stopId of stopIds) {
@@ -126,12 +126,14 @@ async function resolveStopNames(stopIds: string[]): Promise<string[]> {
     if (stop) {
       // Use parent station name if available, otherwise use stop name
       const name = stop.parent ? parentNames[stop.parent] || stop.name : stop.name;
-      if (!names.includes(name)) {
+      if (!seen.has(name)) {
+        seen.add(name);
         names.push(name);
       }
     } else {
       // Fallback to raw ID if not found
-      if (!names.includes(stopId)) {
+      if (!seen.has(stopId)) {
+        seen.add(stopId);
         names.push(stopId);
       }
     }
@@ -155,11 +157,16 @@ export async function fetchAlerts(
   }
 
   // Fetch from MTA API
-  const resp = await axios.get<MtaAlertsResponse>(ALERTS_URL, {
-    timeout: 15000,
+  const resp = await fetch(ALERTS_URL, {
+    signal: AbortSignal.timeout(15000),
   });
 
-  const entities = resp.data.entity || [];
+  if (!resp.ok) {
+    throw new Error(`MTA alerts API error: ${resp.status} ${resp.statusText}`);
+  }
+
+  const data: MtaAlertsResponse = await resp.json();
+  const entities = data.entity || [];
   const alerts: ServiceAlert[] = [];
 
   for (const entity of entities) {

@@ -76,7 +76,7 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
   });
 
   // Train markers hook — schedule-based animation + alert modulation
-  const { getTrainPhase } = useTrainMarkers(map.current, mapLoaded, trainAnimsRef, trainMotionRef, lerp, {
+  const { getTrainPhase } = useTrainMarkers(map, mapLoaded, trainAnimsRef, trainMotionRef, lerp, {
     trains,
     selectedRouteIds,
     selectedTrainId,
@@ -104,7 +104,7 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
   }, [trains]);
 
   // Station markers hook
-  useStationMarkers(map.current, mapLoaded, {
+  useStationMarkers(map, mapLoaded, {
     stations,
     selectedRouteIds,
     selectedStationId,
@@ -114,10 +114,10 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
   });
 
   // Trip route visualization hook
-  useTripRouteLayer(map.current, mapLoaded);
+  useTripRouteLayer(map, mapLoaded);
 
   // User location marker hook
-  useUserLocationMarker(map.current, mapLoaded);
+  useUserLocationMarker(map, mapLoaded);
   const geolocationStatus = useGeolocationStatus();
 
   // Get selected trip for bounds fitting
@@ -428,11 +428,11 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
       </div>
 
       {/* Trip Route Markers (origin, destination, transfers) */}
-      <TripMarkers map={map.current} mapLoaded={mapLoaded} />
+      <TripMarkers mapRef={map} mapLoaded={mapLoaded} />
 
       {/* My Location Button - positioned bottom-right above attribution */}
       <div className="absolute bottom-20 right-4 z-10">
-        <MyLocationButton map={map.current} mapLoaded={mapLoaded} />
+        <MyLocationButton mapRef={map} mapLoaded={mapLoaded} />
       </div>
 
       {/* Train Detail Panel */}

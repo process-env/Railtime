@@ -234,10 +234,22 @@ function reconstructPath(
 }
 
 /**
- * Find multiple alternative paths (k-shortest paths)
- * Uses Yen's algorithm variant
+ * Find route variants between two stations.
+ *
+ * This is NOT a true k-shortest-paths algorithm (e.g. Yen's). Instead it
+ * iteratively re-runs Dijkstra while randomly excluding one route used by a
+ * previously found path. Because route exclusion is chosen at random via
+ * `Math.random()`, results are **non-deterministic** -- successive calls with
+ * the same inputs may return different sets of alternatives.
+ *
+ * @param graph - The transit graph to search
+ * @param originStationId - Starting station
+ * @param destStationId - Destination station
+ * @param k - Maximum number of route variants to return (default 3)
+ * @param options - Planning options (maxTransfers, avoidRoutes, transferPenalty)
+ * @returns Array of unique paths sorted by actual duration, up to k entries
  */
-export function findAlternativePaths(
+export function findRouteVariants(
   graph: TransitGraph,
   originStationId: string,
   destStationId: string,

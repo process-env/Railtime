@@ -561,7 +561,7 @@ function tripToGeoJSONFallback(
  * Hook to render trip route on the map with pulsating animation
  */
 export function useTripRouteLayer(
-  map: maplibregl.Map | null,
+  mapRef: React.RefObject<maplibregl.Map | null>,
   mapLoaded: boolean
 ): void {
   const selectedTrip = useSelectedTrip();
@@ -572,6 +572,7 @@ export function useTripRouteLayer(
 
   // Add source and layers when map is ready
   const setupLayers = useCallback(() => {
+    const map = mapRef.current;
     if (!map || !mapLoaded || sourceAddedRef.current) return;
 
     if (map.getSource(TRIP_ROUTE_SOURCE)) {
@@ -630,7 +631,7 @@ export function useTripRouteLayer(
     });
 
     sourceAddedRef.current = true;
-  }, [map, mapLoaded]);
+  }, [mapRef, mapLoaded]);
 
   // Setup layers on mount
   useEffect(() => {
@@ -639,22 +640,25 @@ export function useTripRouteLayer(
 
   // Update the route when selected trip changes
   useEffect(() => {
+    const map = mapRef.current;
     if (!map || !mapLoaded || !sourceAddedRef.current) return;
 
-    const source = map.getSource(TRIP_ROUTE_SOURCE) as maplibregl.GeoJSONSource;
-    if (!source) return;
+    if (!map.getSource(TRIP_ROUTE_SOURCE)) return;
 
-    // Async update
+    // Async update — re-query source inside .then() to guard against unmount
     tripToGeoJSON(selectedTrip, stations).then((geojson) => {
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
+      const source = currentMap.getSource(TRIP_ROUTE_SOURCE) as maplibregl.GeoJSONSource | undefined;
       if (source) {
         source.setData(geojson);
       }
     });
-  }, [map, mapLoaded, selectedTrip, stations]);
+  }, [mapRef, mapLoaded, selectedTrip, stations]);
 
   // Pulsating animation for the casing layer
   useEffect(() => {
-    if (!map || !mapLoaded || !selectedTrip) {
+    if (!mapRef.current || !mapLoaded || !selectedTrip) {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
@@ -665,6 +669,9 @@ export function useTripRouteLayer(
     let startTime: number | null = null;
 
     const animate = (time: number) => {
+      const map = mapRef.current;
+      if (!map) return;
+
       if (!startTime) startTime = time;
       const elapsed = time - startTime;
 
@@ -690,7 +697,7 @@ export function useTripRouteLayer(
         animationRef.current = null;
       }
     };
-  }, [map, mapLoaded, selectedTrip]);
+  }, [mapRef, mapLoaded, selectedTrip]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -699,6 +706,7 @@ export function useTripRouteLayer(
         cancelAnimationFrame(animationRef.current);
       }
 
+      const map = mapRef.current;
       if (!map) return;
 
       if (map.getLayer(TRIP_ROUTE_TRANSFER_LAYER)) {
@@ -716,7 +724,7 @@ export function useTripRouteLayer(
 
       sourceAddedRef.current = false;
     };
-  }, [map]);
+  }, [mapRef]);
 }
 
 /**

@@ -61,7 +61,7 @@ describe('rate-limit', () => {
     });
 
     it('returns correct config for /api/cron', () => {
-      const config = getRateLimitConfig('/api/cron/cleanup');
+      const config = getRateLimitConfig('/api/cron/ttl-health-check');
       expect(config.limit).toBe(5);
     });
 

@@ -101,54 +101,54 @@ Last Updated: 2026-02-23
 
 ### API & Data Pipeline
 
-- [ ] **IMP-01** [API] Replace `axios` with native `fetch` in `fetch-feed.ts` and `fetch-alerts.ts` | Effort: **M**
+- [x] **IMP-01** [API] Replace `axios` with native `fetch` in `fetch-feed.ts` and `fetch-alerts.ts` | Effort: **M**
   Use `fetch` + `arrayBuffer()` / `json()` with `AbortController` timeout. Removes ~50 KB dependency and enables Next.js fetch instrumentation.
 
-- [ ] **IMP-02** [API] Extend `FEED_GROUPS` to include aliases; remove `routeToFeedGroup` from `trains/route.ts` | Effort: **S**
+- [x] **IMP-02** [API] Extend `FEED_GROUPS` to include aliases; remove `routeToFeedGroup` from `trains/route.ts` | Effort: **S**
   Add `SIR`, `GS`, `FS`, `H` to `feed-groups.ts`. Delete the duplicate function from the trains route.
 
-- [ ] **IMP-03** [API] Apply `stationIdSchema`/`stopIdSchema`/`feedGroupIdSchema` validation in arrivals routes | Effort: **S**
+- [x] **IMP-03** [API] Apply `stationIdSchema`/`stopIdSchema`/`feedGroupIdSchema` validation in arrivals routes | Effort: **S**
   Wire existing validation schemas into `arrivals/station/[stationId]` and `arrivals/[groupId]/[stopId]` route handlers.
 
-- [ ] **IMP-04** [API] Fix `resolveStopNames` -- move `loadStops()` outside loop, use `Set` for deduplication | Effort: **S**
+- [x] **IMP-04** [API] Fix `resolveStopNames` -- move `loadStops()` outside loop, use `Set` for deduplication | Effort: **S**
   Hoist `await loadStops()` above the `for` block. Replace `!names.includes(name)` with `Set<string>`.
 
-- [ ] **IMP-05** [API] Sanitize user input before OpenAI prompt interpolation in `conductor/announce` | Effort: **S**
+- [x] **IMP-05** [API] Sanitize user input before OpenAI prompt interpolation in `conductor/announce` | Effort: **S**
   Wrap user values in a structured JSON block rather than free-form template interpolation.
 
-- [ ] **IMP-06** [API] Rename `cron/cleanup` to `cron/ttl-health-check` | Effort: **S**
+- [x] **IMP-06** [API] Rename `cron/cleanup` to `cron/ttl-health-check` | Effort: **S**
   Rename route and update Vercel cron config references.
 
-- [ ] **IMP-07** [API] Return partial Redis cache results for trains; fetch only missing groups | Effort: **M**
+- [x] **IMP-07** [API] Return partial Redis cache results for trains; fetch only missing groups | Effort: **M**
   Filter missing groups from `tryRedisCache` results. Fetch only those groups from MTA and merge with cached data.
 
-- [ ] **IMP-08** [API] Fix serial await in `calculateDelaysBatch` | Effort: **S**
+- [x] **IMP-08** [API] Fix serial await in `calculateDelaysBatch` | Effort: **S**
   Call `loadScheduleData()` once before the loop, then compute synchronously from already-loaded caches.
 
-- [ ] **IMP-09** [API] Add `AbortSignal` timeout and `response.ok` check to RSS fetch in `conductor/news` | Effort: **S**
+- [x] **IMP-09** [API] Add `AbortSignal` timeout and `response.ok` check to RSS fetch in `conductor/news` | Effort: **S**
   Add 5-second `AbortController`. Skip feed on non-OK response.
 
-- [ ] **IMP-10** [API] Replace in-process cache in `equipment/route.ts` with Redis | Effort: **S**
+- [x] **IMP-10** [API] Replace in-process cache in `equipment/route.ts` with Redis | Effort: **S**
   Use `getCache`/`setCache` instead of module-level `let cache`.
 
 ### Map Components & Hooks
 
-- [ ] **IMP-11** [Map] Delete orphaned `refreshInterval` constant; add parameter to `createMotionState` | Effort: **S**
+- [x] **IMP-11** [Map] Delete orphaned `refreshInterval` constant; add parameter to `createMotionState` | Effort: **S**
   Remove dead code at line 1084. Add `refreshInterval: number` parameter to `createMotionState` and pass from caller.
 
-- [ ] **IMP-12** [Map] Reset `isAnimatingRef.current = false` in `useMapAnimation.ts` cleanup | Effort: **S**
+- [x] **IMP-12** [Map] Reset `isAnimatingRef.current = false` in `useMapAnimation.ts` cleanup | Effort: **S**
   One-line addition in the `useEffect` cleanup function.
 
-- [ ] **IMP-13** [Map] Pass `map` ref object (not `map.current` snapshot) to hooks in `SubwayMap.tsx` | Effort: **M**
+- [x] **IMP-13** [Map] Pass `map` ref object (not `map.current` snapshot) to hooks in `SubwayMap.tsx` | Effort: **M**
   Update all hook signatures to accept `RefObject<Map>` and read `map.current` inside effects.
 
-- [ ] **IMP-14** [Map] Add mount guard to `useTripRouteLayer.ts` async source update | Effort: **S**
+- [x] **IMP-14** [Map] Add mount guard to `useTripRouteLayer.ts` async source update | Effort: **S**
   Re-query the source inside `.then()` via `map.getSource(TRIP_ROUTE_SOURCE)` instead of using captured variable.
 
-- [ ] **IMP-15** [Map] Fix stale `selectedStationId` closure in `useStationMarkers.ts` `handleClick` | Effort: **S**
+- [x] **IMP-15** [Map] Fix stale `selectedStationId` closure in `useStationMarkers.ts` `handleClick` | Effort: **S**
   Use `useUIStore.getState().selectedStationId` inside the handler instead of the closed-over value.
 
-- [ ] **IMP-16** [Map] Replace naive CSV parser in `track-index.ts` for `stops.txt` | Effort: **S**
+- [x] **IMP-16** [Map] Replace naive CSV parser in `track-index.ts` for `stops.txt` | Effort: **S**
   *Cross-ref: CRIT-11*. Same fix -- replace `split(',')` with quote-aware parser. Can share a single CSV utility.
 
 - [ ] **IMP-17** [Map] Separate animation state (RAF-only) from API data (effect-only) in `TrainMotionState` | Effort: **L**
@@ -156,124 +156,124 @@ Last Updated: 2026-02-23
 
 ### Trip Planner Algorithm
 
-- [ ] **IMP-18** [Trip] Rename `findAlternativePaths` and document random sampling limitation | Effort: **S**
+- [x] **IMP-18** [Trip] Rename `findAlternativePaths` and document random sampling limitation | Effort: **S**
   Rename to `findRouteVariants`. Remove misleading "Yen's algorithm" comment. Document non-deterministic behavior.
 
 - [ ] **IMP-19** [Trip/Server] Replace Neo4j `shortestPath` with weighted shortest-path procedure | Effort: **L**
   Use `apoc.algo.dijkstra` (if APOC available) or `allShortestPaths` as interim. Affects both `neo4j-planner.ts` and `server/src/lib/queries/trip-planner.ts`. *Cross-ref: IMP-44*
 
-- [ ] **IMP-20** [Trip] Fix `transferType` heuristic in Neo4j path converter | Effort: **S**
+- [x] **IMP-20** [Trip] Fix `transferType` heuristic in Neo4j path converter | Effort: **S**
   Use `relProps.duration` instead of `relProps.walkTime`. Or store `transferType` as a property on the Neo4j relationship during seeding.
 
-- [ ] **IMP-21** [Trip] Add bidirectional duplicate check for transfer edges in graph builder | Effort: **S**
+- [x] **IMP-21** [Trip] Add bidirectional duplicate check for transfer edges in graph builder | Effort: **S**
   Extend `alreadyHasEdge` check to inspect both forward and reverse directions.
 
-- [ ] **IMP-22** [Trip] Migrate `use-trip-planner.ts` from direct `fetch` to TanStack Query | Effort: **M**
+- [x] **IMP-22** [Trip] Migrate `use-trip-planner.ts` from direct `fetch` to TanStack Query | Effort: **M**
   Add `mtaApi.planTrip(params)` to the API client. Use `useMutation` for trip planning.
 
-- [ ] **IMP-23** [Trip] Add `isPanelOpen: false` to `trip-store.ts` `reset()` action | Effort: **S**
+- [x] **IMP-23** [Trip] Add `isPanelOpen: false` to `trip-store.ts` `reset()` action | Effort: **S**
   One-line addition to the reset state object.
 
-- [ ] **IMP-24** [Trip] Add tests using `createDoubleTransferPath` fixture | Effort: **S**
+- [x] **IMP-24** [Trip] Add tests using `createDoubleTransferPath` fixture | Effort: **S**
   Import the existing fixture in `path-converter.test.ts` and add test cases for consecutive transfer edges.
 
 ### Frontend UI & State
 
-- [ ] **IMP-25** [UI] Narrow selectors in `useOperationalStats` to prevent cascading re-renders | Effort: **M**
+- [x] **IMP-25** [UI] Narrow selectors in `useOperationalStats` to prevent cascading re-renders | Effort: **M**
   Extract only needed fields from `useAnalytics` and memoize comparison at the hook boundary.
 
-- [ ] **IMP-26** [UI] Create `AlertsDataContext` to share a single `useAlerts()` call across consumers | Effort: **M**
+- [x] **IMP-26** [UI] Create `AlertsDataContext` to share a single `useAlerts()` call across consumers | Effort: **M**
   Single React context populated by one `useAlerts()` call, consumed by `AlertStatusCard`, `AlertBanner`, `AlertBadge`, `AppSidebar`, and the analytics page.
 
-- [ ] **IMP-27** [UI] Document non-persistence of `Set<string>` in alerts store, or change to array | Effort: **S**
+- [x] **IMP-27** [UI] Document non-persistence of `Set<string>` in alerts store, or change to array | Effort: **S**
   Either add JSDoc warning or convert `dismissedIds` to `string[]` with `Set` conversion in selector.
 
-- [ ] **IMP-28** [UI] Consolidate `useCanPlanTrip` and `useSelectedTrip` into single-selector patterns | Effort: **S**
+- [x] **IMP-28** [UI] Consolidate `useCanPlanTrip` and `useSelectedTrip` into single-selector patterns | Effort: **S**
   Use `useShallow` from `zustand/react/shallow` for combined selectors.
 
-- [ ] **IMP-29** [UI] Remove `watchId` from geolocation Zustand state; use module-level variable | Effort: **S**
+- [x] **IMP-29** [UI] Remove `watchId` from geolocation Zustand state; use module-level variable | Effort: **S**
   Move `watchId` to a `let _watchId: number | null = null;` outside the store.
 
-- [ ] **IMP-30** [UI] Move raw `fetch` calls in `use-transit-analysis`, `use-anomaly-feed`, `use-trip-planner` to `mtaApi` | Effort: **M**
+- [x] **IMP-30** [UI] Move raw `fetch` calls in `use-transit-analysis`, `use-anomaly-feed`, `use-trip-planner` to `mtaApi` | Effort: **M**
   Add `getTransitAnalysis`, `getAnomalyFeed`, and `planTrip` to `src/lib/api/index.ts`.
 
-- [ ] **IMP-31** [UI] Remove or guard background trains sync in `useBackgroundSync` | Effort: **S**
+- [x] **IMP-31** [UI] Remove or guard background trains sync in `useBackgroundSync` | Effort: **S**
   Check if trains query is already actively polling before registering background interval. Or remove trains from background sync entirely.
 
-- [ ] **IMP-32** [UI] Memoize date range computation in 6 analytics chart components | Effort: **S**
+- [x] **IMP-32** [UI] Memoize date range computation in 6 analytics chart components | Effort: **S**
   Wrap `from`/`to` computation in `useMemo` with `[range]` dependency.
 
-- [ ] **IMP-33** [UI] Fix AlertBanner ticker to resume from current position on un-pause | Effort: **S**
+- [x] **IMP-33** [UI] Fix AlertBanner ticker to resume from current position on un-pause | Effort: **S**
   Track current `x` position and restart from there, or use Framer Motion `controls.pause()` / `controls.resume()`.
 
-- [ ] **IMP-34** [UI] Replace `StationSearch` dropdown with shadcn `Command`/`Combobox` | Effort: **M**
+- [x] **IMP-34** [UI] Replace `StationSearch` dropdown with shadcn `Command`/`Combobox` | Effort: **M**
   Provides proper ARIA combobox semantics, keyboard navigation, and screen reader support out of the box.
 
-- [ ] **IMP-35** [UI] Add error reporting to `ErrorBoundary.componentDidCatch` | Effort: **S**
+- [x] **IMP-35** [UI] Add error reporting to `ErrorBoundary.componentDidCatch` | Effort: **S**
   Integrate `@vercel/speed-insights` error capture or Sentry's `captureException`.
 
-- [ ] **IMP-36** [UI] Remove or null-type `timeline` from `use-analytics.ts` | Effort: **S**
+- [x] **IMP-36** [UI] Remove or null-type `timeline` from `use-analytics.ts` | Effort: **S**
   Remove fabricated timeline data from the analytics hook. Type as `null` if the field must remain for future use.
 
-- [ ] **IMP-37** [UI] Add `multiArrivals` to centralized `queryKeys` registry | Effort: **S**
+- [x] **IMP-37** [UI] Add `multiArrivals` to centralized `queryKeys` registry | Effort: **S**
   Add `multiArrivals: (stationId: string) => ['arrivals', 'multi', stationId] as const` to `query-keys.ts`.
 
-- [ ] **IMP-38** [UI] Remove array index from `AnomalyFeed` event list key | Effort: **S**
+- [x] **IMP-38** [UI] Remove array index from `AnomalyFeed` event list key | Effort: **S**
   Change to `key={`${event.pk}-${event.timestamp}`}`.
 
 ### WebSocket Server
 
-- [ ] **IMP-39** [Server] Add Socket.IO connection middleware with token validation | Effort: **M**
+- [x] **IMP-39** [Server] Add Socket.IO connection middleware with token validation | Effort: **M**
   Add middleware to each namespace that validates a shared secret or JWT from `socket.handshake.auth`.
 
-- [ ] **IMP-40** [Server] Add input length bounds on Socket.IO subscription payloads | Effort: **S**
+- [x] **IMP-40** [Server] Add input length bounds on Socket.IO subscription payloads | Effort: **S**
   Cap `routeId.length > 10`, `stationId.length > 20` in all three namespace handlers.
 
-- [ ] **IMP-41** [Server] Add MTA API key header to alert loop | Effort: **S**
+- [x] **IMP-41** [Server] Add MTA API key header to alert loop | Effort: **S**
   Read `MTA_API_KEY` from env and attach as `x-api-key` header. One-line fix.
 
-- [ ] **IMP-42** [Server] Add `unhandledRejection` and `uncaughtException` handlers in `index.ts` | Effort: **S**
+- [x] **IMP-42** [Server] Add `unhandledRejection` and `uncaughtException` handlers in `index.ts` | Effort: **S**
   Log fatal error with pino and exit. Prevents silent crashes.
 
-- [ ] **IMP-43** [Server] Add `ETIMEDOUT` to timeout classification in `feed-loop.ts` | Effort: **S**
+- [x] **IMP-43** [Server] Add `ETIMEDOUT` to timeout classification in `feed-loop.ts` | Effort: **S**
   Check both `ECONNABORTED` and `ETIMEDOUT` in the `isTimeout` condition.
 
-- [ ] **IMP-44** [Server] Change `seed-neo4j.ts` from `CREATE` to `MERGE ... SET` for idempotent re-runs | Effort: **M**
+- [x] **IMP-44** [Server] Change `seed-neo4j.ts` from `CREATE` to `MERGE ... SET` for idempotent re-runs | Effort: **M**
   Update all node and edge creation Cypher statements to use `MERGE`.
 
-- [ ] **IMP-45** [Server] Rewrite `toMin` function with clear `seconds / 60` formula | Effort: **S**
+- [x] **IMP-45** [Server] Rewrite `toMin` function with clear `seconds / 60` formula | Effort: **S**
   Replace `Math.round(seconds / 6) / 10` with `Math.round((seconds / 60) * 10) / 10`. Add unit comment.
 
-- [ ] **IMP-46** [Server] Switch alert loop from `setInterval` to self-scheduling `setTimeout` | Effort: **S**
+- [x] **IMP-46** [Server] Switch alert loop from `setInterval` to self-scheduling `setTimeout` | Effort: **S**
   Apply the same pattern as `feed-loop.ts` to prevent overlapping fetch cycles.
 
 ### Test Infrastructure
 
-- [ ] **IMP-47** [Test] Delete or replace misnamed integration tests with genuine integration tests | Effort: **M**
+- [x] **IMP-47** [Test] Delete or replace misnamed integration tests with genuine integration tests | Effort: **M**
   Remove `src/__tests__/integration/train-tracking.test.ts` and `station-arrivals.test.ts`. Replace with a test that renders a component tree against a mocked API.
 
-- [ ] **IMP-48** [Test] Add coverage thresholds and exclude diagnostic tests in vitest config | Effort: **S**
+- [x] **IMP-48** [Test] Add coverage thresholds and exclude diagnostic tests in vitest config | Effort: **S**
   Add `coverage.thresholds` (lines: 70, functions: 70, branches: 60). Exclude `real-data.test.ts` from test runs.
 
-- [ ] **IMP-49** [Test] Fix `QueryWrapper` to use `useState` for stable `QueryClient` | Effort: **S**
+- [x] **IMP-49** [Test] Fix `QueryWrapper` to use `useState` for stable `QueryClient` | Effort: **S**
   Change `createTestQueryClient()` to `const [queryClient] = useState(() => createTestQueryClient())`.
 
 - [ ] **IMP-50** [Test] Write smoke tests for analytics components | Effort: **L**
   At minimum: `DelayDistributionChart`, `RoutePerformanceTable`, `LiveSystemDashboard` verifying loading/empty/error states.
 
-- [ ] **IMP-51** [Test] Add `geolocation-store.test.ts` | Effort: **S**
+- [x] **IMP-51** [Test] Add `geolocation-store.test.ts` | Effort: **S**
   Follow the pattern of other store test files. Test `watchLocation`, `stopWatching`, position updates.
 
-- [ ] **IMP-52** [Test] Add `/api/v1/trains` route test | Effort: **M**
+- [x] **IMP-52** [Test] Add `/api/v1/trains` route test | Effort: **M**
   Model after existing `feed/[groupId]/route.test.ts`. Test aggregation across feed groups, partial cache, error handling.
 
-- [ ] **IMP-53** [Test] Fix Prisma mock to auto-reset defaults and track schema models | Effort: **M**
+- [x] **IMP-53** [Test] Fix Prisma mock to auto-reset defaults and track schema models | Effort: **M**
   After `mockReset()`, restore `findMany` to return `[]` by default. Add CI check that mock covers all schema models.
 
-- [ ] **IMP-54** [Test] Add smoke test for `src/middleware.ts` rate-limiting integration | Effort: **S**
+- [x] **IMP-54** [Test] Add smoke test for `src/middleware.ts` rate-limiting integration | Effort: **S**
   Verify middleware config and that rate limiting can be enabled via the existing infrastructure.
 
-- [ ] **IMP-55** [Test] Separate regression tests from CSV-dump tests in `train-state-machine.test.ts` | Effort: **S**
+- [x] **IMP-55** [Test] Separate regression tests from CSV-dump tests in `train-state-machine.test.ts` | Effort: **S**
   Keep the two genuine regression test cases. Move diagnostic CSV output to a script.
 
 - [ ] **IMP-56** [Test] Create server test infrastructure and add `feed-loop.ts` tests | Effort: **XL**

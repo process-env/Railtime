@@ -154,7 +154,7 @@ interface FadingMarker {
  * Hook to manage train markers with smooth animation
  */
 export function useTrainMarkers(
-  map: maplibregl.Map | null,
+  mapRef: React.RefObject<maplibregl.Map | null>,
   mapLoaded: boolean,
   trainAnimsRef: React.MutableRefObject<Map<string, TrainAnimState>>,
   trainMotionRef: React.MutableRefObject<Map<string, TrainMotionState>>,
@@ -281,6 +281,7 @@ export function useTrainMarkers(
 
   // Update train markers
   useEffect(() => {
+    const map = mapRef.current;
     if (!mapLoaded || !map) return;
 
     // Increment generation to cancel stale async chains from previous renders
@@ -505,7 +506,7 @@ export function useTrainMarkers(
           // Create new motion state with duration and speed
           const motionState = await createMotionState(
             train, map, color, direction, nowMs, setSelectedTrain,
-            durationMatrix, scheduledDuration, speedMultiplier
+            durationMatrix, scheduledDuration, speedMultiplier, refreshInterval
           );
           if (generation !== processingGenRef.current) {
             // Stale — clean up the marker we just created so it doesn't become a phantom
@@ -587,7 +588,7 @@ export function useTrainMarkers(
         scheduleAnimation();
       }
     });
-  }, [mapLoaded, map, trains, selectedRouteIds, lerp, getDistance, refreshInterval, selectedTrainId, setSelectedTrain, trainAnimsRef, trainMotionRef, scheduleAnimation, useAlphaBetaGamma, durationMatrix, alerts, fadeOutAndRemove]);
+  }, [mapLoaded, mapRef, trains, selectedRouteIds, lerp, getDistance, refreshInterval, selectedTrainId, setSelectedTrain, trainAnimsRef, trainMotionRef, scheduleAnimation, useAlphaBetaGamma, durationMatrix, alerts, fadeOutAndRemove]);
 
   // Cleanup fading markers on unmount to prevent memory leaks from pending timeouts
   useEffect(() => {
@@ -662,7 +663,8 @@ async function createMotionState(
   setSelectedTrain: (tripId: string | null) => void,
   durationMatrix: RouteDurationMatrix | null,
   scheduledDuration: number,
-  speedMultiplier: number
+  speedMultiplier: number,
+  refreshInterval: number
 ): Promise<TrainMotionState | null> {
   if (!getRouteTrack || !getStopArclength || !createFilterState) return null;
 
@@ -1137,5 +1139,3 @@ function createPopupHTML(train: TrainPosition, color: string, currentS?: number,
   `;
 }
 
-// Module-level constant for refresh interval fallback
-const refreshInterval = 15000;

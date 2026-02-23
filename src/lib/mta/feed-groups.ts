@@ -7,7 +7,7 @@ export const FEED_GROUPS: FeedGroup[] = [
   {
     id: 'ACE',
     url: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace',
-    routes: ['A', 'C', 'E'],
+    routes: ['A', 'C', 'E', 'FS', 'H'],
   },
   {
     id: 'BDFM',
@@ -42,9 +42,18 @@ export const FEED_GROUPS: FeedGroup[] = [
   {
     id: '1234567',
     url: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
-    routes: ['1', '2', '3', '4', '5', '6', '7', 'S'],
+    routes: ['1', '2', '3', '4', '5', '6', '7', 'S', 'GS'],
   },
 ];
+
+// Pre-built reverse lookup: route (uppercased) -> feed group ID
+// Includes express suffixes (e.g., 6X -> 6 -> 1234567)
+const _routeToGroupMap = new Map<string, string>();
+for (const group of FEED_GROUPS) {
+  for (const route of group.routes) {
+    _routeToGroupMap.set(route.toUpperCase(), group.id);
+  }
+}
 
 export function getGroupUrl(groupId: string): string | null {
   const group = FEED_GROUPS.find(
@@ -58,6 +67,15 @@ export function getFeedGroupForRoute(routeId: string): string | null {
     g.routes.some((r) => r.toLowerCase() === routeId.toLowerCase())
   );
   return group?.id || null;
+}
+
+/**
+ * Map a route ID to its MTA feed group.
+ * Handles express suffixes (6X -> 6) and shuttle aliases (GS, FS, H, SIR).
+ */
+export function routeToFeedGroup(routeId: string): string | null {
+  const upper = routeId.toUpperCase().replace(/X$/, '');
+  return _routeToGroupMap.get(upper) ?? null;
 }
 
 export function listGroups(): string[] {

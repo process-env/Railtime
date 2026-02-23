@@ -9,6 +9,13 @@ interface GeolocationPosition {
   lon: number;
 }
 
+/**
+ * Module-level watch ID. This is internal plumbing for the Geolocation API,
+ * not UI-relevant state, so it lives outside the Zustand store to avoid
+ * unnecessary re-renders.
+ */
+let _watchId: number | null = null;
+
 interface GeolocationState {
   // Position data
   position: GeolocationPosition | null;
@@ -19,9 +26,6 @@ interface GeolocationState {
   status: GeolocationStatus;
   error: string | null;
 
-  // Watch ID for cleanup
-  watchId: number | null;
-
   // Actions
   requestLocation: () => void;
   watchLocation: () => void;
@@ -29,14 +33,13 @@ interface GeolocationState {
   clearError: () => void;
 }
 
-export const useGeolocationStore = create<GeolocationState>()((set, get) => ({
+export const useGeolocationStore = create<GeolocationState>()((set) => ({
   // Initial state
   position: null,
   accuracy: null,
   heading: null,
   status: 'idle',
   error: null,
-  watchId: null,
 
   /**
    * Request a single location update
@@ -107,14 +110,13 @@ export const useGeolocationStore = create<GeolocationState>()((set, get) => ({
     }
 
     // Stop any existing watch
-    const { watchId } = get();
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
+    if (_watchId !== null) {
+      navigator.geolocation.clearWatch(_watchId);
     }
 
     set({ status: 'requesting', error: null });
 
-    const id = navigator.geolocation.watchPosition(
+    _watchId = navigator.geolocation.watchPosition(
       (position) => {
         set({
           position: {
@@ -154,18 +156,16 @@ export const useGeolocationStore = create<GeolocationState>()((set, get) => ({
         maximumAge: 5000, // More frequent updates for watching
       }
     );
-
-    set({ watchId: id });
   },
 
   /**
    * Stop watching location
    */
   stopWatching: () => {
-    const { watchId } = get();
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      set({ watchId: null, status: 'idle' });
+    if (_watchId !== null) {
+      navigator.geolocation.clearWatch(_watchId);
+      _watchId = null;
+      set({ status: 'idle' });
     }
   },
 

@@ -19,7 +19,19 @@ async function fetchRSSNews(): Promise<NewsItem[]> {
 
   for (const feedUrl of NYC_RSS_FEEDS) {
     try {
-      const response = await fetch(feedUrl, { next: { revalidate: 300 } });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(feedUrl, {
+        next: { revalidate: 300 },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        console.warn(`RSS feed returned ${response.status} for ${feedUrl}, skipping`);
+        continue;
+      }
+
       const xml = await response.text();
 
       // Simple XML parsing for RSS items

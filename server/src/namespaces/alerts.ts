@@ -20,6 +20,7 @@
 import type { Server, Namespace, Socket } from "socket.io";
 import type { ServiceAlert } from "../types.js";
 import type { AlertUpdateCallback } from "../ingestion/alert-loop.js";
+import { authMiddleware } from "../lib/auth.js";
 import { createLogger } from "../lib/logger.js";
 
 const log = createLogger('ns:alerts');
@@ -33,6 +34,7 @@ let previousAlerts = new Map<string, ServiceAlert>();
  */
 export function setupAlertsNamespace(io: Server): AlertUpdateCallback {
   alertsNsp = io.of("/alerts");
+  alertsNsp.use(authMiddleware);
 
   alertsNsp.on("connection", (socket: Socket) => {
     log.info({ socketId: socket.id }, 'client connected');
@@ -44,6 +46,10 @@ export function setupAlertsNamespace(io: Server): AlertUpdateCallback {
 
     socket.on("subscribe:route", (routeId: string) => {
       if (typeof routeId !== "string" || !routeId.trim()) return;
+      if (routeId.length > 10) {
+        log.warn({ socketId: socket.id, length: routeId.length }, 'routeId exceeds max length');
+        return;
+      }
       const room = `route:${routeId.toUpperCase()}`;
       socket.join(room);
       log.debug({ socketId: socket.id, room }, 'joined room');
@@ -51,6 +57,7 @@ export function setupAlertsNamespace(io: Server): AlertUpdateCallback {
 
     socket.on("unsubscribe:route", (routeId: string) => {
       if (typeof routeId !== "string" || !routeId.trim()) return;
+      if (routeId.length > 10) return;
       const room = `route:${routeId.toUpperCase()}`;
       socket.leave(room);
       log.debug({ socketId: socket.id, room }, 'left room');

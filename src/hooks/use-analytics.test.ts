@@ -74,17 +74,16 @@ describe('useAnalytics', () => {
     expect(routeB?.trainCount).toBe(1);
   });
 
-  it('generates timeline data', async () => {
+  it('timeline is null (historical data disabled)', async () => {
     const { result } = renderHook(() => useAnalytics(), { wrapper: QueryWrapper });
 
     await waitFor(() => {
-      expect(result.current.data?.timeline).toBeDefined();
+      expect(result.current.data).toBeDefined();
     });
 
-    expect(result.current.data?.timeline).toHaveLength(12);
-    expect(result.current.data?.timeline[0]).toHaveProperty('time');
-    expect(result.current.data?.timeline[0]).toHaveProperty('arrivals');
-    expect(result.current.data?.timeline[0]).toHaveProperty('departures');
+    // Timeline is null because the historical endpoint is disabled for
+    // performance. It will be populated when a lightweight source is available.
+    expect(result.current.data?.timeline).toBeNull();
   });
 
   it('calculates stats', async () => {

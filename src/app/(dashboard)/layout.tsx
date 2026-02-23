@@ -3,6 +3,7 @@ import { AppSidebar } from '@/components/layout/AppSidebar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AlertBanner } from '@/components/alerts';
 import { PrefetchProvider } from '@/components/providers/PrefetchProvider';
+import { AlertsProvider } from '@/components/providers/AlertsProvider';
 import { ConductorProvider } from '@/components/conductor';
 import {
   SidebarInset,
@@ -21,22 +22,24 @@ export default async function DashboardLayout({
 
   return (
     <PrefetchProvider>
-      <SidebarProvider defaultOpen={defaultOpen}>
-        <AppSidebar />
-        <SidebarInset>
-          <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <div className="flex-1 overflow-hidden">
-              <AlertBanner />
-            </div>
-          </header>
-          <main className="flex-1 overflow-x-hidden overflow-y-auto">
-            <ErrorBoundary>{children}</ErrorBoundary>
-          </main>
-        </SidebarInset>
-      </SidebarProvider>
-      <ConductorProvider>{null}</ConductorProvider>
+      <AlertsProvider>
+        <SidebarProvider defaultOpen={defaultOpen}>
+          <AppSidebar />
+          <SidebarInset>
+            <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+              <SidebarTrigger className="-ml-1" />
+              <Separator orientation="vertical" className="mr-2 h-4" />
+              <div className="flex-1 overflow-hidden">
+                <AlertBanner />
+              </div>
+            </header>
+            <main className="flex-1 overflow-x-hidden overflow-y-auto">
+              <ErrorBoundary>{children}</ErrorBoundary>
+            </main>
+          </SidebarInset>
+        </SidebarProvider>
+        <ConductorProvider>{null}</ConductorProvider>
+      </AlertsProvider>
     </PrefetchProvider>
   );
 }

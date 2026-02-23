@@ -187,7 +187,7 @@ function parseAlerts(data: MtaAlertsResponse): ServiceAlert[] {
 
 export type AlertUpdateCallback = (alerts: ServiceAlert[]) => void;
 
-let loopTimer: ReturnType<typeof setInterval> | null = null;
+let loopTimer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
 let previousAlertIds = new Set<string>();
 
@@ -195,8 +195,10 @@ async function fetchAndProcess(
   onUpdate: AlertUpdateCallback,
 ): Promise<void> {
   try {
+    const apiKey = process.env.MTA_API_KEY;
     const resp = await axios.get<MtaAlertsResponse>(ALERTS_URL, {
       timeout: FETCH_TIMEOUT_MS,
+      headers: apiKey ? { "x-api-key": apiKey } : undefined,
     });
 
     const alerts = parseAlerts(resp.data);
@@ -224,8 +226,10 @@ async function fetchAndProcess(
 }
 
 /**
- * Start the alert polling loop. Runs one cycle immediately, then every
- * POLL_INTERVAL_MS (60s).
+ * Start the alert polling loop. Runs one cycle immediately, then waits
+ * POLL_INTERVAL_MS (60s) AFTER each cycle completes before scheduling
+ * the next. This self-scheduling setTimeout pattern prevents overlapping
+ * fetch cycles when a request takes close to the timeout duration.
  */
 export function startAlertLoop(onUpdate: AlertUpdateCallback): void {
   if (running) {
@@ -236,17 +240,25 @@ export function startAlertLoop(onUpdate: AlertUpdateCallback): void {
   running = true;
   log.info({ intervalMs: POLL_INTERVAL_MS }, 'starting alert polling');
 
-  // Run immediately
-  fetchAndProcess(onUpdate).catch((err) =>
-    log.error({ err: err instanceof Error ? err.message : err }, 'initial fetch error'),
-  );
-
-  loopTimer = setInterval(() => {
-    if (!running) return;
-    fetchAndProcess(onUpdate).catch((err) =>
+  async function scheduledCycle() {
+    await fetchAndProcess(onUpdate).catch((err) =>
       log.error({ err: err instanceof Error ? err.message : err }, 'fetch error'),
     );
-  }, POLL_INTERVAL_MS);
+    if (loopTimer !== null) {
+      loopTimer = setTimeout(scheduledCycle, POLL_INTERVAL_MS);
+    }
+  }
+
+  // Run first cycle immediately, then self-schedule
+  fetchAndProcess(onUpdate)
+    .catch((err) =>
+      log.error({ err: err instanceof Error ? err.message : err }, 'initial fetch error'),
+    )
+    .finally(() => {
+      if (running) {
+        loopTimer = setTimeout(scheduledCycle, POLL_INTERVAL_MS);
+      }
+    });
 }
 
 /**
@@ -257,7 +269,7 @@ export function stopAlertLoop(): void {
   running = false;
 
   if (loopTimer) {
-    clearInterval(loopTimer);
+    clearTimeout(loopTimer);
     loopTimer = null;
   }
 

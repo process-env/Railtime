@@ -1,4 +1,3 @@
-import axios from 'axios';
 import type { FeedEntity, StopUpdate } from '@/types/mta';
 import { getGroupUrl } from './feed-groups';
 import { loadStops } from './load-stops';
@@ -36,14 +35,18 @@ export async function fetchFeed(
 
   // Fetch from MTA API
   const apiKey = overrideApiKey || process.env.MTA_API_KEY;
-  const resp = await axios.get(url, {
-    responseType: 'arraybuffer',
+  const resp = await fetch(url, {
+    signal: AbortSignal.timeout(15000),
     headers: apiKey ? { 'x-api-key': apiKey } : undefined,
-    timeout: 15000,
   });
 
+  if (!resp.ok) {
+    throw new Error(`MTA feed API error: ${resp.status} ${resp.statusText}`);
+  }
+
   // Decode protobuf
-  const message = await parseFeedBuffer(resp.data);
+  const buffer = await resp.arrayBuffer();
+  const message = await parseFeedBuffer(buffer);
   const messageObj = message.toJSON() as {
     header?: { timestamp?: number };
     entity?: Array<{

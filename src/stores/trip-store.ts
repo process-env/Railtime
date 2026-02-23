@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import type { TripPlan } from '@/lib/trip-planner/types';
 
 interface TripState {
@@ -77,24 +78,37 @@ export const useTripStore = create<TripState>()((set) => ({
       selectedTripIndex: 0,
       isPlanning: false,
       error: null,
+      isPanelOpen: false,
     }),
 }));
 
 /**
- * Get the currently selected trip plan
+ * Get the currently selected trip plan.
+ * Uses useShallow to subscribe to { trips, selectedTripIndex } as a single
+ * shallow-compared selector instead of two independent subscriptions.
  */
 export function useSelectedTrip(): TripPlan | null {
-  const trips = useTripStore((state) => state.trips);
-  const selectedTripIndex = useTripStore((state) => state.selectedTripIndex);
+  const { trips, selectedTripIndex } = useTripStore(
+    useShallow((state) => ({
+      trips: state.trips,
+      selectedTripIndex: state.selectedTripIndex,
+    }))
+  );
   return trips[selectedTripIndex] ?? null;
 }
 
 /**
- * Check if we have valid origin and destination for planning
+ * Check if we have valid origin and destination for planning.
+ * Uses useShallow to subscribe to the three related fields in a single
+ * selector instead of three independent subscriptions.
  */
 export function useCanPlanTrip(): boolean {
-  const originStationId = useTripStore((state) => state.originStationId);
-  const destinationStationId = useTripStore((state) => state.destinationStationId);
-  const isPlanning = useTripStore((state) => state.isPlanning);
+  const { originStationId, destinationStationId, isPlanning } = useTripStore(
+    useShallow((state) => ({
+      originStationId: state.originStationId,
+      destinationStationId: state.destinationStationId,
+      isPlanning: state.isPlanning,
+    }))
+  );
   return Boolean(originStationId && destinationStationId && !isPlanning);
 }

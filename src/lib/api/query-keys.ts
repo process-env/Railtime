@@ -10,6 +10,8 @@ export const queryKeys = {
   alerts: (routeIds?: string[]) => ['alerts', routeIds] as const,
   arrivals: (groupId: string, stopId: string) =>
     ['arrivals', groupId, stopId] as const,
+  multiArrivals: (stationId: string) =>
+    ['multi-arrivals', stationId] as const,
 
   // Analytics
   feedStatus: (groupId: string) => ['feed-status', groupId] as const,
@@ -18,6 +20,9 @@ export const queryKeys = {
   analytics: ['analytics'] as const,
   transitAnalysis: ['transit-analysis'] as const,
   anomalyFeed: ['anomaly-feed'] as const,
+
+  // Trip planning (mutation key)
+  tripPlan: ['trip-plan'] as const,
 
   // Schedule (GTFS static - very long cache)
   schedule: ['schedule'] as const,

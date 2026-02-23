@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { mtaApi } from '@/lib/api';
 import { queryKeys } from '@/lib/api/query-keys';
 
 export interface AnomalyEvent {
@@ -21,13 +22,7 @@ export function useAnomalyFeed() {
 
   return useQuery<AnomalyFeedResponse>({
     queryKey: queryKeys.anomalyFeed,
-    queryFn: async (): Promise<AnomalyFeedResponse> => {
-      if (!wsUrl) throw new Error('WebSocket server URL not configured');
-
-      const res = await fetch(`${wsUrl}/api/anomaly-feed?limit=200`);
-      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
-      return res.json();
-    },
+    queryFn: () => mtaApi.getAnomalyFeed(),
     enabled: !!wsUrl,
     refetchInterval: 30_000,   // Poll every 30s
     staleTime: 15_000,         // 15s stale window

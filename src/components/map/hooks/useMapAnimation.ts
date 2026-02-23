@@ -488,8 +488,8 @@ export function useMapAnimation(
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
-        isAnimatingRef.current = false;
       }
+      isAnimatingRef.current = false;
     };
   }, [mapLoaded, scheduleAnimation]);
 

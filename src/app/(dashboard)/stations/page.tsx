@@ -5,14 +5,15 @@ import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StationCard } from '@/components/stations';
-import { useStaticData, useTrainPositions, useAlerts } from '@/hooks';
+import { useStaticData, useTrainPositions } from '@/hooks';
+import { useAlertsData } from '@/components/providers/AlertsProvider';
 import { isParentStation } from '@/lib/mta/station-utils';
 
 export default function StationsPage() {
   const [search, setSearch] = useState('');
   const { stations, isLoading } = useStaticData();
   const { trains } = useTrainPositions({ refreshInterval: 15000 });
-  const { alerts } = useAlerts();
+  const { alerts } = useAlertsData();
 
   // Build lookup maps for derived data
   const stationData = useMemo(() => {

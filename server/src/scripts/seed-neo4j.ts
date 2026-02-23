@@ -7,8 +7,8 @@
  * src/lib/trip-planner/graph-builder.ts.
  *
  * Usage:
- *   npx tsx src/scripts/seed-neo4j.ts          # seed (additive)
- *   npx tsx src/scripts/seed-neo4j.ts --clean   # wipe and re-seed
+ *   npx tsx src/scripts/seed-neo4j.ts          # seed (idempotent — safe to re-run)
+ *   npx tsx src/scripts/seed-neo4j.ts --clean   # wipe and re-seed from scratch
  */
 
 import { promises as fs } from 'node:fs';
@@ -247,13 +247,11 @@ async function seedStations(session: Session, stops: StopRow[]): Promise<{ stati
     }));
     await session.run(`
       UNWIND $rows AS s
-      CREATE (n:Station {
-        id: s.id,
-        name: s.name,
-        lat: s.lat,
-        lon: s.lon,
-        location: point({latitude: s.lat, longitude: s.lon})
-      })
+      MERGE (n:Station {id: s.id})
+      SET n.name = s.name,
+          n.lat = s.lat,
+          n.lon = s.lon,
+          n.location = point({latitude: s.lat, longitude: s.lon})
     `, { rows: params });
   }
 
@@ -269,13 +267,11 @@ async function seedStations(session: Session, stops: StopRow[]): Promise<{ stati
     }));
     await session.run(`
       UNWIND $rows AS s
-      CREATE (n:Stop {
-        id: s.id,
-        name: s.name,
-        lat: s.lat,
-        lon: s.lon,
-        parentId: s.parentId
-      })
+      MERGE (n:Stop {id: s.id})
+      SET n.name = s.name,
+          n.lat = s.lat,
+          n.lon = s.lon,
+          n.parentId = s.parentId
     `, { rows: params });
   }
 
@@ -291,7 +287,7 @@ async function seedStations(session: Session, stops: StopRow[]): Promise<{ stati
       UNWIND $rows AS r
       MATCH (stop:Stop {id: r.stopId})
       MATCH (station:Station {id: r.stationId})
-      CREATE (stop)-[:AT_STATION]->(station)
+      MERGE (stop)-[:AT_STATION]->(station)
     `, { rows: params });
   }
 
@@ -314,13 +310,11 @@ async function seedRoutes(session: Session, segmentsData: RouteSegmentsData): Pr
   for (const batch of chunks(routeParams, BATCH_SIZE)) {
     await session.run(`
       UNWIND $rows AS r
-      CREATE (n:Route {
-        id: r.id,
-        shortName: r.shortName,
-        color: r.color,
-        textColor: r.textColor,
-        feedGroupId: r.feedGroupId
-      })
+      MERGE (n:Route {id: r.id})
+      SET n.shortName = r.shortName,
+          n.color = r.color,
+          n.textColor = r.textColor,
+          n.feedGroupId = r.feedGroupId
     `, { rows: batch });
   }
 
@@ -333,7 +327,8 @@ async function seedFeedGroups(session: Session): Promise<number> {
 
   await session.run(`
     UNWIND $rows AS fg
-    CREATE (n:FeedGroup {id: fg.id, url: fg.url})
+    MERGE (n:FeedGroup {id: fg.id})
+    SET n.url = fg.url
   `, { rows: params });
 
   // -- IN_FEED_GROUP relationships ------------------------------------------
@@ -349,7 +344,7 @@ async function seedFeedGroups(session: Session): Promise<number> {
     UNWIND $rows AS r
     MATCH (route:Route {id: r.routeId})
     MATCH (fg:FeedGroup {id: r.feedGroupId})
-    CREATE (route)-[:IN_FEED_GROUP]->(fg)
+    MERGE (route)-[:IN_FEED_GROUP]->(fg)
   `, { rows: routeFeedPairs });
 
   return FEED_GROUPS.length;
@@ -369,12 +364,10 @@ async function seedComplexes(session: Session, transferData: TransferGraphData):
   for (const batch of chunks(complexParams, BATCH_SIZE)) {
     await session.run(`
       UNWIND $rows AS c
-      CREATE (n:Complex {
-        id: c.id,
-        name: c.name,
-        walkTimeSeconds: c.walkTimeSeconds,
-        type: c.type
-      })
+      MERGE (n:Complex {id: c.id})
+      SET n.name = c.name,
+          n.walkTimeSeconds = c.walkTimeSeconds,
+          n.type = c.type
     `, { rows: batch });
   }
 
@@ -392,7 +385,7 @@ async function seedComplexes(session: Session, transferData: TransferGraphData):
       UNWIND $rows AS r
       MATCH (station:Station {id: r.stationId})
       MATCH (complex:Complex {id: r.complexId})
-      CREATE (station)-[:IN_COMPLEX]->(complex)
+      MERGE (station)-[:IN_COMPLEX]->(complex)
     `, { rows: batch });
   }
 
@@ -436,11 +429,9 @@ async function seedStationRouteNodes(
   for (const batch of chunks(pairs, BATCH_SIZE)) {
     await session.run(`
       UNWIND $rows AS sr
-      CREATE (n:StationRoute {
-        key: sr.key,
-        stationId: sr.stationId,
-        routeId: sr.routeId
-      })
+      MERGE (n:StationRoute {key: sr.key})
+      SET n.stationId = sr.stationId,
+          n.routeId = sr.routeId
     `, { rows: batch });
   }
 
@@ -503,11 +494,9 @@ async function seedRideEdges(session: Session, segmentsData: RouteSegmentsData):
       UNWIND $rows AS e
       MATCH (from:StationRoute {key: e.fromKey})
       MATCH (to:StationRoute {key: e.toKey})
-      CREATE (from)-[:CONNECTS_TO {
-        duration: e.duration,
-        type: 'ride',
-        routeId: e.routeId
-      }]->(to)
+      MERGE (from)-[r:CONNECTS_TO {type: 'ride'}]->(to)
+      SET r.duration = e.duration,
+          r.routeId = e.routeId
     `, { rows: batch });
     edgeCount += batch.length;
   }
@@ -575,12 +564,10 @@ async function seedTransferEdges(
       UNWIND $rows AS e
       MATCH (from:StationRoute {key: e.fromKey})
       MATCH (to:StationRoute {key: e.toKey})
-      CREATE (from)-[:CONNECTS_TO {
-        duration: e.duration,
-        type: 'transfer',
-        complexId: e.complexId,
-        walkTime: e.walkTime
-      }]->(to)
+      MERGE (from)-[r:CONNECTS_TO {type: 'transfer'}]->(to)
+      SET r.duration = e.duration,
+          r.complexId = e.complexId,
+          r.walkTime = e.walkTime
     `, { rows: batch });
   }
 
@@ -640,12 +627,10 @@ async function seedTransferEdges(
       UNWIND $rows AS e
       MATCH (from:StationRoute {key: e.fromKey})
       MATCH (to:StationRoute {key: e.toKey})
-      CREATE (from)-[:CONNECTS_TO {
-        duration: e.duration,
-        type: 'transfer',
-        complexId: e.complexId,
-        walkTime: e.walkTime
-      }]->(to)
+      MERGE (from)-[r:CONNECTS_TO {type: 'transfer'}]->(to)
+      SET r.duration = e.duration,
+          r.complexId = e.complexId,
+          r.walkTime = e.walkTime
     `, { rows: batch });
   }
 

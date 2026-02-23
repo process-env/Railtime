@@ -7,6 +7,10 @@ import { create } from 'zustand';
  *
  * Manages UI-only state for alerts (dismissed IDs).
  * Server state (alerts data) is managed by React Query in use-alerts.ts.
+ *
+ * NOTE: `dismissedIds` is a Set<string> for O(1) lookups. This store does NOT
+ * use Zustand persist middleware. If persistence is ever added, Set must be
+ * converted to string[] for JSON serialization (Set serializes to `{}`).
  */
 interface AlertsUIState {
   dismissedIds: Set<string>;

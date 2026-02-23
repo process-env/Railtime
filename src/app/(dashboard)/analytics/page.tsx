@@ -17,12 +17,13 @@ import {
   LiveSystemDashboard,
 } from '@/components/analytics';
 import { ErrorBoundary, ChartErrorFallback } from '@/components/ErrorBoundary';
-import { useAnalytics, useAlerts } from '@/hooks';
+import { useAnalytics } from '@/hooks';
+import { useAlertsData } from '@/components/providers/AlertsProvider';
 import { useDailyRollups } from '@/hooks/use-analytics-data';
 
 export default function AnalyticsPage() {
   const { data, loading } = useAnalytics();
-  const { alerts } = useAlerts();
+  const { alerts } = useAlertsData();
   const alertCount = alerts?.length ?? 0;
 
   // Shared 30-day rollup query — all chart components filter from this superset

@@ -4,6 +4,104 @@ _Last Updated: 2026-02-23_
 
 ---
 
+## Session: Tier 2 Important Fixes (2026-02-23)
+
+**Goal:** Complete all actionable Tier 2 Important items from the codebase health review.
+
+### Results
+
+**51 of 56 Tier 2 items completed** across 2 waves. 4 L/XL-effort items deferred.
+
+- **Wave 1:** 38 S-effort items (6 parallel agents)
+- **Wave 2:** 13 M-effort items (6 parallel agents)
+
+### Key Changes by Domain
+
+#### API & Data Pipeline (IMP-01 through IMP-10)
+- Migrated `axios` to native `fetch` in `fetch-feed.ts` and `fetch-alerts.ts` (removes ~50 KB dep)
+- Partial Redis cache for trains -- fetch only missing feed groups, merge with cached
+- Extended `FEED_GROUPS` with aliases (`SIR`, `GS`, `FS`, `H`); removed duplicate `routeToFeedGroup`
+- Wired validation schemas to arrivals routes
+- Sanitized OpenAI prompt interpolation in `conductor/announce` (structured JSON block)
+- Migrated `equipment/route.ts` in-process cache to Redis
+- Renamed `cron/cleanup` to `cron/ttl-health-check`
+- Fixed serial `await` in `calculateDelaysBatch` -- hoist `loadScheduleData()` above loop
+- Added `AbortSignal` timeout + `response.ok` check to RSS fetch in `conductor/news`
+
+#### Map Components & Hooks (IMP-11 through IMP-16)
+- Deleted orphaned `refreshInterval` constant; added parameter to `createMotionState`
+- Reset `isAnimatingRef.current = false` in `useMapAnimation.ts` cleanup
+- Added mount guard to `useTripRouteLayer.ts` async source update
+- Fixed stale `selectedStationId` closure in `useStationMarkers.ts` `handleClick`
+- Refactored map ref passing -- all hooks now accept `RefObject<Map>` and read `.current` inside effects
+- IMP-16 already done (cross-ref CRIT-11)
+
+#### Trip Planner (IMP-18, IMP-20 through IMP-24)
+- Renamed `findAlternativePaths` to `findRouteVariants`; removed misleading Yen's comment
+- Fixed `transferType` heuristic in Neo4j path converter (use `duration` not `walkTime`)
+- Added bidirectional duplicate check for transfer edges in graph builder
+- Added `isPanelOpen: false` to `trip-store.ts` `reset()` action
+- Added double-transfer tests using `createDoubleTransferPath` fixture
+- Migrated `use-trip-planner.ts` from direct `fetch` to TanStack Query `useMutation`
+
+#### Frontend UI & State (IMP-25 through IMP-38)
+- Created `AlertsProvider` context -- single `useAlerts()` call shared across 5 consumers
+- Replaced `StationSearch` dropdown with shadcn `Command`/`Combobox` (proper ARIA semantics)
+- Narrowed selectors in `useOperationalStats` to prevent cascading re-renders
+- Moved raw `fetch` calls in `use-transit-analysis`, `use-anomaly-feed`, `use-trip-planner` to `mtaApi`
+- Added guard to `useBackgroundSync` to skip trains if already polling
+- Fixed AlertBanner ticker to resume from current position on un-pause
+- Added error reporting to `ErrorBoundary.componentDidCatch`
+- Removed fabricated timeline data from `use-analytics.ts`
+- Added `multiArrivals` to centralized `queryKeys` registry
+- Fixed `AnomalyFeed` event list key (removed array index)
+- Added JSDoc documenting non-persistence of `Set<string>` in alerts store
+- Consolidated `useCanPlanTrip` and `useSelectedTrip` into single-selector patterns with `useShallow`
+- Removed `watchId` from geolocation Zustand state; moved to module-level variable
+- IMP-32 already done (date range memoization)
+
+#### WebSocket Server (IMP-39 through IMP-46)
+- Added Socket.IO auth middleware with token validation
+- Added input length bounds on Socket.IO subscription payloads
+- Added MTA API key header to alert loop
+- Added `unhandledRejection` and `uncaughtException` crash handlers
+- Added `ETIMEDOUT` to timeout classification in `feed-loop.ts`
+- Rewrote `toMin` with clear `seconds / 60` formula
+- Switched alert loop from `setInterval` to self-scheduling `setTimeout`
+- Changed `seed-neo4j.ts` from `CREATE` to `MERGE ... SET` for idempotent re-runs
+
+#### Test Infrastructure (IMP-47 through IMP-55)
+- Added coverage thresholds (lines: 70, functions: 70, branches: 60) and excluded diagnostic tests
+- Fixed `QueryWrapper` to use `useState` for stable `QueryClient`
+- Added `geolocation-store.test.ts`
+- Added `/api/v1/trains` route smoke test
+- Added middleware rate-limiting smoke test
+- Fixed Prisma mock to auto-reset defaults
+- Deleted fake integration tests; replaced with genuine mocked-API tests
+- Separated regression tests from CSV-dump diagnostics in `train-state-machine.test.ts` (CSV tests now `test.skip`)
+
+### Deferred (L/XL effort)
+- **IMP-17** [Map] Separate animation state from API data in `TrainMotionState` — L
+- **IMP-19** [Trip/Server] Replace Neo4j `shortestPath` with weighted shortest-path — L
+- **IMP-50** [Test] Write smoke tests for analytics components — L
+- **IMP-56** [Test] Create server test infrastructure and add `feed-loop.ts` tests — XL
+
+### Still Deferred from Tier 1
+- **CRIT-18** [Test] Replace CSV-dump tests with deterministic unit tests — L
+- **CRIT-19** [Test] Add Socket.IO path coverage for dual-mode hooks — L
+
+### Quality Gates -- ALL PASSED
+- TypeScript: zero errors (app + server)
+- Tests: 709 passing, 3 skipped
+- No API contract changes
+
+### What's Next
+- Commit, push, deploy (Vercel + EC2)
+- Begin Tier 3 minor items or tackle L/XL deferred items
+- Task list: `dev/review/codebase-health/codebase-health-tasks.md`
+
+---
+
 ## Session: Codebase Health Review + Tier 1 Critical Remediation (2026-02-23)
 
 **Goal:** Full-codebase health review across all 6 domains, followed by remediation of all 19 actionable Critical-tier findings.

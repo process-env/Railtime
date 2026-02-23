@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getArrivalsForStop } from '@/lib/mta';
-import { internalError, rateLimited } from '@/lib/api/errors';
+import { internalError, badRequest, rateLimited } from '@/lib/api/errors';
 import {
   checkRateLimit,
   getClientId,
   createRateLimitKey,
   RATE_LIMITS,
 } from '@/lib/api/rate-limit';
+import { stationIdSchema, validate } from '@/lib/validation/schemas';
 
 /**
  * GET /api/v1/arrivals/station/{stationId}
@@ -28,7 +29,15 @@ export async function GET(
   }
 
   try {
-    const { stationId } = await params;
+    const { stationId: rawStationId } = await params;
+
+    // Validate stationId path param
+    const stationResult = validate(stationIdSchema, rawStationId);
+    if (!stationResult.success) {
+      return badRequest(`Invalid stationId: ${stationResult.error}`);
+    }
+    const stationId = stationResult.data;
+
     const { searchParams } = new URL(request.url);
     const noCache = searchParams.get('nocache') === 'true';
 

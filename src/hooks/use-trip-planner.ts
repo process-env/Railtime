@@ -1,8 +1,11 @@
 'use client';
 
 import { useCallback } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { useTripStore, useSelectedTrip, useCanPlanTrip } from '@/stores/trip-store';
-import type { TripPlan, TripPlanResponse } from '@/lib/trip-planner/types';
+import { mtaApi } from '@/lib/api';
+import { queryKeys } from '@/lib/api/query-keys';
+import type { TripPlan } from '@/lib/trip-planner/types';
 
 interface UseTripPlannerOptions {
   alternatives?: number;
@@ -19,7 +22,7 @@ interface UseTripPlannerReturn {
   swapStations: () => void;
 
   // Trip planning
-  planTrip: (options?: UseTripPlannerOptions) => Promise<void>;
+  planTrip: (options?: UseTripPlannerOptions) => void;
   canPlan: boolean;
   isPlanning: boolean;
 
@@ -38,6 +41,9 @@ interface UseTripPlannerReturn {
 /**
  * Hook for trip planning functionality
  *
+ * Uses TanStack Query's useMutation for the trip planning API call,
+ * with Zustand store for state management.
+ *
  * @example
  * ```tsx
  * const { setOrigin, setDestination, planTrip, trips, selectedTrip } = useTripPlanner();
@@ -47,7 +53,7 @@ interface UseTripPlannerReturn {
  * setDestination('635'); // Union Square
  *
  * // Plan trip
- * await planTrip();
+ * planTrip();
  *
  * // Show results
  * console.log(trips); // Array of trip options
@@ -76,51 +82,42 @@ export function useTripPlanner(): UseTripPlannerReturn {
   const selectedTrip = useSelectedTrip();
   const canPlan = useCanPlanTrip();
 
+  const mutation = useMutation({
+    mutationKey: queryKeys.tripPlan,
+    mutationFn: mtaApi.planTrip,
+    onMutate: () => {
+      setIsPlanning(true);
+      setError(null);
+    },
+    onSuccess: (data) => {
+      setTrips(data.trips);
+    },
+    onError: (err: Error) => {
+      const message = err instanceof Error ? err.message : 'Failed to plan trip';
+      setError(message);
+      setTrips([]);
+    },
+    onSettled: () => {
+      setIsPlanning(false);
+    },
+  });
+
   const planTrip = useCallback(
-    async (options?: UseTripPlannerOptions) => {
+    (options?: UseTripPlannerOptions) => {
       if (!originStationId || !destinationStationId) {
         setError('Please select both origin and destination stations');
         return;
       }
 
-      setIsPlanning(true);
-      setError(null);
-
-      try {
-        const params = new URLSearchParams({
-          origin: originStationId,
-          destination: destinationStationId,
-          alternatives: String(options?.alternatives ?? 3),
-        });
-
-        if (options?.maxTransfers !== undefined) {
-          params.set('maxTransfers', String(options.maxTransfers));
-        }
-
-        if (options?.avoidRoutes && options.avoidRoutes.length > 0) {
-          params.set('avoidRoutes', options.avoidRoutes.join(','));
-        }
-
-        const response = await fetch(`/api/v1/trip?${params}`);
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(
-            errorData.error?.message || `Failed to plan trip (${response.status})`
-          );
-        }
-
-        const data: TripPlanResponse = await response.json();
-        setTrips(data.trips);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to plan trip';
-        setError(message);
-        setTrips([]);
-      } finally {
-        setIsPlanning(false);
-      }
+      mutation.mutate({
+        origin: originStationId,
+        destination: destinationStationId,
+        alternatives: options?.alternatives ?? 3,
+        maxTransfers: options?.maxTransfers,
+        avoidRoutes: options?.avoidRoutes,
+      });
     },
-    [originStationId, destinationStationId, setIsPlanning, setError, setTrips]
+    [originStationId, destinationStationId, mutation, setError]
   );
 
   return {

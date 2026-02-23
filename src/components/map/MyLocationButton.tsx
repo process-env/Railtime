@@ -12,14 +12,14 @@ import { useGeolocationStore, useGeolocationStatus, useUserPosition } from '@/st
 import type maplibregl from 'maplibre-gl';
 
 interface MyLocationButtonProps {
-  map: maplibregl.Map | null;
+  mapRef: React.RefObject<maplibregl.Map | null>;
   mapLoaded: boolean;
 }
 
 /**
  * Button to request user location and center map on it
  */
-export function MyLocationButton({ map, mapLoaded }: MyLocationButtonProps) {
+export function MyLocationButton({ mapRef, mapLoaded }: MyLocationButtonProps) {
   const status = useGeolocationStatus();
   const position = useUserPosition();
   const { watchLocation, error, clearError } = useGeolocationStore();
@@ -31,7 +31,7 @@ export function MyLocationButton({ map, mapLoaded }: MyLocationButtonProps) {
 
     // If we already have a position, just fly to it
     if (position && status === 'active') {
-      map?.flyTo({
+      mapRef.current?.flyTo({
         center: [position.lon, position.lat],
         zoom: 15,
         duration: 1000,
@@ -41,10 +41,11 @@ export function MyLocationButton({ map, mapLoaded }: MyLocationButtonProps) {
 
     // Otherwise, request location and start watching
     watchLocation();
-  }, [position, status, map, watchLocation, clearError]);
+  }, [position, status, mapRef, watchLocation, clearError]);
 
   // Fly to position when it first becomes available
   useEffect(() => {
+    const map = mapRef.current;
     if (position && status === 'active' && map && mapLoaded) {
       map.flyTo({
         center: [position.lon, position.lat],
@@ -52,7 +53,7 @@ export function MyLocationButton({ map, mapLoaded }: MyLocationButtonProps) {
         duration: 1000,
       });
     }
-  }, [position, status, map, mapLoaded]);
+  }, [position, status, mapRef, mapLoaded]);
 
   // Determine button state
   const isLoading = status === 'requesting';

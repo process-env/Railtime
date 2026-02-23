@@ -46,9 +46,10 @@ export interface AnalysisResult {
   model: string;
 }
 
+/** Convert seconds to minutes, rounded to 1 decimal place. */
 function toMin(seconds: number | null | undefined): number | null {
   if (seconds == null) return null;
-  return Math.round(seconds / 6) / 10; // 1 decimal place
+  return Math.round((seconds / 60) * 10) / 10;
 }
 
 function buildPrompt(input: AnalysisInput): string {

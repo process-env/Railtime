@@ -35,7 +35,8 @@ import {
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { usePrefetchAnalytics, usePrefetchMap, useAlerts } from '@/hooks';
+import { usePrefetchAnalytics, usePrefetchMap } from '@/hooks';
+import { useAlertsData } from '@/components/providers/AlertsProvider';
 import { RouteFilter } from './RouteFilter';
 import { SubwayMapModal } from './SubwayMapModal';
 import { TripPlannerPanel } from '@/components/trip-planner';
@@ -52,7 +53,7 @@ export function AppSidebar() {
   const pathname = usePathname();
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === 'collapsed';
-  const { alerts } = useAlerts();
+  const { alerts } = useAlertsData();
   const alertCount = alerts?.length ?? 0;
   const prefetchAnalytics = usePrefetchAnalytics();
   const prefetchMap = usePrefetchMap();

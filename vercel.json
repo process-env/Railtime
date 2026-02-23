@@ -5,7 +5,7 @@
       "schedule": "0 0 * * *"
     },
     {
-      "path": "/api/cron/cleanup",
+      "path": "/api/cron/ttl-health-check",
       "schedule": "0 3 * * *"
     }
   ]

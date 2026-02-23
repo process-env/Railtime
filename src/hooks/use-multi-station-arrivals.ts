@@ -1,6 +1,7 @@
 'use client';
 
 import { useQueries } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/api/query-keys';
 import type { ArrivalItem } from '@/types/mta';
 
 interface StationArrivals {
@@ -42,7 +43,7 @@ export function useMultiStationArrivals(
 
   const queries = useQueries({
     queries: stations.map((station) => ({
-      queryKey: ['multi-arrivals', station.id],
+      queryKey: queryKeys.multiArrivals(station.id),
       queryFn: async (): Promise<{ arrivals: ArrivalItem[] }> => {
         const res = await fetch(`/api/v1/arrivals/station/${station.id}`);
         if (!res.ok) throw new Error('Failed to fetch arrivals');

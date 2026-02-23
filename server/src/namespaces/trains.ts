@@ -22,6 +22,7 @@ import type { Server, Namespace, Socket } from "socket.io";
 import type { TrainPosition } from "../types.js";
 import { FEED_GROUPS, type FeedUpdateCallback } from "../ingestion/feed-loop.js";
 import { getCachedPositions } from "../lib/cache.js";
+import { authMiddleware } from "../lib/auth.js";
 import { createLogger } from "../lib/logger.js";
 
 const log = createLogger('ns:trains');
@@ -34,6 +35,7 @@ let trainsNsp: Namespace | null = null;
  */
 export function setupTrainsNamespace(io: Server): FeedUpdateCallback {
   trainsNsp = io.of("/trains");
+  trainsNsp.use(authMiddleware);
 
   trainsNsp.on("connection", (socket: Socket) => {
     log.info({ socketId: socket.id }, 'client connected');
@@ -71,6 +73,10 @@ export function setupTrainsNamespace(io: Server): FeedUpdateCallback {
     // --- Subscribe to a specific route ---
     socket.on("subscribe:route", (routeId: string) => {
       if (typeof routeId !== "string" || !routeId.trim()) return;
+      if (routeId.length > 10) {
+        log.warn({ socketId: socket.id, length: routeId.length }, 'routeId exceeds max length');
+        return;
+      }
       const room = `route:${routeId.toUpperCase()}`;
       socket.join(room);
       log.debug({ socketId: socket.id, room }, 'joined room');
@@ -79,6 +85,7 @@ export function setupTrainsNamespace(io: Server): FeedUpdateCallback {
     // --- Unsubscribe from a specific route ---
     socket.on("unsubscribe:route", (routeId: string) => {
       if (typeof routeId !== "string" || !routeId.trim()) return;
+      if (routeId.length > 10) return;
       const room = `route:${routeId.toUpperCase()}`;
       socket.leave(room);
       log.debug({ socketId: socket.id, room }, 'left room');

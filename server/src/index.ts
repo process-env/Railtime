@@ -163,6 +163,16 @@ async function shutdown(signal: string) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
+process.on("unhandledRejection", (reason) => {
+  log.fatal({ err: reason instanceof Error ? reason.message : String(reason) }, 'unhandled rejection — exiting');
+  process.exit(1);
+});
+
+process.on("uncaughtException", (err) => {
+  log.fatal({ err: err.message, stack: err.stack }, 'uncaught exception — exiting');
+  process.exit(1);
+});
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------

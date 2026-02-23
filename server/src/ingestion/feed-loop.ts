@@ -488,7 +488,8 @@ async function fetchAndProcessFeed(
     const latencyMs = Date.now() - start;
     const message = err instanceof Error ? err.message : String(err);
     const isTimeout =
-      axios.isAxiosError(err) && err.code === "ECONNABORTED";
+      axios.isAxiosError(err) &&
+      (err.code === "ECONNABORTED" || err.code === "ETIMEDOUT");
 
     log.error({ feedGroupId, err: message }, 'feed fetch error');
 
