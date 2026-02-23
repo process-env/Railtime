@@ -409,7 +409,8 @@ export class MlLabStack extends cdk.Stack {
                 [
                   '#!/bin/bash',
                   'set -e',
-                  'pip install pyarrow prophet scikit-learn xgboost matplotlib seaborn plotly awswrangler',
+                  '# Run pip install in background — lifecycle config has 5-min timeout',
+                  'nohup pip install pyarrow prophet scikit-learn xgboost matplotlib seaborn plotly awswrangler > /home/ec2-user/install.log 2>&1 &',
                 ].join('\n'),
               ),
             },
