@@ -8,6 +8,7 @@ export interface AnomalyEvent {
   timestamp: number;    // epoch ms
   description?: string;
   delaySeconds?: number;
+  stopId?: string;      // GTFS stop ID where anomaly detected
 }
 
 export interface AnomalyFeedResponse {
@@ -15,27 +16,15 @@ export interface AnomalyFeedResponse {
   count: number;
 }
 
-interface UseAnomalyFeedOptions {
-  routeId?: string;
-  type?: 'BUNCH' | 'GAP' | 'DELAY';
-  limit?: number;
-}
-
-export function useAnomalyFeed(options: UseAnomalyFeedOptions = {}) {
+export function useAnomalyFeed() {
   const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
-  const { routeId, type, limit = 50 } = options;
 
   return useQuery<AnomalyFeedResponse>({
-    queryKey: [...queryKeys.anomalyFeed, routeId ?? 'all', type ?? 'all', limit],
+    queryKey: queryKeys.anomalyFeed,
     queryFn: async (): Promise<AnomalyFeedResponse> => {
       if (!wsUrl) throw new Error('WebSocket server URL not configured');
 
-      const params = new URLSearchParams();
-      params.set('limit', String(limit));
-      if (routeId) params.set('routeId', routeId);
-      if (type) params.set('type', type);
-
-      const res = await fetch(`${wsUrl}/api/anomaly-feed?${params}`);
+      const res = await fetch(`${wsUrl}/api/anomaly-feed?limit=200`);
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       return res.json();
     },

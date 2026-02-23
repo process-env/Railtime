@@ -41,6 +41,7 @@ export interface EventRecord {
   tripId?: string;
   stationId?: string;
   stationName?: string;
+  stopId?: string;
   delaySeconds?: number;
   alertId?: string;
   severity?: string;

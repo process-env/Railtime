@@ -47,24 +47,34 @@ export function AnomalyFeed() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [routeFilter, setRouteFilter] = useState<string>('all');
 
-  const { data, isLoading, isRefetching } = useAnomalyFeed({
-    type: typeFilter !== 'all' ? typeFilter as 'BUNCH' | 'GAP' | 'DELAY' : undefined,
-    routeId: routeFilter !== 'all' ? routeFilter : undefined,
-    limit: 100,
-  });
+  const { data, isLoading, isRefetching } = useAnomalyFeed();
 
-  const events = data?.events ?? [];
+  const allEvents = data?.events ?? [];
 
-  // Extract unique route IDs from current events for filter dropdown
+  // Compute available routes from ALL events (not filtered)
   const availableRoutes = useMemo(() => {
-    const items = data?.events ?? [];
     const routes = new Set<string>();
-    for (const e of items) {
+    for (const e of allEvents) {
       const { routeId } = parseEvent(e);
       routes.add(routeId);
     }
     return Array.from(routes).sort();
-  }, [data]);
+  }, [allEvents]);
+
+  // Apply filters client-side
+  const events = useMemo(() => {
+    let filtered = allEvents;
+    if (typeFilter !== 'all') {
+      filtered = filtered.filter(e => e.pk.startsWith(`${typeFilter}#`));
+    }
+    if (routeFilter !== 'all') {
+      filtered = filtered.filter(e => {
+        const parts = e.pk.split('#');
+        return parts[1] === routeFilter;
+      });
+    }
+    return filtered;
+  }, [allEvents, typeFilter, routeFilter]);
 
   return (
     <Card className="flex flex-col">
@@ -118,7 +128,7 @@ export function AnomalyFeed() {
             <p className="text-xs text-muted-foreground/70">System operating normally</p>
           </div>
         ) : (
-          <div className="overflow-y-auto max-h-[350px]">
+          <div className="overflow-y-auto max-h-[500px]">
             <div className="divide-y divide-border">
               {events.map((event, i) => {
                 const { type, routeId, direction } = parseEvent(event);

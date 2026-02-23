@@ -7,6 +7,8 @@
  * Graceful degradation: if DynamoDB is not configured, all functions
  * are no-ops.
  */
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import type { TrainPosition, FeedEntity, ServiceAlert, AlertSummary } from '../types.js';
 import {
   writeMetrics,
@@ -74,6 +76,57 @@ function median(arr: number[]): number | null {
     : sorted[mid];
 }
 
+function mostCommon(arr: string[]): string | null {
+  if (arr.length === 0) return null;
+  const counts = new Map<string, number>();
+  for (const item of arr) {
+    counts.set(item, (counts.get(item) ?? 0) + 1);
+  }
+  let maxItem = arr[0];
+  let maxCount = 0;
+  for (const [item, count] of counts) {
+    if (count > maxCount) {
+      maxCount = count;
+      maxItem = item;
+    }
+  }
+  return maxItem;
+}
+
+// ---------------------------------------------------------------------------
+// Stop name lookup
+// ---------------------------------------------------------------------------
+
+const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), '..', 'public', 'data');
+
+// Stop ID → station name lookup (loaded from stops.txt)
+const stopNameMap = new Map<string, string>();
+
+async function loadStopNames(): Promise<void> {
+  try {
+    const raw = await fs.readFile(path.join(DATA_DIR, 'stops.txt'), 'utf-8');
+    const lines = raw.split('\n');
+    // Header: stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      if (cols.length >= 2) {
+        stopNameMap.set(cols[0].trim(), cols[1].trim());
+      }
+    }
+    log.info({ stops: stopNameMap.size }, 'stop names loaded');
+  } catch (err) {
+    log.warn({ err: err instanceof Error ? err.message : err }, 'failed to load stop names');
+  }
+}
+
+function getStopName(stopId: string): string {
+  // Try exact match first, then parent station (strip N/S suffix)
+  const name = stopNameMap.get(stopId);
+  if (name) return name;
+  const parentId = stopId.replace(/[NS]$/, '');
+  return stopNameMap.get(parentId) ?? stopId;
+}
+
 // ---------------------------------------------------------------------------
 // In-memory buffer
 // ---------------------------------------------------------------------------
@@ -86,6 +139,10 @@ interface RouteBuffer {
   feedStatuses: string[];
   bunchingCount: number;
   gapCount: number;
+  bunchingStops: string[];  // stop IDs where bunching detected
+  gapStops: string[];       // stop IDs where gaps detected
+  worstDelayStopId: string | null;  // stop with worst delay
+  worstDelaySeconds: number;        // worst delay value
 }
 
 const buffers = new Map<string, RouteBuffer>();
@@ -151,6 +208,10 @@ function getOrCreateBuffer(routeId: string): RouteBuffer {
       feedStatuses: [],
       bunchingCount: 0,
       gapCount: 0,
+      bunchingStops: [],
+      gapStops: [],
+      worstDelayStopId: null,
+      worstDelaySeconds: 0,
     };
     buffers.set(routeId, buf);
   }
@@ -247,6 +308,10 @@ export function collectMetrics(
         const deviation = computeDeviation(entity.tripId, su.stopId, su.arrival.time);
         if (deviation !== null) {
           buf.delays.push(deviation);
+          if (deviation > buf.worstDelaySeconds) {
+            buf.worstDelaySeconds = deviation;
+            buf.worstDelayStopId = su.stopId;
+          }
         }
       }
     }
@@ -259,7 +324,7 @@ export function collectMetrics(
       times.push(t.nextTimeMs);
       byStop.set(t.nextStopId, times);
     }
-    for (const times of byStop.values()) {
+    for (const [stopId, times] of byStop) {
       if (times.length < 2) continue;
       times.sort((a, b) => a - b);
       for (let i = 1; i < times.length; i++) {
@@ -268,8 +333,10 @@ export function collectMetrics(
           buf.headways.push(gap);
           if (gap < BUNCHING_THRESHOLD_SECONDS) {
             buf.bunchingCount++;
+            buf.bunchingStops.push(stopId);
           } else if (gap > GAP_THRESHOLD_SECONDS) {
             buf.gapCount++;
+            buf.gapStops.push(stopId);
           }
         }
       }
@@ -538,30 +605,48 @@ async function flush(): Promise<void> {
       (d) => d > ON_TIME_THRESHOLD_SECONDS,
     );
     if (significantDelays.length > 0) {
+      const maxDelay = Math.round(Math.max(...significantDelays));
+      const delayMin = Math.round(maxDelay / 60);
+      const locationName = buf.worstDelayStopId ? getStopName(buf.worstDelayStopId) : null;
       delayEvents.push({
         pk: `DELAY#${routeId}${dirValue ? `#${dirValue}` : ''}`,
         timestamp: now,
-        delaySeconds: Math.round(Math.max(...significantDelays)),
+        delaySeconds: maxDelay,
+        description: locationName
+          ? `${delayMin}m delay at ${locationName}`
+          : `${delayMin}m delay`,
+        stopId: buf.worstDelayStopId ?? undefined,
         expireAt,
       });
     }
 
     // Generate bunching events (Phase 5)
     if (buf.bunchingCount > 0) {
+      // Find the most common bunching stop
+      const topStop = mostCommon(buf.bunchingStops);
+      const locationName = topStop ? getStopName(topStop) : null;
       delayEvents.push({
         pk: `BUNCH#${routeId}${dirValue ? `#${dirValue}` : ''}`,
         timestamp: now,
-        description: `${buf.bunchingCount} bunching instances detected`,
+        description: locationName
+          ? `${buf.bunchingCount} bunching at ${locationName}`
+          : `${buf.bunchingCount} bunching instances`,
+        stopId: topStop ?? undefined,
         expireAt,
       });
     }
 
     // Generate gap events (Phase 5)
     if (buf.gapCount > 0) {
+      const topStop = mostCommon(buf.gapStops);
+      const locationName = topStop ? getStopName(topStop) : null;
       delayEvents.push({
         pk: `GAP#${routeId}${dirValue ? `#${dirValue}` : ''}`,
         timestamp: now,
-        description: `${buf.gapCount} service gaps detected`,
+        description: locationName
+          ? `${buf.gapCount} service gaps at ${locationName}`
+          : `${buf.gapCount} service gaps`,
+        stopId: topStop ?? undefined,
         expireAt,
       });
     }
@@ -791,11 +876,13 @@ async function flush(): Promise<void> {
 /**
  * Start the periodic flush timer. No-op if DynamoDB is not configured.
  */
-export function startCollector(): void {
+export async function startCollector(): Promise<void> {
   if (!getDynamoClient()) {
     log.info('dynamodb not configured — analytics collection disabled');
     return;
   }
+
+  await loadStopNames();
 
   flushTimer = setInterval(() => {
     flush().catch((err) =>

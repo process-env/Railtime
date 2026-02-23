@@ -113,8 +113,9 @@ export function DelayTrendChart() {
               <YAxis
                 stroke="#888"
                 tick={{ fill: '#888', fontSize: 11 }}
+                tickFormatter={(value: number) => `${Math.round(value / 60)}`}
                 label={{
-                  value: 'Avg Delay (s)',
+                  value: 'Avg Delay (min)',
                   angle: -90,
                   position: 'insideLeft',
                   style: { fill: '#888', fontSize: 11 },
@@ -127,10 +128,12 @@ export function DelayTrendChart() {
                   borderRadius: '8px',
                 }}
                 labelStyle={{ color: '#fff' }}
-                formatter={(value: number) => [
-                  `${value}s`,
-                  'Avg Delay',
-                ]}
+                formatter={(value: number, name: string) => {
+                  const absVal = Math.abs(value);
+                  const min = Math.round(absVal / 60);
+                  const label = value < 0 ? `${min}m early` : `${min}m late`;
+                  return [label, name];
+                }}
               />
               <Legend />
               {routeIds.map((routeId) => (

@@ -26,10 +26,16 @@ export function useOperationalStats(): OperationalStats {
   return useMemo(() => {
     const rollups = rollupData?.getDailyRollups ?? [];
 
-    // Sum bunching and gaps across all routes for today
+    // Count distinct routes affected (not raw cumulative instances)
     const todayRollups = rollups.filter(r => r.date?.startsWith(today));
-    const bunchingToday = todayRollups.reduce((sum, r) => sum + (r.totalBunching ?? 0), 0);
-    const gapsToday = todayRollups.reduce((sum, r) => sum + (r.totalGaps ?? 0), 0);
+    const routesWithBunching = new Set(
+      todayRollups.filter(r => (r.totalBunching ?? 0) > 0).map(r => r.routeId)
+    );
+    const routesWithGaps = new Set(
+      todayRollups.filter(r => (r.totalGaps ?? 0) > 0).map(r => r.routeId)
+    );
+    const bunchingToday = routesWithBunching.size;
+    const gapsToday = routesWithGaps.size;
 
     // Average on-time percent
     const onTimes = rollups

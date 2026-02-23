@@ -54,16 +54,16 @@ export function OperationalStatsBar() {
         icon={Clock}
       />
       <StatCard
-        label="Bunching Events"
+        label="Bunching Routes"
         value={stats.bunchingToday}
         icon={AlertTriangle}
-        color={stats.bunchingToday > 10 ? 'text-orange-500' : 'text-foreground'}
+        color={stats.bunchingToday > 15 ? 'text-orange-500' : 'text-foreground'}
       />
       <StatCard
-        label="Service Gaps"
+        label="Gap Routes"
         value={stats.gapsToday}
         icon={Radio}
-        color={stats.gapsToday > 5 ? 'text-red-500' : 'text-foreground'}
+        color={stats.gapsToday > 10 ? 'text-red-500' : 'text-foreground'}
       />
     </div>
   );
