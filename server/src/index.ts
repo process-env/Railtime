@@ -11,6 +11,7 @@ import { setupTrainsNamespace } from "./namespaces/trains.js";
 import { setupAlertsNamespace } from "./namespaces/alerts.js";
 import { setupArrivalsNamespace } from "./namespaces/arrivals.js";
 import { handleTransitAnalysis } from "./api/transit-analysis.js";
+import { handleAnomalyFeed } from "./api/anomaly-feed.js";
 import type { FeedEntity } from "./types.js";
 import { collectMetrics, collectAlertEvent, collectRemovedTrips, startCollector, stopCollector } from "./analytics/metrics-collector.js";
 import { initScheduleLookup, stopScheduleLookup } from "./analytics/schedule-lookup.js";
@@ -54,6 +55,11 @@ const httpServer = createServer(async (req, res) => {
 
   if (url.pathname === "/api/transit-analysis") {
     await handleTransitAnalysis(req, res);
+    return;
+  }
+
+  if (url.pathname === "/api/anomaly-feed") {
+    await handleAnomalyFeed(req, res);
     return;
   }
 

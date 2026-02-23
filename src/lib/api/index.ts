@@ -1,6 +1,6 @@
 import type { Stop, Route, TrainPosition, ServiceAlert, ArrivalBoard } from '@/types/mta';
 import type { EquipmentStatusResponse } from '@/types/equipment';
-import type { RidershipResponse } from '@/types/ridership';
+
 
 // Centralized API service layer
 export const mtaApi = {
@@ -107,10 +107,4 @@ export const mtaApi = {
     return res.json();
   },
 
-  // Ridership data (MTA Socrata)
-  getRidership: async (days: number = 30): Promise<RidershipResponse> => {
-    const res = await fetch(`/api/v1/ridership?days=${days}`);
-    if (!res.ok) throw new Error('Failed to fetch ridership data');
-    return res.json();
-  },
 };

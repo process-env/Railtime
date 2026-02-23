@@ -17,6 +17,8 @@ import {
   type RollupRecord,
 } from './dynamodb-writer.js';
 import { getDynamoClient } from '../lib/dynamodb.js';
+import { getRedisClient } from '../lib/redis.js';
+import { CACHE_KEYS } from '../lib/cache-keys.js';
 import { computeDeviation } from './schedule-lookup.js';
 import { generateAnalysis } from './transit-analyzer.js';
 import { createLogger } from '../lib/logger.js';
@@ -733,6 +735,31 @@ async function flush(): Promise<void> {
     log.info({ metricsCount: metrics.length, eventsCount: delayEvents.length, anomalies: anomalyEvents }, 'flush complete');
     if (rollups.length > 0) {
       log.info({ rollupsCount: rollups.length }, 'daily rollups updated');
+    }
+
+    // Push anomaly events to Redis sorted set for the anomaly feed API
+    const anomalyItems = delayEvents.filter(e =>
+      e.pk.startsWith('BUNCH#') || e.pk.startsWith('GAP#') || e.pk.startsWith('DELAY#')
+    );
+    if (anomalyItems.length > 0) {
+      const redisClient = getRedisClient();
+      if (redisClient) {
+        try {
+          const ANOMALY_KEY = CACHE_KEYS.ANOMALY_FEED;
+          const pipeline = redisClient.pipeline();
+          for (const event of anomalyItems) {
+            pipeline.zadd(ANOMALY_KEY, event.timestamp, JSON.stringify(event));
+          }
+          // Trim: remove events older than 1 hour
+          const oneHourAgo = Date.now() - 60 * 60 * 1000;
+          pipeline.zremrangebyscore(ANOMALY_KEY, '-inf', oneHourAgo);
+          // Cap at 200 entries
+          pipeline.zremrangebyrank(ANOMALY_KEY, 0, -201);
+          await pipeline.exec();
+        } catch (err) {
+          log.warn({ err: err instanceof Error ? err.message : err }, 'failed to push anomaly events to Redis');
+        }
+      }
     }
 
     // Generate AI transit analysis — skip if no active trains

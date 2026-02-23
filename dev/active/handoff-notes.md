@@ -4,6 +4,169 @@ _Last Updated: 2026-02-23_
 
 ---
 
+## Session: Analytics Page Overhaul — Operational Intelligence Dashboard (2026-02-23)
+
+**Goal:** Replace the 5-tab analytics page (25 components, many fabricated data) with a single-page operational intelligence dashboard focused on real ML Lab data.
+
+### What Was Completed
+
+**All 6 phases complete. Zero errors across all quality gates.**
+
+#### Phase 0: Dev Documentation
+- Created `dev/active/analytics-overhaul/` with plan, context, and task docs
+
+#### Phase 1: Backend — Anomaly Feed Endpoint
+- `server/src/analytics/metrics-collector.ts` — After DynamoDB flush, ZADD BUNCH/GAP/DELAY events to Redis sorted set `anomaly-feed:recent` (auto-trimmed to 1 hour, max 200 entries)
+- `server/src/lib/cache-keys.ts` — Added `ANOMALY_FEED` key
+- `server/src/api/anomaly-feed.ts` — NEW: HTTP handler `GET /api/anomaly-feed?limit=50&routeId=A&type=BUNCH`
+- `server/src/index.ts` — Wired new route
+
+#### Phase 2: Frontend — New Components & Hooks
+- `src/hooks/use-operational-stats.ts` — Composes useAnalytics + useAlerts + useDailyRollups
+- `src/hooks/use-anomaly-feed.ts` — React Query polling WS server every 30s
+- `src/components/analytics/OperationalStatsBar.tsx` — 4 stat cards (trains, on-time, bunching, gaps)
+- `src/components/analytics/BunchingGapTrendChart.tsx` — Recharts line chart, 7d/30d toggle
+- `src/components/analytics/AnomalyFeed.tsx` — Scrollable event feed with route/type filters
+- `src/lib/api/query-keys.ts` — Added `anomalyFeed` key
+
+#### Phase 3: Page Assembly
+- `src/app/(dashboard)/analytics/page.tsx` — Full rewrite: single scrollable page, 7 sections, ErrorBoundary wrapping
+- `src/components/analytics/index.ts` — Updated barrel (21 → 13 exports)
+
+#### Phase 4: Cleanup (23 files deleted)
+- 15 component files (14 planned + ArrivalsTimelineChart)
+- 3 hook files (use-impact-metrics, use-schedule-analytics, use-ridership)
+- 3 lib/test files (ridership-lookup, impact-calculator, impact-calculator test)
+- 2 orphaned files (ridership API route + test, ridership type)
+- Cleaned getRidership from lib/api/index.ts
+
+#### Phase 5: Quality Gate — ALL PASSED
+- TypeScript: zero errors (app + server)
+- Tests: 44 files, 683 tests passing
+- Lint: zero errors
+- Build: Next.js 16.0.7 success, 22 pages
+
+### New Page Layout
+```
+OperationalStatsBar (active trains, on-time %, bunching, gaps)
+TransitAnalysisCard (AI insights from Bedrock)
+AnomalyFeed + BestWorstRouteCard + AlertStatusCard
+RoutePerformanceTable (full width)
+BunchingGapTrendChart + SystemHealthTimeline
+DelayTrendChart + DelayDistributionChart
+TripCompletionChart + LiveSystemDashboard
+```
+
+### Components Kept (8): TransitAnalysisCard, BestWorstRouteCard, AlertStatusCard, RoutePerformanceTable, SystemHealthTimeline, DelayTrendChart, DelayDistributionChart, TripCompletionChart, LiveSystemDashboard, EquipmentStatusCard (alerts page)
+
+### Decisions Made
+
+| Decision | Rationale |
+|----------|-----------|
+| Single page over tabs | All operational data visible at a glance; removed complexity of 5-tab navigation |
+| Redis sorted set for anomaly feed | Sub-second read latency, auto-trimmed (1 hour TTL, 200 cap), zero additional infrastructure |
+| Delete ArrivalsTimelineChart | Not imported anywhere after page rewrite — orphaned |
+| Delete ridership API route | Only consumer was deleted use-ridership hook — orphaned cascade |
+| EquipmentStatusCard preserved | Imported by alerts page — confirmed via grep |
+
+### Deployment Status
+- NOT YET DEPLOYED — needs `git push` + `vercel --prod --yes` + EC2 server rebuild
+
+### What's Next
+- Deploy to Vercel
+- Rebuild WS server on EC2 (anomaly-feed endpoint + Redis ZADD in metrics-collector)
+- Verify anomaly feed populates after 5-minute flush cycle
+- Monitor for any runtime issues on the new page
+
+---
+
+## Session: ML Lab Review Remediation — Medium/Low Fixes (2026-02-23)
+
+**Goal:** Complete all 15 Phase 6 code review remediation items from `dev/review/ml-lab-stack/`. The critical/high items (C1, C2, H2, H3) were fixed in the prior session. This session addressed the remaining H1 + 5 medium + 3 low items.
+
+### What Was Completed
+
+**All 10 remaining remediation items fixed, tested, and deployed in commit `2f7c232`.**
+
+#### Infrastructure (CDK)
+
+| Fix | What Changed |
+|-----|-------------|
+| H1: IAM role alignment | Replaced orphaned CDK role `railtime-ws-server-dynamodb` with import of actual EC2 role `railtime-ec2-dynamodb` via `fromRoleName()`. Removed orphaned instance profile. |
+| M1: ML bucket encryption | Added `S3_MANAGED` encryption to `railtime-ml-{account}` bucket |
+| M2: Scoped SageMaker policy | Removed `AmazonSageMakerFullAccess`, added 3 scoped SageMaker actions + CloudWatch Logs |
+| M3: Glue job failure alerting | Exported `alertTopic` from AnalyticsStack, added EventBridge rule for `railtime-ml-datasets` FAILED/TIMEOUT/ERROR → SNS |
+| M4: Lifecycle rule overlap | Replaced broad `raw/` rule with explicit `raw/metrics/` and `raw/events/` rules, kept `raw/positions/` as-is |
+
+#### Server
+
+| Fix | What Changed |
+|-----|-------------|
+| M5: Async gzip | Replaced `gzipSync` with `promisify(gzip)` in position-archiver.ts — no longer blocks event loop during flush |
+
+#### PySpark Pipeline
+
+| Fix | What Changed |
+|-----|-------------|
+| M6: Append mode | Changed 3 real-time datasets (delay_prediction, anomaly_detection, position_trajectory) from `mode("overwrite")` to `mode("append")` with `processing_date` partition |
+| L3: Windowed helper | Extracted `build_windowed_features()` shared helper, eliminated ~80 lines of duplicate code |
+
+#### Upload Script
+
+| Fix | What Changed |
+|-----|-------------|
+| L1: Parameterized path | `CSV_SOURCE_DIR` now accepts CLI arg: `npx tsx scripts/upload-historical-mta.ts [path]` |
+
+#### Tests
+
+| Fix | What Changed |
+|-----|-------------|
+| L2: Unit tests | 14 position-archiver tests (vitest) + 1 CDK snapshot test (jest), all passing |
+
+### Files Modified (15 files, commit `2f7c232`)
+- `infra/cdk/lib/analytics-stack.ts` — H1 (IAM), M3 (alertTopic export), M4 (lifecycle)
+- `infra/cdk/lib/ml-lab-stack.ts` — M1 (encryption), M2 (scoped policy), M3 (failure alert)
+- `infra/cdk/bin/app.ts` — M3 (pass alertTopic prop)
+- `infra/cdk/glue-scripts/ml-dataset-pipeline.py` — M6 (append mode), L3 (windowed helper)
+- `server/src/analytics/position-archiver.ts` — M5 (async gzip)
+- `scripts/upload-historical-mta.ts` — L1 (CLI arg)
+- `server/src/__tests__/position-archiver.test.ts` — L2 (new, 14 tests)
+- `server/vitest.config.ts` — L2 (new, vitest config for server)
+- `infra/cdk/test/ml-lab-stack.test.ts` — L2 (new, CDK snapshot)
+- `infra/cdk/jest.config.ts` — L2 (new, jest config for CDK)
+- `infra/cdk/test/__snapshots__/ml-lab-stack.test.ts.snap` — L2 (snapshot file)
+- `server/package.json`, `server/package-lock.json` — vitest dev dep
+- `infra/cdk/package.json`, `infra/cdk/tsconfig.json` — jest/ts-jest dev deps
+
+### Deployment Status
+- Vercel: deployed (`https://traintracker-kappa.vercel.app`)
+- EC2 WS server: rebuilt and running (async gzip active, ~500 positions/flush)
+- CDK RailtimeAnalytics: updated (IAM role → `railtime-ec2-dynamodb`, lifecycle rules split)
+- CDK RailtimeMlLab: updated (encryption, scoped SageMaker, Glue failure alerting)
+
+### Deployment Issues Resolved
+- **EC2 `dev/review/` owned by root** — fixed with `sudo chown -R ubuntu:ubuntu`
+- **EC2 `.env` location** — Docker Compose `-f infra/...` reads `.env` from `infra/`, not project root; copied `.env.v2` to `infra/.env`
+- **Redis `requirepass` crash** — empty `REDIS_PASSWORD` env var caused Redis 7 to fail; set password in `infra/.env`
+
+### ML Lab Status — FULLY COMPLETE
+All 69 tasks across 6 phases are now done:
+- Phase 0: Documentation (4/4)
+- Phase 1: Real-Time Data Capture (8/8)
+- Phase 2: Historical Data Upload (8/8)
+- Phase 3: CDK ML Lab Stack (13/13)
+- Phase 4: ML Dataset Pipeline (8/8)
+- Phase 5: Jupyter Notebooks (13/13)
+- Phase 6: Code Review Remediation (15/15)
+
+### What's Next
+- SageMaker notebook is stopped; restart with `aws sagemaker start-notebook-instance --notebook-instance-name railtime-ml-lab`
+- Wait 3+ days for real-time position data to accumulate, then run notebook 03 (delay prediction)
+- Monitor Glue ML dataset job daily runs (06:00 UTC) via new SNS alerting
+- Consider future notebooks: anomaly detection, trajectory clustering, customer journey analysis
+
+---
+
 ## Session: ML Lab Code Review — Critical Bug Discovery (2026-02-23)
 
 **Goal:** Deep code review of the entire ML Data Laboratory feature (all 5 phases). Found 2 critical bugs, 3 high-severity issues, 6 medium, 3 low.
@@ -53,12 +216,12 @@ _Last Updated: 2026-02-23_
 - Vercel deployed: `https://traintracker-kappa.vercel.app`
 
 ### What's Next
-1. **Stop SageMaker notebook** to halt cost bleed (C2)
-2. **Fix Glue table schemas** to match Parquet (C1)
-3. **Fix PySpark column references** (H3)
-4. **Fix capturedAt timestamp** in position-archiver (H2)
-5. Redeploy CDK + rebuild server
-6. Address medium/low findings
+1. ~~**Stop SageMaker notebook** to halt cost bleed (C2)~~ — Done (commit `89960aa`)
+2. ~~**Fix Glue table schemas** to match Parquet (C1)~~ — Done (commit `89960aa`)
+3. ~~**Fix PySpark column references** (H3)~~ — Done (commit `89960aa`)
+4. ~~**Fix capturedAt timestamp** in position-archiver (H2)~~ — Done (commit `89960aa`)
+5. ~~Redeploy CDK + rebuild server~~ — Done (commit `89960aa`)
+6. ~~Address medium/low findings~~ — Done (commit `2f7c232`, see session above)
 
 ---
 
