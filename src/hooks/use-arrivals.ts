@@ -97,6 +97,9 @@ export function useArrivals(
         disconnectedAtRef.current = Date.now();
       }
 
+      if (fallbackTimerRef.current) {
+        clearTimeout(fallbackTimerRef.current);
+      }
       fallbackTimerRef.current = setTimeout(() => {
         setSocketActive(false);
         queryClient.invalidateQueries({
@@ -115,9 +118,10 @@ export function useArrivals(
 
   // Cleanup: unsubscribe when component unmounts or stopId changes
   useEffect(() => {
+    const capturedStopId = prevStopIdRef.current;
     return () => {
-      if (socket?.connected && prevStopIdRef.current) {
-        socket.emit('unsubscribe:station', prevStopIdRef.current);
+      if (socket?.connected && capturedStopId) {
+        socket.emit('unsubscribe:station', capturedStopId);
         prevStopIdRef.current = null;
       }
     };

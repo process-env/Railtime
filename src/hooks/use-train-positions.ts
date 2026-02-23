@@ -92,6 +92,9 @@ export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
         disconnectedAtRef.current = Date.now();
       }
 
+      if (fallbackTimerRef.current) {
+        clearTimeout(fallbackTimerRef.current);
+      }
       fallbackTimerRef.current = setTimeout(() => {
         setSocketActive(false);
         // Invalidate React Query cache so polling picks up fresh data

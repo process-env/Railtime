@@ -721,15 +721,14 @@ async function flush(): Promise<void> {
     }
   }
 
-  // Clear buffers before async write
-  buffers.clear();
-
   try {
     await Promise.all([
       writeMetrics(metrics),
       delayEvents.length > 0 ? writeEvents(delayEvents) : Promise.resolve(),
       rollups.length > 0 ? writeRollups(rollups) : Promise.resolve(),
     ]);
+    // Clear buffers only after successful write — on failure, data is retained for next flush
+    buffers.clear();
     const anomalyEvents = delayEvents.filter(e => e.pk.startsWith('BUNCH#') || e.pk.startsWith('GAP#')).length;
     log.info({ metricsCount: metrics.length, eventsCount: delayEvents.length, anomalies: anomalyEvents }, 'flush complete');
     if (rollups.length > 0) {

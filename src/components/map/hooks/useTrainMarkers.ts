@@ -68,10 +68,10 @@ async function loadRouteTerminals(): Promise<RouteTerminals> {
   const res = await fetch('/data/route-segments.json');
   const data = await res.json();
   routeTerminals = new Map();
-  for (const [routeId, routeData] of Object.entries(data.routes)) {
+  for (const [routeId, routeData] of Object.entries(data.routes as Record<string, { directions: Record<string, { stops: string[] }> }>)) {
     const dirs: Record<string, { first: string; last: string }> = {};
-    for (const [dirId, dirData] of Object.entries((routeData as any).directions)) {
-      const stops = (dirData as any).stops as string[];
+    for (const [dirId, dirData] of Object.entries(routeData.directions)) {
+      const stops = dirData.stops;
       if (stops.length > 0) {
         dirs[dirId] = { first: stops[0], last: stops[stops.length - 1] };
       }
@@ -391,7 +391,7 @@ export function useTrainMarkers(
     });
 
     // Process each train
-    displayTrains.forEach(async (train) => {
+    void Promise.all(displayTrains.map(async (train) => {
       // If this train is mid-fade-out, cancel the fade and restore it
       const fading = fadingOutRef.current.get(train.tripId);
       if (fading) {
@@ -552,10 +552,10 @@ export function useTrainMarkers(
           }
         }
       }
+    })).then(() => {
+      // Restart animation loop after all markers are processed
+      scheduleAnimation();
     });
-
-    // Restart animation loop
-    scheduleAnimation();
   }, [mapLoaded, map, trains, selectedRouteIds, lerp, getDistance, refreshInterval, selectedTrainId, setSelectedTrain, trainAnimsRef, trainMotionRef, scheduleAnimation, useAlphaBetaGamma, durationMatrix, alerts, fadeOutAndRemove]);
 
   // Cleanup fading markers on unmount to prevent memory leaks from pending timeouts

@@ -84,6 +84,9 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   // Analytics routes
   '/api/v1/analytics': { limit: 30, windowMs: 60_000 },
 
+  // Conductor routes - strict (OpenAI API calls are expensive)
+  '/api/v1/conductor': { limit: 10, windowMs: 60_000 },
+
   // Admin routes - strict limits
   '/api/v1/collect': { limit: 10, windowMs: 60_000 },
   '/api/cron': { limit: 5, windowMs: 60_000 },

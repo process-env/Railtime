@@ -12,6 +12,7 @@ import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
 import * as path from 'path';
@@ -97,12 +98,22 @@ export class AnalyticsStack extends cdk.Stack {
 
     analyticsBucket.grantPut(streamToS3Fn);
 
+    // DLQ for failed DynamoDB Stream batches
+    const streamDlq = new sqs.Queue(this, 'StreamToS3Dlq', {
+      queueName: 'railtime-stream-to-s3-dlq',
+      retentionPeriod: cdk.Duration.days(14),
+    });
+
     // Wire DynamoDB Streams to Lambda
     streamToS3Fn.addEventSource(
       new lambdaEventSources.DynamoEventSource(metricsTable, {
         startingPosition: lambda.StartingPosition.LATEST,
         batchSize: 100,
         maxBatchingWindow: cdk.Duration.minutes(5),
+        bisectBatchOnError: true,
+        retryAttempts: 3,
+        onFailure: new lambdaEventSources.SqsDlq(streamDlq),
+        reportBatchItemFailures: true,
       }),
     );
 
@@ -111,6 +122,10 @@ export class AnalyticsStack extends cdk.Stack {
         startingPosition: lambda.StartingPosition.LATEST,
         batchSize: 100,
         maxBatchingWindow: cdk.Duration.minutes(5),
+        bisectBatchOnError: true,
+        retryAttempts: 3,
+        onFailure: new lambdaEventSources.SqsDlq(streamDlq),
+        reportBatchItemFailures: true,
       }),
     );
 
@@ -373,24 +388,20 @@ export class AnalyticsStack extends cdk.Stack {
     });
     metricsThrottleAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
 
-    // --- Glue Job Alarm ---
+    // --- Glue Job Failure Detection (EventBridge) ---
 
-    const glueJobFailureAlarm = new cloudwatch.Alarm(this, 'GlueJobFailure', {
-      alarmName: 'railtime-glue-job-failure',
-      metric: new cloudwatch.Metric({
-        namespace: 'Glue',
-        metricName: 'glue.driver.aggregate.numFailedTasks',
-        dimensionsMap: { JobName: 'railtime-daily-rollup', Type: 'gauge' },
-        period: cdk.Duration.hours(1),
-        statistic: 'Sum',
-      }),
-      threshold: 1,
-      evaluationPeriods: 1,
-      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-      alarmDescription: 'Glue daily-rollup job has failed tasks',
-      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    const glueFailureRule = new events.Rule(this, 'GlueJobFailure', {
+      ruleName: 'railtime-glue-job-failure',
+      eventPattern: {
+        source: ['aws.glue'],
+        detailType: ['Glue Job State Change'],
+        detail: {
+          jobName: ['railtime-daily-rollup'],
+          state: ['FAILED', 'TIMEOUT', 'ERROR'],
+        },
+      },
     });
-    glueJobFailureAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+    glueFailureRule.addTarget(new targets.SnsTopic(alertTopic));
 
     // -----------------------------------------------------------------------
     // IAM: WS Server write role (for reference)
@@ -398,7 +409,12 @@ export class AnalyticsStack extends cdk.Stack {
 
     const wsServerRole = new iam.Role(this, 'WsServerWriteRole', {
       roleName: 'railtime-ws-server-dynamodb',
-      assumedBy: new iam.AccountPrincipal(this.account),
+      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+    });
+
+    new iam.CfnInstanceProfile(this, 'WsServerInstanceProfile', {
+      instanceProfileName: 'railtime-ws-server',
+      roles: [wsServerRole.roleName],
     });
 
     metricsTable.grantWriteData(wsServerRole);
@@ -412,11 +428,6 @@ export class AnalyticsStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AppSyncUrl', {
       value: api.graphqlUrl,
       description: 'AppSync GraphQL endpoint URL',
-    });
-
-    new cdk.CfnOutput(this, 'AppSyncApiKey', {
-      value: api.apiKey ?? '',
-      description: 'AppSync API key',
     });
 
     new cdk.CfnOutput(this, 'MetricsTableName', {

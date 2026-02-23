@@ -100,6 +100,9 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
         disconnectedAtRef.current = Date.now();
       }
 
+      if (fallbackTimerRef.current) {
+        clearTimeout(fallbackTimerRef.current);
+      }
       fallbackTimerRef.current = setTimeout(() => {
         setSocketActive(false);
         queryClient.invalidateQueries({ queryKey: queryKeys.alerts(routeIds) });

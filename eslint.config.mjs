@@ -25,6 +25,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vercel build output:
+    ".vercel/**",
+    // CDK build output:
+    "infra/cdk/cdk.out/**",
+    // Server has its own tsconfig/linting:
+    "server/**",
+    // CDK infra has its own tsconfig:
+    "infra/**",
   ]),
 ]);
 

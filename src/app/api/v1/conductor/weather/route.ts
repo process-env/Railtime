@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit, getClientIdentifier, createRateLimitHeaders } from "@/lib/rate-limit";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -190,7 +191,17 @@ async function synthesizeWeather(text: string): Promise<string> {
   return Buffer.from(arrayBuffer).toString("base64");
 }
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
+  // Rate limit check
+  const clientId = getClientIdentifier(request);
+  const { allowed, remaining, resetIn } = checkRateLimit(clientId, '/api/v1/conductor/weather');
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded' },
+      { status: 429, headers: createRateLimitHeaders(false, remaining, resetIn, '/api/v1/conductor/weather') }
+    );
+  }
+
   try {
     const weather = await fetchWeather();
     const script = await generateWeatherScript(weather);

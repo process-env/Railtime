@@ -70,7 +70,7 @@ export default function AnalyticsPage() {
       }
     }
     return map;
-  }, [data?.routeActivity]);
+  }, [data]);
 
   // Build TrainHistoryChart data with valid ISO timestamps
   // (useAnalytics returns locale-formatted time strings like "12:27 PM"

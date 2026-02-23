@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Users, DollarSign, Clock } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -74,65 +74,63 @@ export function RidershipAnimationCard({
 
   // Keep latest props in a ref so the rAF callback always reads fresh values
   const propsRef = useRef({ dailyRidership, dailyFareRevenue });
-  propsRef.current = { dailyRidership, dailyFareRevenue };
+  useEffect(() => {
+    propsRef.current = { dailyRidership, dailyFareRevenue };
+  }, [dailyRidership, dailyFareRevenue]);
 
   // ------------------------------------------------------------------
-  // Animation frame callback
-  // ------------------------------------------------------------------
-
-  const tick = useCallback((timestamp: number) => {
-    // -- Animation complete — stop --
-    if (pausedRef.current) {
-      return;
-    }
-
-    const h = hourIndexRef.current;
-    const elapsed = timestamp - segmentStartRef.current;
-    const segDuration = hourDurations[h];
-    let t = Math.min(elapsed / segDuration, 1); // progress within this hour
-
-    // Compute cumulative ridership fraction
-    const startFrac = h === 0 ? 0 : cumulativePct[h - 1] / 100;
-    const endFrac = cumulativePct[h] / 100;
-    const frac = startFrac + (endFrac - startFrac) * t;
-
-    const total = propsRef.current.dailyRidership;
-    const riders = Math.round(frac * total);
-
-    // Compute simulated minute within this hour
-    const minute = Math.min(Math.floor(t * 60), 59);
-
-    // Batch state updates
-    setCurrentRidership(riders);
-    setCurrentHour(h);
-    setCurrentMinute(minute);
-    setIsRushHour(RUSH_HOURS.has(h));
-
-    // Check if this hour segment is complete
-    if (t >= 1) {
-      if (h < 23) {
-        hourIndexRef.current = h + 1;
-        segmentStartRef.current = timestamp;
-      } else {
-        // Reached end of day — stop animation
-        pausedRef.current = true;
-        setIsRushHour(false);
-        // Snap final display to 11:59 PM at full totals
-        setCurrentHour(23);
-        setCurrentMinute(59);
-        setCurrentRidership(total);
-        return;
-      }
-    }
-
-    rafRef.current = requestAnimationFrame(tick);
-  }, []);
-
-  // ------------------------------------------------------------------
-  // Lifecycle
+  // Lifecycle — single rAF animation loop via useEffect
   // ------------------------------------------------------------------
 
   useEffect(() => {
+    const tick = (timestamp: number) => {
+      // -- Animation complete — stop --
+      if (pausedRef.current) {
+        return;
+      }
+
+      const h = hourIndexRef.current;
+      const elapsed = timestamp - segmentStartRef.current;
+      const segDuration = hourDurations[h];
+      const t = Math.min(elapsed / segDuration, 1); // progress within this hour
+
+      // Compute cumulative ridership fraction
+      const startFrac = h === 0 ? 0 : cumulativePct[h - 1] / 100;
+      const endFrac = cumulativePct[h] / 100;
+      const frac = startFrac + (endFrac - startFrac) * t;
+
+      const total = propsRef.current.dailyRidership;
+      const riders = Math.round(frac * total);
+
+      // Compute simulated minute within this hour
+      const minute = Math.min(Math.floor(t * 60), 59);
+
+      // Batch state updates
+      setCurrentRidership(riders);
+      setCurrentHour(h);
+      setCurrentMinute(minute);
+      setIsRushHour(RUSH_HOURS.has(h));
+
+      // Check if this hour segment is complete
+      if (t >= 1) {
+        if (h < 23) {
+          hourIndexRef.current = h + 1;
+          segmentStartRef.current = timestamp;
+        } else {
+          // Reached end of day — stop animation
+          pausedRef.current = true;
+          setIsRushHour(false);
+          // Snap final display to 11:59 PM at full totals
+          setCurrentHour(23);
+          setCurrentMinute(59);
+          setCurrentRidership(total);
+          return;
+        }
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
     // Kick off animation
     const start = (ts: number) => {
       segmentStartRef.current = ts;
@@ -145,7 +143,7 @@ export function RidershipAnimationCard({
     return () => {
       cancelAnimationFrame(rafRef.current);
     };
-  }, [tick]);
+  }, []);
 
   // ------------------------------------------------------------------
   // Derived display values

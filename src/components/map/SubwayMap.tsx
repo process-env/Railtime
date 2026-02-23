@@ -298,8 +298,14 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
 
         // Add popup with POI name
         if (poiName) {
+          const safeName = poiName
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;');
           const popup = new maplibregl.Popup({ offset: 25, closeButton: true })
-            .setHTML(`<div style="padding: 4px 8px; font-weight: 500;">${poiName}</div>`);
+            .setHTML(`<div style="padding: 4px 8px; font-weight: 500;">${safeName}</div>`);
           marker.setPopup(popup);
           popup.addTo(map.current);
         }

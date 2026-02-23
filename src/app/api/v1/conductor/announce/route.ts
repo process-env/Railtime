@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
+import { checkRateLimit, getClientIdentifier, createRateLimitHeaders } from "@/lib/rate-limit";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 // OpenAI TTS voices: alloy, echo, fable, onyx, nova, shimmer
@@ -234,6 +235,16 @@ function getRelevantFact(
 }
 
 export async function POST(request: NextRequest) {
+  // Rate limit check
+  const clientId = getClientIdentifier(request);
+  const { allowed, remaining, resetIn } = checkRateLimit(clientId, '/api/v1/conductor/announce');
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded' },
+      { status: 429, headers: createRateLimitHeaders(false, remaining, resetIn, '/api/v1/conductor/announce') }
+    );
+  }
+
   try {
     const body: AnnounceRequest = await request.json();
     const {
@@ -252,6 +263,32 @@ export async function POST(request: NextRequest) {
         { error: "Missing required fields: routeId, stationName" },
         { status: 400 }
       );
+    }
+
+    // Length validation
+    if (routeId.length > 10 || stationName.length > 200) {
+      return NextResponse.json(
+        { error: 'Field length exceeded' },
+        { status: 400 }
+      );
+    }
+    if (stationId && stationId.length > 20) {
+      return NextResponse.json({ error: 'Field length exceeded' }, { status: 400 });
+    }
+    if (direction && direction.length > 20) {
+      return NextResponse.json({ error: 'Field length exceeded' }, { status: 400 });
+    }
+    if (headsign && headsign.length > 200) {
+      return NextResponse.json({ error: 'Field length exceeded' }, { status: 400 });
+    }
+    if (poiName && poiName.length > 200) {
+      return NextResponse.json({ error: 'Field length exceeded' }, { status: 400 });
+    }
+    if (crossStreet && crossStreet.length > 200) {
+      return NextResponse.json({ error: 'Field length exceeded' }, { status: 400 });
+    }
+    if (announcementType && !ANNOUNCEMENT_TYPES.includes(announcementType as AnnouncementType)) {
+      return NextResponse.json({ error: 'Invalid announcement type' }, { status: 400 });
     }
 
     // Expand station name

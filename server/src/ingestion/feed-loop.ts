@@ -26,7 +26,7 @@ const log = createLogger('feed-loop');
 // ---------------------------------------------------------------------------
 
 const POLL_INTERVAL_MS = 15_000;
-const FEED_TIMEOUT_MS = 15_000;
+const FEED_TIMEOUT_MS = 12_000;
 const REDIS_TTL_SECONDS = 30; // slightly longer than poll interval for overlap
 const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), '..', 'public', 'data');
 
@@ -517,7 +517,7 @@ export type FeedUpdateCallback = (
   status: "success" | "error" | "timeout",
 ) => void;
 
-let loopTimer: ReturnType<typeof setInterval> | null = null;
+let loopTimer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
 
 /**
@@ -553,9 +553,10 @@ async function runCycle(onUpdate: FeedUpdateCallback): Promise<void> {
 }
 
 /**
- * Start the feed ingestion loop. Runs one cycle immediately, then every
- * POLL_INTERVAL_MS (15s). The onUpdate callback is invoked per feed group
- * with the latest positions and removed trip IDs.
+ * Start the feed ingestion loop. Runs one cycle immediately, then waits
+ * POLL_INTERVAL_MS (15s) AFTER each cycle completes before scheduling the
+ * next. This self-scheduling setTimeout pattern prevents overlapping cycles
+ * when a feed fetch takes close to the timeout duration.
  */
 export function startFeedLoop(onUpdate: FeedUpdateCallback): void {
   if (running) {
@@ -566,17 +567,25 @@ export function startFeedLoop(onUpdate: FeedUpdateCallback): void {
   running = true;
   log.info({ feeds: FEED_GROUPS.length, intervalMs: POLL_INTERVAL_MS }, 'starting ingestion');
 
-  // Warm up stops + protobuf on first cycle
-  runCycle(onUpdate).catch((err) =>
-    log.error({ err: err instanceof Error ? err.message : err }, 'initial cycle error'),
-  );
-
-  loopTimer = setInterval(() => {
-    if (!running) return;
-    runCycle(onUpdate).catch((err) =>
+  async function scheduledCycle() {
+    await runCycle(onUpdate).catch((err) =>
       log.error({ err: err instanceof Error ? err.message : err }, 'cycle error'),
     );
-  }, POLL_INTERVAL_MS);
+    if (loopTimer !== null) {
+      loopTimer = setTimeout(scheduledCycle, POLL_INTERVAL_MS);
+    }
+  }
+
+  // Warm up stops + protobuf on first cycle, then self-schedule
+  runCycle(onUpdate)
+    .catch((err) =>
+      log.error({ err: err instanceof Error ? err.message : err }, 'initial cycle error'),
+    )
+    .finally(() => {
+      if (running) {
+        loopTimer = setTimeout(scheduledCycle, POLL_INTERVAL_MS);
+      }
+    });
 }
 
 /**
@@ -587,7 +596,7 @@ export function stopFeedLoop(): void {
   running = false;
 
   if (loopTimer) {
-    clearInterval(loopTimer);
+    clearTimeout(loopTimer);
     loopTimer = null;
   }
 

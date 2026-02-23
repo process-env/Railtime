@@ -4,6 +4,59 @@ _Last Updated: 2026-02-23_
 
 ---
 
+## Session: Full Codebase Review & Critical Remediation (2026-02-23)
+
+**Goal:** Full code review across all 3 domains (frontend, server, infra), then remediate critical-tier findings.
+
+### Code Review Results
+
+67 issues found across 3 domains:
+- **Critical:** 12 (4 security, 3 reliability, 3 correctness, 2 infra)
+- **Important:** 31
+- **Minor:** 24
+
+Review files:
+- `dev/review/session-2026-02-23/full-codebase-review.md`
+- `dev/review/session-2026-02-23/full-codebase-context.md`
+- `dev/review/session-2026-02-23/full-codebase-tasks.md`
+- Domain details in `dev/active/{frontend,server,infra}-deep-review/`
+
+### Top 10 Critical Findings
+1. Conductor AI endpoints — no rate limiting/validation (unlimited API charges)
+2. Redis/Neo4j ports publicly exposed on EC2
+3. HTTPS commented out in nginx
+4. AppSync API key in plaintext CloudFormation output
+5. Feed timeout = poll interval — overlapping cycles
+6. Metrics flush clears buffers before write completes — data loss
+7. stream-to-s3 Lambda no DLQ, duplicate S3 records on retry
+8. Dual-mode hooks fallback timer double-arming race
+9. useArrivals unsubscribes wrong station on stopId change
+10. useTrainMarkers forEach(async...) unawaited promises
+
+### Remediation Status
+
+#### Critical Tier (in progress)
+- [ ] Add input validation + rate limiting to conductor endpoints
+- [ ] Sanitize poiName URL param in SubwayMap popup
+- [ ] Fix feed timeout = poll interval overlap
+- [ ] Fix metrics flush data-loss window
+- [ ] Fix fallback timer double-arming in dual-mode hooks
+- [ ] Fix useArrivals wrong-station unsubscribe
+- [ ] Fix useTrainMarkers async forEach
+- [ ] Remove Redis/Neo4j host port bindings (infra — manual EC2 change)
+- [ ] Activate HTTPS in nginx (infra — needs certs)
+- [ ] Move AppSync API key to Secrets Manager (CDK)
+- [ ] Fix WsServerWriteRole IAM trust policy (CDK)
+- [ ] Add DLQ to stream-to-s3 Lambda (CDK)
+
+### What's Next
+- Complete critical tier remediation
+- Run TypeScript compilation + tests after fixes
+- Deploy fixes (Vercel + EC2 rebuild + CDK deploy)
+- Start important tier in next session
+
+---
+
 ## Session: k6 Load Test Protocol Fix & Production Run (2026-02-23)
 
 **Goal:** Fix the k6 load test script that was failing to exchange Socket.IO messages, run against production, update README with real numbers.
