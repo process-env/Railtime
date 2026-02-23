@@ -28,7 +28,9 @@ const FLUSH_INTERVAL_MS = 60_000; // 60 seconds
 // In-memory buffer
 // ---------------------------------------------------------------------------
 
-let buffer = new Map<string, TrainPosition[]>();
+type StampedPosition = TrainPosition & { capturedAt: number };
+
+let buffer = new Map<string, StampedPosition[]>();
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 
 // ---------------------------------------------------------------------------
@@ -44,11 +46,14 @@ export function archivePositions(feedGroupId: string, trains: TrainPosition[]): 
   if (!getS3Client()) return;
   if (trains.length === 0) return;
 
+  const capturedAt = Date.now();
+  const stamped: StampedPosition[] = trains.map(t => ({ ...t, capturedAt }));
+
   const existing = buffer.get(feedGroupId);
   if (existing) {
-    existing.push(...trains);
+    existing.push(...stamped);
   } else {
-    buffer.set(feedGroupId, [...trains]);
+    buffer.set(feedGroupId, stamped);
   }
 }
 
@@ -84,7 +89,6 @@ async function flush(): Promise<void> {
       lines.push(JSON.stringify({
         ...train,
         feedGroupId,
-        capturedAt: now,
       }));
     }
 

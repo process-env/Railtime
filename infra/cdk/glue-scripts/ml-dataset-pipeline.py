@@ -154,9 +154,10 @@ def build_ridership_forecast():
             return
 
         result = (
-            df.select(
+            df.filter(F.lower(F.col("mode")).contains("subway"))
+            .select(
                 F.col("date"),
-                F.col("subways_total_ridership").alias("ridership"),
+                F.col("count").alias("ridership"),
             )
             .withColumn("parsed_date", F.to_date("date", "yyyy-MM-dd"))
             .withColumn("day_of_week", F.dayofweek("parsed_date"))
@@ -213,7 +214,7 @@ def build_reliability_analysis():
         # Join OTP if available (on month + division)
         if otp is not None:
             otp_agg = otp.groupBy("month", "division").agg(
-                F.avg("on_time_pct").alias("otp_pct")
+                F.avg("terminal_on_time_performance").alias("otp_pct")
             )
             result = result.join(otp_agg, ["month", "division"], "left")
 
@@ -227,7 +228,7 @@ def build_reliability_analysis():
         # Join service if available (on month, approximate by division)
         if service is not None:
             svc_agg = service.groupBy("month").agg(
-                F.avg("total_pct").alias("service_pct")
+                F.avg("service_delivered_pct").alias("service_pct")
             )
             result = result.join(svc_agg, ["month"], "left")
 

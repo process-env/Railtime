@@ -4,6 +4,64 @@ _Last Updated: 2026-02-23_
 
 ---
 
+## Session: ML Lab Code Review — Critical Bug Discovery (2026-02-23)
+
+**Goal:** Deep code review of the entire ML Data Laboratory feature (all 5 phases). Found 2 critical bugs, 3 high-severity issues, 6 medium, 3 low.
+
+### Review Artifacts
+- `dev/review/ml-lab-stack/ml-lab-stack-review.md` — Full structured review
+- `dev/review/ml-lab-stack/ml-lab-stack-context.md` — Architectural context
+- `dev/review/ml-lab-stack/ml-lab-stack-tasks.md` — Remediation checklist
+
+### Critical Findings (must fix immediately)
+
+**C1. All 7 Glue table schemas don't match actual Parquet data**
+- Every historical Glue table in `ml-lab-stack.ts` has wrong column names/counts vs the actual Parquet files from `upload-historical-mta.ts`
+- Example: `daily_ridership` Glue expects 15 wide columns but Parquet has 3 narrow columns (`date`, `mode`, `count`)
+- Impact: Athena queries return nulls; PySpark pipeline references wrong column names
+- Fix: Rewrite all 7 Glue table schemas to match Parquet schemas
+
+**C2. SageMaker auto-stop script broken — bash variable expansion bug**
+- `${IDLE_TIME}` inside single-quoted heredoc `'SCRIPT'` won't expand, creating invalid Python
+- The notebook will NEVER auto-stop — currently accruing ~$36/month
+- Fix: Hardcode `3600` directly in the Python code or unquote the heredoc delimiter
+
+### High Findings
+
+| # | Finding | Impact |
+|---|---------|--------|
+| H1 | CDK IAM role (`railtime-ws-server-dynamodb`) doesn't match EC2's actual role (`railtime-ec2-dynamodb`) | CDK out of sync; inline policy workaround won't survive stack updates |
+| H2 | `capturedAt` is flush time (60s), not capture time (15s) | Trajectory speed calculations produce incorrect values |
+| H3 | PySpark pipeline references wrong column names from Glue schema instead of actual Parquet columns | reliability_analysis dataset will fail |
+
+### Medium/Low Findings
+- M1: No encryption on ML bucket
+- M2: `AmazonSageMakerFullAccess` overly permissive
+- M3: No alarm for ML dataset Glue job failures
+- M4: Overlapping S3 lifecycle rules
+- M5: `gzipSync` blocks event loop
+- M6: `mode("overwrite")` destroys historical processed data
+- L1: Hardcoded Windows path in upload script
+- L2: Zero test coverage
+- L3: Duplicated PySpark windowing logic
+
+### Deployment Status (from prior session)
+- 4 commits pushed: `5dd5f84`, `5667ee6`, `4d38403`, `2cdc45f`
+- Historical data uploaded: 7 datasets, 27,109 rows in S3
+- WS server rebuilt on EC2 with position archiver active
+- Both CDK stacks deployed: RailtimeAnalytics (updated) + RailtimeMlLab (23/23 resources)
+- Vercel deployed: `https://traintracker-kappa.vercel.app`
+
+### What's Next
+1. **Stop SageMaker notebook** to halt cost bleed (C2)
+2. **Fix Glue table schemas** to match Parquet (C1)
+3. **Fix PySpark column references** (H3)
+4. **Fix capturedAt timestamp** in position-archiver (H2)
+5. Redeploy CDK + rebuild server
+6. Address medium/low findings
+
+---
+
 ## Session: MTA Data Laboratory -- ML Platform (2026-02-23)
 
 **Goal:** Capture real-time position data + AI analysis to S3/DynamoDB, ingest 7 historical MTA datasets, provision SageMaker ML lab, deliver 3 Jupyter notebooks.
