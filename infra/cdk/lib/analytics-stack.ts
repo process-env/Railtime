@@ -408,7 +408,7 @@ export class AnalyticsStack extends cdk.Stack {
 
     // --- Glue Job Failure Detection (EventBridge) ---
 
-    const glueFailureRule = new events.Rule(this, 'GlueJobFailure', {
+    const glueFailureRule = new events.Rule(this, 'GlueJobFailureRule', {
       ruleName: 'railtime-glue-job-failure',
       eventPattern: {
         source: ['aws.glue'],
