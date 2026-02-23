@@ -19,6 +19,9 @@ import {
 import { getDynamoClient } from '../lib/dynamodb.js';
 import { computeDeviation } from './schedule-lookup.js';
 import { generateAnalysis } from './transit-analyzer.js';
+import { createLogger } from '../lib/logger.js';
+
+const log = createLogger('metrics');
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -328,10 +331,7 @@ export function collectMetrics(
   // Write TRIP_START events immediately (low volume, time-sensitive)
   if (tripStartEvents.length > 0) {
     writeEvents(tripStartEvents).catch((err) =>
-      console.error(
-        '[metrics-collector] Failed to write trip start events:',
-        err instanceof Error ? err.message : err,
-      ),
+      log.error({ err: err instanceof Error ? err.message : err }, 'failed to write trip start events'),
     );
   }
 }
@@ -379,10 +379,7 @@ export function collectAlertEvent(alerts: ServiceAlert[]): void {
 
   if (events.length > 0) {
     writeEvents(events).catch((err) =>
-      console.error(
-        '[metrics-collector] Failed to write alert events:',
-        err instanceof Error ? err.message : err,
-      ),
+      log.error({ err: err instanceof Error ? err.message : err }, 'failed to write alert events'),
     );
   }
 
@@ -447,12 +444,9 @@ export function collectRemovedTrips(feedGroupId: string, removedTripIds: string[
 
   if (events.length > 0) {
     writeEvents(events).catch((err) =>
-      console.error(
-        '[metrics-collector] Failed to write trip end events:',
-        err instanceof Error ? err.message : err,
-      ),
+      log.error({ err: err instanceof Error ? err.message : err }, 'failed to write trip end events'),
     );
-    console.log(`[metrics-collector] TRIP_END: ${events.length} trips completed (feed: ${feedGroupId})`);
+    log.info({ tripEnds: events.length, feedGroupId }, 'trip end events recorded');
   }
 }
 
@@ -469,7 +463,7 @@ async function flush(): Promise<void> {
   if (!getDynamoClient()) return;
   if (buffers.size === 0) return;
   if (flushing) {
-    console.warn('[metrics-collector] Flush already in progress, skipping');
+    log.warn('flush already in progress, skipping');
     return;
   }
   flushing = true;
@@ -696,7 +690,7 @@ async function flush(): Promise<void> {
     const totalDelays = metrics.reduce((sum, m) => sum + (m.avgDelaySeconds != null ? 1 : 0), 0);
     const delayValues = metrics.filter(m => m.avgDelaySeconds != null).map(m => m.avgDelaySeconds);
     if (delayValues.length > 0) {
-      console.log(`[metrics-collector] Delay diagnostic: ${totalDelays}/${metrics.length} routes have delay data, sample values: ${delayValues.slice(0, 5).join(', ')}s`);
+      log.info({ routesWithDelay: totalDelays, totalRoutes: metrics.length, sampleValues: delayValues.slice(0, 5) }, 'delay diagnostic');
       firstDelayLogDone = true;
     }
   }
@@ -737,13 +731,9 @@ async function flush(): Promise<void> {
       rollups.length > 0 ? writeRollups(rollups) : Promise.resolve(),
     ]);
     const anomalyEvents = delayEvents.filter(e => e.pk.startsWith('BUNCH#') || e.pk.startsWith('GAP#')).length;
-    console.log(
-      `[metrics-collector] Flushed ${metrics.length} metrics, ${delayEvents.length} events (${anomalyEvents} anomalies)`,
-    );
+    log.info({ metricsCount: metrics.length, eventsCount: delayEvents.length, anomalies: anomalyEvents }, 'flush complete');
     if (rollups.length > 0) {
-      console.log(
-        `[metrics-collector] Updated daily rollups for ${rollups.length} routes`,
-      );
+      log.info({ rollupsCount: rollups.length }, 'daily rollups updated');
     }
 
     // Generate AI transit analysis — skip if no active trains
@@ -756,16 +746,13 @@ async function flush(): Promise<void> {
         alerts: latestAlertDetails,
         systemHealth: healthRecord,
       }).catch(err =>
-        console.error('[metrics-collector] Transit analysis generation failed:', err instanceof Error ? err.message : err),
+        log.error({ err: err instanceof Error ? err.message : err }, 'transit analysis generation failed'),
       );
     } else {
-      console.log('[metrics-collector] Skipping analysis — no active trains');
+      log.debug('skipping analysis — no active trains');
     }
   } catch (err) {
-    console.error(
-      '[metrics-collector] Flush error:',
-      err instanceof Error ? err.message : err,
-    );
+    log.error({ err: err instanceof Error ? err.message : err }, 'flush error');
   } finally {
     flushing = false;
   }
@@ -780,21 +767,17 @@ async function flush(): Promise<void> {
  */
 export function startCollector(): void {
   if (!getDynamoClient()) {
-    console.log(
-      '[metrics-collector] DynamoDB not configured — analytics collection disabled',
-    );
+    log.info('dynamodb not configured — analytics collection disabled');
     return;
   }
 
   flushTimer = setInterval(() => {
     flush().catch((err) =>
-      console.error('[metrics-collector] Flush error:', err),
+      log.error({ err: err instanceof Error ? err.message : err }, 'flush error'),
     );
   }, FLUSH_INTERVAL_MS);
 
-  console.log(
-    `[metrics-collector] Started (flush every ${FLUSH_INTERVAL_MS / 1000}s)`,
-  );
+  log.info({ flushIntervalMs: FLUSH_INTERVAL_MS }, 'collector started');
 }
 
 /**
@@ -806,5 +789,5 @@ export async function stopCollector(): Promise<void> {
     flushTimer = null;
   }
   await flush();
-  console.log('[metrics-collector] Stopped');
+  log.info('stopped');
 }

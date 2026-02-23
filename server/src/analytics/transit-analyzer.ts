@@ -11,8 +11,11 @@ import {
 } from '@aws-sdk/client-bedrock-runtime';
 import { getCache, setCache } from '../lib/redis.js';
 import { CACHE_KEYS } from '../lib/cache-keys.js';
+import { createLogger } from '../lib/logger.js';
 import type { AlertSummary } from '../types.js';
 import type { MetricRecord, EventRecord, RollupRecord } from './dynamodb-writer.js';
+
+const log = createLogger('analyzer');
 
 const MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
 const CACHE_TTL_SECONDS = 600; // 10 minutes (2x flush interval for safety)
@@ -203,7 +206,7 @@ export async function generateAnalysis(input: AnalysisInput): Promise<void> {
     const analysisText: string = responseBody.content?.[0]?.text ?? '';
 
     if (!analysisText) {
-      console.warn('[transit-analyzer] Empty response from Bedrock');
+      log.warn('empty response from Bedrock');
       return;
     }
 
@@ -214,11 +217,8 @@ export async function generateAnalysis(input: AnalysisInput): Promise<void> {
     };
 
     await setCache(CACHE_KEYS.TRANSIT_ANALYSIS, result, CACHE_TTL_SECONDS);
-    console.log(`[transit-analyzer] Analysis generated and cached (${analysisText.length} chars)`);
+    log.info({ model: MODEL_ID, charCount: analysisText.length }, 'analysis generated and cached');
   } catch (err) {
-    console.error(
-      '[transit-analyzer] Failed to generate analysis:',
-      err instanceof Error ? err.message : err,
-    );
+    log.error({ err: err instanceof Error ? err.message : err }, 'failed to generate analysis');
   }
 }

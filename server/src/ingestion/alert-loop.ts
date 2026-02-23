@@ -7,7 +7,10 @@
  */
 import axios from "axios";
 import { setCache } from "../lib/redis.js";
+import { createLogger } from "../lib/logger.js";
 import type { ServiceAlert, AlertSeverity } from "../types.js";
+
+const log = createLogger('alert-loop');
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -213,12 +216,10 @@ async function fetchAndProcess(
     // Invoke callback with full alert list (namespace will diff as needed)
     onUpdate(alerts);
 
-    console.log(
-      `[alert-loop] ${alerts.length} alerts (${newAlerts.length} new, ${clearedIds.length} cleared)`,
-    );
+    log.info({ total: alerts.length, new: newAlerts.length, cleared: clearedIds.length }, 'alert cycle complete');
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[alert-loop] Fetch error: ${message}`);
+    log.error({ err: message }, 'fetch error');
   }
 }
 
@@ -228,24 +229,22 @@ async function fetchAndProcess(
  */
 export function startAlertLoop(onUpdate: AlertUpdateCallback): void {
   if (running) {
-    console.warn("[alert-loop] Already running");
+    log.warn('already running');
     return;
   }
 
   running = true;
-  console.log(
-    `[alert-loop] Starting alert polling (${POLL_INTERVAL_MS / 1000}s interval)`,
-  );
+  log.info({ intervalMs: POLL_INTERVAL_MS }, 'starting alert polling');
 
   // Run immediately
   fetchAndProcess(onUpdate).catch((err) =>
-    console.error("[alert-loop] Initial fetch error:", err),
+    log.error({ err: err instanceof Error ? err.message : err }, 'initial fetch error'),
   );
 
   loopTimer = setInterval(() => {
     if (!running) return;
     fetchAndProcess(onUpdate).catch((err) =>
-      console.error("[alert-loop] Fetch error:", err),
+      log.error({ err: err instanceof Error ? err.message : err }, 'fetch error'),
     );
   }, POLL_INTERVAL_MS);
 }
@@ -262,5 +261,5 @@ export function stopAlertLoop(): void {
     loopTimer = null;
   }
 
-  console.log("[alert-loop] Stopped");
+  log.info('stopped');
 }

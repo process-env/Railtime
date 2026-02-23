@@ -4,6 +4,71 @@ _Last Updated: 2026-02-22_
 
 ---
 
+## Session: Staff-Level Observability & Load Testing (2026-02-22, evening)
+
+**Goal:** Implement structured logging, CloudWatch pipeline alerting, k6 load tests, and document in README.
+
+### What Was Completed
+
+#### 1. Structured Logging (pino)
+- Replaced 165+ console.* calls across 15 server/src/ files with pino structured JSON logging
+- `server/src/lib/logger.ts` — pino factory with child loggers per module
+- JSON output in production (Docker → CloudWatch Logs searchable), pino-pretty in development
+- Structured fields: trains, feeds, latencyMs, socketId, room, batchCount, retries, durationMs
+- Log levels: trace, debug, info, warn, error, fatal (controllable via LOG_LEVEL env var)
+
+#### 2. CloudWatch Alarms (CDK)
+- SNS topic: `railtime-pipeline-alerts`
+- 5 alarms: stream-to-s3 errors, stream-to-s3 duration, glue-trigger errors, DynamoDB throttles, Glue job failures
+- All alarms → SNS topic (manual email subscription post-deploy)
+- Fixed glue-trigger Lambda to throw on error (was silently returning 500)
+
+#### 3. k6 Load Tests
+- `server/load-tests/ws-load-test.js` — Socket.IO WebSocket load test
+- 3 scenarios: connection ramp (0→200), sustained (100 VUs), spike (100→500)
+- Custom metrics: ws_connection_time, ws_messages_received, ws_message_latency
+- Results documented in README
+
+#### 4. README
+- Added Observability section (structured logging, CloudWatch alarms, pipeline monitoring)
+- Added Load Testing section (methodology, results, bottleneck analysis)
+
+### Files Created
+- `server/src/lib/logger.ts`
+- `server/load-tests/ws-load-test.js`
+- `server/load-tests/README.md`
+- `dev/active/observability/observability-context.md`
+
+### Files Modified
+- `server/package.json` (added pino, pino-pretty)
+- `server/src/**/*.ts` (15 files — console.* → pino logger)
+- `infra/cdk/lib/analytics-stack.ts` (SNS + 5 alarms)
+- `infra/cdk/lambda/glue-trigger/index.ts` (throw on error)
+- `README.md` (2 new sections)
+
+### Decisions Made and Why
+
+| Decision | Rationale |
+|----------|-----------|
+| pino over winston | pino is 5x faster (30k msg/s vs 6k), JSON-native, smaller footprint. Perfect for a high-throughput WS server doing 8 feeds/15s |
+| No OpenTelemetry | Too heavy for solo-dev. Structured logging + CloudWatch alarms covers 90% of observability needs. Mentioned in README as future work |
+| k6 over Artillery | k6 has native WebSocket support, runs as single binary, produces clean summary stats. Artillery requires Node.js and has weaker WS testing |
+| Alarms → SNS (no PagerDuty) | Solo-dev project. Email alerting is sufficient. SNS topic is extensible to Slack/PagerDuty later |
+| glue-trigger throw vs return | EventBridge interprets any Lambda return (even 500) as success. Throwing ensures the failure is visible and retryable |
+
+### Verification Results
+- `cd server && npx tsc --noEmit` — zero errors
+- `cd infra/cdk && npx tsc --noEmit` — zero errors
+- `npx vitest run` — 736 tests passing across 46 files
+
+### What's Next
+- Subscribe email to SNS topic: `aws sns subscribe --topic-arn <arn> --protocol email --notification-endpoint <email>`
+- Run k6 against production EC2 for real-world numbers
+- CDK deploy: `cd infra/cdk && npx cdk deploy`
+- Rebuild WS server on EC2 with pino: `docker compose -f infra/docker-compose.prod.yml up -d --build ws-server`
+
+---
+
 ## Session: Bedrock Transit Analysis (2026-02-22, afternoon)
 
 **Goal:** Replace EquipmentStatusCard with AI-powered transit analysis card using Amazon Bedrock Nova Micro.

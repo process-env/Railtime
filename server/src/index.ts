@@ -14,6 +14,9 @@ import { handleTransitAnalysis } from "./api/transit-analysis.js";
 import type { FeedEntity } from "./types.js";
 import { collectMetrics, collectAlertEvent, collectRemovedTrips, startCollector, stopCollector } from "./analytics/metrics-collector.js";
 import { initScheduleLookup, stopScheduleLookup } from "./analytics/schedule-lookup.js";
+import { createLogger } from "./lib/logger.js";
+
+const log = createLogger('server');
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -83,22 +86,17 @@ async function attachRedisAdapter(): Promise<boolean> {
   const sub = getSubClient();
 
   if (!pub || !sub) {
-    console.warn(
-      "[server] REDIS_URL not set — running without Redis adapter (single-instance mode)",
-    );
+    log.warn('redis adapter unavailable — single-instance mode');
     return false;
   }
 
   try {
     await Promise.all([pub.connect(), sub.connect()]);
     io.adapter(createAdapter(pub, sub));
-    console.log("[server] Redis adapter attached (multi-instance ready)");
+    log.info('redis adapter attached (multi-instance ready)');
     return true;
   } catch (err) {
-    console.warn(
-      "[server] Redis adapter setup failed, continuing without it:",
-      err instanceof Error ? err.message : err,
-    );
+    log.warn({ err: err instanceof Error ? err.message : err }, 'redis adapter setup failed, continuing without it');
     return false;
   }
 }
@@ -108,9 +106,9 @@ async function attachRedisAdapter(): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 io.on("connection", (socket) => {
-  console.log(`[ws] client connected: ${socket.id}`);
+  log.info({ socketId: socket.id }, 'client connected');
   socket.on("disconnect", (reason) => {
-    console.log(`[ws] client disconnected: ${socket.id} (${reason})`);
+    log.info({ socketId: socket.id, reason }, 'client disconnected');
   });
 });
 
@@ -119,7 +117,7 @@ io.on("connection", (socket) => {
 // ---------------------------------------------------------------------------
 
 async function shutdown(signal: string) {
-  console.log(`\n[server] received ${signal}, shutting down gracefully...`);
+  log.info({ signal }, 'received shutdown signal, shutting down gracefully');
 
   // Stop ingestion loops first (no more data flowing)
   stopFeedLoop();
@@ -132,13 +130,13 @@ async function shutdown(signal: string) {
   stopScheduleLookup();
 
   io.close(() => {
-    console.log("[server] Socket.IO server closed");
+    log.info('socket.io server closed');
     httpServer.close(async () => {
-      console.log("[server] HTTP server closed");
+      log.info('http server closed');
 
       // Close external connections
       await Promise.allSettled([closeRedis(), closeNeo4j(), closeDynamoClient()]);
-      console.log("[server] External connections closed");
+      log.info('external connections closed');
 
       process.exit(0);
     });
@@ -146,7 +144,7 @@ async function shutdown(signal: string) {
 
   // Force exit after 10 seconds if graceful shutdown stalls
   setTimeout(() => {
-    console.error("[server] forced shutdown after timeout");
+    log.fatal('forced shutdown after timeout');
     process.exit(1);
   }, 10_000);
 }
@@ -159,8 +157,8 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 // ---------------------------------------------------------------------------
 
 httpServer.listen(PORT, async () => {
-  console.log(`[server] Railtime WS server listening on port ${PORT}`);
-  console.log(`[server] CORS origins: ${allowedOrigins.join(", ")}`);
+  log.info({ port: PORT }, 'railtime ws server listening');
+  log.info({ origins: allowedOrigins }, 'CORS origins configured');
 
   // Attach Redis adapter (non-blocking — continues without it)
   await attachRedisAdapter();
@@ -196,7 +194,7 @@ httpServer.listen(PORT, async () => {
   // Start analytics collector (flushes to DynamoDB every 5 min)
   startCollector();
 
-  console.log("[server] All namespaces and ingestion loops started");
+  log.info('all namespaces and ingestion loops started');
 });
 
 export { io, httpServer };

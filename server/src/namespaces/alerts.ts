@@ -20,6 +20,9 @@
 import type { Server, Namespace, Socket } from "socket.io";
 import type { ServiceAlert } from "../types.js";
 import type { AlertUpdateCallback } from "../ingestion/alert-loop.js";
+import { createLogger } from "../lib/logger.js";
+
+const log = createLogger('ns:alerts');
 
 let alertsNsp: Namespace | null = null;
 let previousAlerts = new Map<string, ServiceAlert>();
@@ -32,33 +35,33 @@ export function setupAlertsNamespace(io: Server): AlertUpdateCallback {
   alertsNsp = io.of("/alerts");
 
   alertsNsp.on("connection", (socket: Socket) => {
-    console.log(`[/alerts] client connected: ${socket.id}`);
+    log.info({ socketId: socket.id }, 'client connected');
 
     socket.on("subscribe:all", () => {
       socket.join("all-alerts");
-      console.log(`[/alerts] ${socket.id} joined all-alerts`);
+      log.debug({ socketId: socket.id, room: 'all-alerts' }, 'joined room');
     });
 
     socket.on("subscribe:route", (routeId: string) => {
       if (typeof routeId !== "string" || !routeId.trim()) return;
       const room = `route:${routeId.toUpperCase()}`;
       socket.join(room);
-      console.log(`[/alerts] ${socket.id} joined ${room}`);
+      log.debug({ socketId: socket.id, room }, 'joined room');
     });
 
     socket.on("unsubscribe:route", (routeId: string) => {
       if (typeof routeId !== "string" || !routeId.trim()) return;
       const room = `route:${routeId.toUpperCase()}`;
       socket.leave(room);
-      console.log(`[/alerts] ${socket.id} left ${room}`);
+      log.debug({ socketId: socket.id, room }, 'left room');
     });
 
     socket.on("disconnect", (reason) => {
-      console.log(`[/alerts] ${socket.id} disconnected (${reason})`);
+      log.info({ socketId: socket.id, reason }, 'client disconnected');
     });
   });
 
-  console.log("[/alerts] Namespace ready");
+  log.info('namespace ready');
   return onAlertUpdate;
 }
 

@@ -1,4 +1,7 @@
 import { Redis } from 'ioredis';
+import { createLogger } from './logger.js';
+
+const log = createLogger('redis');
 
 let redis: Redis | null = null;
 let pubClient: Redis | null = null;
@@ -20,7 +23,7 @@ function createClient(label: string): Redis | null {
     });
 
     client.on('error', (err) => {
-      console.error(`[redis:${label}] connection error:`, err.message);
+      log.error({ client: label, err: err.message }, 'connection error');
     });
 
     return client;
@@ -134,7 +137,7 @@ export async function closeAll(): Promise<void> {
       try {
         await ref.quit();
       } catch {
-        console.warn(`[redis:${label}] forced disconnect during shutdown`);
+        log.warn({ client: label }, 'forced disconnect during shutdown');
         ref.disconnect();
       }
     }),

@@ -10,6 +10,7 @@ import path from "node:path";
 import axios from "axios";
 import protobuf from "protobufjs";
 import { setCache } from "../lib/redis.js";
+import { createLogger } from "../lib/logger.js";
 import type {
   FeedGroupConfig,
   FeedEntity,
@@ -17,6 +18,8 @@ import type {
   Stop,
   TrainPosition,
 } from "../types.js";
+
+const log = createLogger('feed-loop');
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -119,7 +122,7 @@ async function loadProtoSchema(): Promise<protobuf.Type> {
   const protoPath = path.join(DATA_DIR, "gtfs-realtime.proto");
   const root = await protobuf.load(protoPath);
   FeedMessage = root.lookupType("transit_realtime.FeedMessage");
-  console.log("[feed-loop] Protobuf schema loaded");
+  log.info('protobuf schema loaded');
   return FeedMessage;
 }
 
@@ -174,7 +177,7 @@ async function loadStopsDict(): Promise<Record<string, Stop>> {
   }
 
   stopsDict = dict;
-  console.log(`[feed-loop] Loaded ${Object.keys(dict).length} stops`);
+  log.info({ stops: Object.keys(dict).length }, 'stops dictionary loaded');
   return dict;
 }
 
@@ -487,9 +490,7 @@ async function fetchAndProcessFeed(
     const isTimeout =
       axios.isAxiosError(err) && err.code === "ECONNABORTED";
 
-    console.error(
-      `[feed-loop] Error fetching ${feedGroupId}: ${message}`,
-    );
+    log.error({ feedGroupId, err: message }, 'feed fetch error');
 
     return {
       feedGroupId,
@@ -538,23 +539,16 @@ async function runCycle(onUpdate: FeedUpdateCallback): Promise<void> {
         r.status,
       );
     } catch (err) {
-      console.error(
-        `[feed-loop] onUpdate callback error for ${r.feedGroupId}:`,
-        err,
-      );
+      log.error({ feedGroupId: r.feedGroupId, err: err instanceof Error ? err.message : err }, 'onUpdate callback error');
     }
   }
 
   const totalTrains = results.reduce((sum, r) => sum + r.trains.length, 0);
   const failed = results.filter((r) => r.status !== "success").length;
   if (failed > 0) {
-    console.log(
-      `[feed-loop] Cycle complete: ${totalTrains} trains, ${failed}/${results.length} feeds failed`,
-    );
+    log.info({ trains: totalTrains, failed, feeds: results.length }, 'cycle complete');
   } else {
-    console.log(
-      `[feed-loop] Cycle complete: ${totalTrains} trains across ${results.length} feeds`,
-    );
+    log.info({ trains: totalTrains, feeds: results.length }, 'cycle complete');
   }
 }
 
@@ -565,24 +559,22 @@ async function runCycle(onUpdate: FeedUpdateCallback): Promise<void> {
  */
 export function startFeedLoop(onUpdate: FeedUpdateCallback): void {
   if (running) {
-    console.warn("[feed-loop] Already running");
+    log.warn('already running');
     return;
   }
 
   running = true;
-  console.log(
-    `[feed-loop] Starting ingestion (${FEED_GROUPS.length} feeds, ${POLL_INTERVAL_MS / 1000}s interval)`,
-  );
+  log.info({ feeds: FEED_GROUPS.length, intervalMs: POLL_INTERVAL_MS }, 'starting ingestion');
 
   // Warm up stops + protobuf on first cycle
   runCycle(onUpdate).catch((err) =>
-    console.error("[feed-loop] Initial cycle error:", err),
+    log.error({ err: err instanceof Error ? err.message : err }, 'initial cycle error'),
   );
 
   loopTimer = setInterval(() => {
     if (!running) return;
     runCycle(onUpdate).catch((err) =>
-      console.error("[feed-loop] Cycle error:", err),
+      log.error({ err: err instanceof Error ? err.message : err }, 'cycle error'),
     );
   }, POLL_INTERVAL_MS);
 }
@@ -599,5 +591,5 @@ export function stopFeedLoop(): void {
     loopTimer = null;
   }
 
-  console.log("[feed-loop] Stopped");
+  log.info('stopped');
 }

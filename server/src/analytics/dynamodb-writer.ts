@@ -6,6 +6,9 @@
  */
 import { BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { getDynamoClient } from '../lib/dynamodb.js';
+import { createLogger } from '../lib/logger.js';
+
+const log = createLogger('dynamo-writer');
 
 const METRICS_TABLE = process.env.DYNAMODB_TABLE_METRICS ?? 'railtime-metrics';
 const EVENTS_TABLE = process.env.DYNAMODB_TABLE_EVENTS ?? 'railtime-events';
@@ -116,9 +119,7 @@ async function batchWrite(
 
     if (retries >= MAX_RETRIES) {
       const remaining = unprocessed[tableName]?.length ?? 0;
-      console.error(
-        `[dynamodb-writer] ${tableName}: ${remaining} items still unprocessed after ${MAX_RETRIES} retries — escalating`,
-      );
+      log.error({ table: tableName, unprocessed: remaining, retries: MAX_RETRIES }, 'items still unprocessed after max retries — escalating');
       throw new Error(
         `[dynamodb-writer] ${tableName}: ${remaining} items unprocessed after ${MAX_RETRIES} retries`,
       );

@@ -6,6 +6,9 @@
  */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { createLogger } from './logger.js';
+
+const log = createLogger('dynamodb');
 
 let docClient: DynamoDBDocumentClient | null = null;
 let initialized = false;
@@ -16,9 +19,7 @@ export function getDynamoClient(): DynamoDBDocumentClient | null {
 
   const region = process.env.AWS_REGION;
   if (!region) {
-    console.warn(
-      '[dynamodb] AWS_REGION not set — analytics persistence disabled',
-    );
+    log.warn('AWS_REGION not set — analytics persistence disabled');
     return null;
   }
 
@@ -26,7 +27,7 @@ export function getDynamoClient(): DynamoDBDocumentClient | null {
   docClient = DynamoDBDocumentClient.from(client, {
     marshallOptions: { removeUndefinedValues: true },
   });
-  console.log('[dynamodb] Client initialized');
+  log.info('client initialized');
   return docClient;
 }
 
@@ -35,6 +36,6 @@ export function closeDynamoClient(): void {
     docClient.destroy();
     docClient = null;
     initialized = false;
-    console.log('[dynamodb] Client closed');
+    log.info('client closed');
   }
 }

@@ -8,6 +8,9 @@ import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as glue from 'aws-cdk-lib/aws-glue';
 import * as appsync from 'aws-cdk-lib/aws-appsync';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as sns from 'aws-cdk-lib/aws-sns';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
@@ -303,6 +306,93 @@ export class AnalyticsStack extends cdk.Stack {
     });
 
     // -----------------------------------------------------------------------
+    // Pipeline Alerting — SNS + CloudWatch Alarms
+    // -----------------------------------------------------------------------
+
+    const alertTopic = new sns.Topic(this, 'AlertTopic', {
+      topicName: 'railtime-pipeline-alerts',
+      displayName: 'Railtime Pipeline Alerts',
+    });
+
+    // --- Lambda Alarms ---
+
+    // stream-to-s3: errors > 0 in 5 min
+    const streamToS3ErrorsAlarm = streamToS3Fn.metricErrors({
+      period: cdk.Duration.minutes(5),
+    }).createAlarm(this, 'StreamToS3Errors', {
+      alarmName: 'railtime-stream-to-s3-errors',
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      alarmDescription: 'stream-to-s3 Lambda failing — DynamoDB records not reaching S3',
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    streamToS3ErrorsAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // stream-to-s3: duration > 240s (approaching 5-min timeout)
+    const streamToS3DurationAlarm = streamToS3Fn.metricDuration({
+      period: cdk.Duration.minutes(5),
+      statistic: 'Maximum',
+    }).createAlarm(this, 'StreamToS3Duration', {
+      alarmName: 'railtime-stream-to-s3-duration',
+      threshold: 240_000,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      alarmDescription: 'stream-to-s3 approaching timeout — batch size may be too large',
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    streamToS3DurationAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // glue-trigger: errors > 0
+    const glueTriggerErrorsAlarm = glueTriggerFn.metricErrors({
+      period: cdk.Duration.minutes(5),
+    }).createAlarm(this, 'GlueTriggerErrors', {
+      alarmName: 'railtime-glue-trigger-errors',
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      alarmDescription: 'glue-trigger failed — daily ETL will not run',
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    glueTriggerErrorsAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // --- DynamoDB Alarms ---
+
+    // WriteThrottleEvents on metrics table
+    const metricsThrottleAlarm = new cloudwatch.Alarm(this, 'MetricsWriteThrottles', {
+      alarmName: 'railtime-metrics-write-throttles',
+      metric: metricsTable.metricThrottledRequestsForOperation('PutItem', {
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      alarmDescription: 'DynamoDB throttling writes — possible hot partition',
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    metricsThrottleAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // --- Glue Job Alarm ---
+
+    const glueJobFailureAlarm = new cloudwatch.Alarm(this, 'GlueJobFailure', {
+      alarmName: 'railtime-glue-job-failure',
+      metric: new cloudwatch.Metric({
+        namespace: 'Glue',
+        metricName: 'glue.driver.aggregate.numFailedTasks',
+        dimensionsMap: { JobName: 'railtime-daily-rollup', Type: 'gauge' },
+        period: cdk.Duration.hours(1),
+        statistic: 'Sum',
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      alarmDescription: 'Glue daily-rollup job has failed tasks',
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    glueJobFailureAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // -----------------------------------------------------------------------
     // IAM: WS Server write role (for reference)
     // -----------------------------------------------------------------------
 
@@ -348,6 +438,11 @@ export class AnalyticsStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'WsServerRoleArn', {
       value: wsServerRole.roleArn,
       description: 'IAM role ARN for WS server DynamoDB access',
+    });
+
+    new cdk.CfnOutput(this, 'AlertTopicArn', {
+      value: alertTopic.topicArn,
+      description: 'SNS topic ARN for pipeline alerts (subscribe via: aws sns subscribe --topic-arn <arn> --protocol email --notification-endpoint <email>)',
     });
   }
 }

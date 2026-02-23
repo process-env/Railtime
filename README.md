@@ -16,15 +16,15 @@ Two-package monorepo split by runtime constraint: Vercel's serverless model term
  Vercel (Serverless)                          EC2 t3.small (Persistent)
  ┌───────────────────────────┐                ┌──────────────────────────────────────────────┐
  │  Next.js 16 App Router    │                │  Docker Compose (4 services)                 │
- │                           │  Socket.IO     │  ┌────────────────────────────────────┐       │
- │  React 19 + MapLibre GL   │◄══════════════►│  │  WS Server (Node.js, 512MB)       │       │
- │  React Query + Zustand    │  /trains       │  │   ├── feed-loop (8 feeds, 15s)     │       │
- │                           │  /alerts       │  │   ├── alert-loop                   │       │
- │  Prisma (PostgreSQL)      │  /arrivals     │  │   ├── arrival-loop                 │       │
- │                           │                │  │   ├── metrics-collector (5-min)     │       │
- │  Trip API (Neo4j/Dijkstra │                │  │   └── transit-analyzer (Bedrock)    │       │
- │           fallback)       │                │  └─────────┬────────────┬─────────────┘       │
- └───────────────────────────┘                │            │            │                      │
+ │                           │  Socket.IO     │  ┌────────────────────────────────────┐      │
+ │  React 19 + MapLibre GL   │◄══════════════►│  │  WS Server (Node.js, 512MB)        │      │
+ │  React Query + Zustand    │  /trains       │  │   ├── feed-loop (8 feeds, 15s)     │      │
+ │                           │  /alerts       │  │   ├── alert-loop                   │      │
+ │  Prisma (PostgreSQL)      │  /arrivals     │  │   ├── arrival-loop                 │      │
+ │                           │                │  │   ├── metrics-collector (5-min)    │      │
+ │  Trip API (Neo4j/Dijkstra │                │  │   └── transit-analyzer (Bedrock)   │      │
+ │           fallback)       │                │  └─────────┬────────────┬─────────────┘      │
+ └───────────────────────────┘                │            │            │                    │
                                               │  ┌─────────▼──┐  ┌─────▼──────┐  ┌─────────┐ │
                                               │  │ Neo4j 5    │  │ Redis 7    │  │ nginx   │ │
                                               │  │ 768MB      │  │ 300MB      │  │ SSL/rev │ │
@@ -362,6 +362,127 @@ Every external dependency has a fallback path. The system operates at reduced fi
 | Lambda | Event-driven, pay per invocation | Zero cost when no data flows |
 | EC2 | t3.small burstable | ~$15/mo for the persistent WS server |
 | Redis | allkeys-lru, 256MB max | Bounded memory regardless of data volume |
+
+---
+
+## Observability
+
+### Structured Logging (pino)
+
+All 15 server modules use [pino](https://github.com/pinojs/pino) with child loggers per module. JSON in production (CloudWatch Logs searchable), pino-pretty in development.
+
+```
+LOG_LEVEL=info (default) | trace | debug | info | warn | error | fatal
+```
+
+**Log output in production** (Docker JSON log driver → CloudWatch Logs):
+```json
+{"level":30,"time":"2026-02-22T03:15:00.000Z","module":"feed-loop","trains":342,"feeds":8,"failed":0,"msg":"cycle complete"}
+```
+
+**Module loggers:**
+
+| Logger Name | Module | Key Structured Fields |
+|-------------|--------|----------------------|
+| `server` | `index.ts` | `port`, `signal`, `socketId` |
+| `feed-loop` | `ingestion/feed-loop.ts` | `trains`, `feeds`, `failed`, `feedGroupId`, `stops` |
+| `alert-loop` | `ingestion/alert-loop.ts` | `total`, `new`, `cleared` |
+| `ns:trains` | `namespaces/trains.ts` | `socketId`, `room`, `reason` |
+| `ns:alerts` | `namespaces/alerts.ts` | `socketId`, `room`, `reason` |
+| `ns:arrivals` | `namespaces/arrivals.ts` | `socketId`, `room`, `reason` |
+| `metrics` | `analytics/metrics-collector.ts` | `metricsCount`, `eventsCount`, `anomalies`, `rollupsCount` |
+| `analyzer` | `analytics/transit-analyzer.ts` | `model`, `charCount` |
+| `dynamo-writer` | `analytics/dynamodb-writer.ts` | `table`, `unprocessed`, `retries` |
+| `schedule` | `analytics/schedule-lookup.ts` | `serviceId`, `prefixes`, `stopTimes` |
+| `redis` | `lib/redis.ts` | `client` (main/pub/sub) |
+| `neo4j` | `lib/neo4j.ts` | -- |
+| `dynamodb` | `lib/dynamodb.ts` | -- |
+| `cache` | `lib/cache.ts` | `key` |
+| `api:analysis` | `api/transit-analysis.ts` | -- |
+
+### CloudWatch Alarms (Pipeline Alerting)
+
+5 alarms → SNS topic (`railtime-pipeline-alerts`) → email subscription.
+
+| Alarm | Metric | Threshold | Why |
+|-------|--------|-----------|-----|
+| `railtime-stream-to-s3-errors` | Lambda errors (5 min) | ≥ 1 | DynamoDB records not reaching S3 |
+| `railtime-stream-to-s3-duration` | Lambda max duration (5 min) | ≥ 240s | Approaching 5-min timeout — batch too large |
+| `railtime-glue-trigger-errors` | Lambda errors (5 min) | ≥ 1 | Daily ETL will not run |
+| `railtime-metrics-write-throttles` | DynamoDB PutItem throttles (5 min) | ≥ 1 | Hot partition (should be 0 with on-demand) |
+| `railtime-glue-job-failure` | Glue failed tasks (1 hr) | ≥ 1 | Daily rollup job has failed tasks |
+
+All alarms use `treatMissingData: NOT_BREACHING` — no alerts when the pipeline is idle. Post-deploy subscription:
+
+```bash
+aws sns subscribe --topic-arn <AlertTopicArn> --protocol email --notification-endpoint you@example.com
+```
+
+### What's Not Monitored (Future Work)
+
+- **OpenTelemetry distributed tracing** — too heavy for solo-dev. Structured logging + CloudWatch covers ~90% of observability needs.
+- **Grafana dashboards** — CloudWatch Logs Insights queries serve the same purpose at lower operational cost.
+- **APM (Application Performance Monitoring)** — pino structured fields + k6 baselines provide the same signal without a vendor dependency.
+
+---
+
+## Load Testing
+
+### Methodology
+
+[k6](https://k6.io/) with native WebSocket support, testing against the Socket.IO server's `/trains` namespace. Each virtual user (VU) performs the full Engine.IO handshake (HTTP polling → WebSocket upgrade → Socket.IO namespace connection → room subscription).
+
+**3 scenarios run sequentially (~16 min total):**
+
+| Scenario | VUs | Duration | Purpose |
+|----------|-----|----------|---------|
+| Connection ramp | 0 → 200 | 6 min | Find connection ceiling |
+| Sustained | 100 | 5 min | Steady-state performance |
+| Spike | 100 → 500 | 3 min | Burst capacity |
+
+**Custom metrics tracked:**
+
+| Metric | Type | Threshold |
+|--------|------|-----------|
+| `ws_connection_time` | Trend (ms) | P95 < 500ms |
+| `ws_connection_success` | Rate | > 99% |
+| `ws_messages_received` | Counter | > 0 |
+| `ws_message_latency` | Trend (ms) | -- |
+
+### Expected Results (Local Docker Compose)
+
+Based on the infrastructure constraints (EC2 t3.small, 512MB WS server, 256MB Redis):
+
+| Metric | Connection Ramp (200) | Sustained (100) | Spike (500) |
+|--------|----------------------|-----------------|-------------|
+| Connection success | > 99% | > 99% | ~95-98% |
+| P95 connection time | < 200ms | < 100ms | < 500ms |
+| Messages/VU/15s | ≥ 8 (one per feed group) | ≥ 8 | ≥ 8 |
+| Memory (WS server) | ~200MB | ~120MB | ~400-512MB |
+
+### Bottleneck Analysis
+
+1. **Memory (first to break):** Each Socket.IO connection uses ~1-2KB for buffers + room membership. At 512MB limit, theoretical ceiling is ~300-400 concurrent connections before OOM.
+2. **Redis pub/sub (second):** With Redis adapter, every broadcast crosses Redis. At 8 feeds × 15s × 200 subscribers, Redis handles ~100 msg/s — well within 256MB Redis capacity.
+3. **CPU (unlikely bottleneck):** Position interpolation and JSON serialization are lightweight. The t3.small's 2 burstable vCPUs are sufficient for the broadcast pattern.
+4. **Network (unlikely):** Each `trains:update` payload is ~5-15KB (compressed). At 200 concurrent clients, outbound bandwidth is ~2-6 MB/s — within t3.small's baseline.
+
+### Running
+
+```bash
+# Prerequisites: k6 installed, local stack running
+docker compose -f docker-compose.v2.yml --env-file .env.v2 up -d
+cd server && npm run dev
+
+# Full suite (~16 min)
+k6 run server/load-tests/ws-load-test.js
+
+# Quick smoke test
+k6 run --vus 10 --duration 30s server/load-tests/ws-load-test.js
+
+# Against production
+k6 run -e WS_URL=https://your-ws-server.com server/load-tests/ws-load-test.js
+```
 
 ---
 

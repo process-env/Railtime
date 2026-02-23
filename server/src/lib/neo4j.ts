@@ -1,4 +1,7 @@
 import neo4j, { type Driver, type Session } from 'neo4j-driver';
+import { createLogger } from './logger.js';
+
+const log = createLogger('neo4j');
 
 let driver: Driver | null = null;
 
@@ -68,16 +71,16 @@ export async function withSession<T>(
 export async function verifyConnectivity(): Promise<boolean> {
   const d = getDriver();
   if (!d) {
-    console.warn('[neo4j] Driver not initialised — NEO4J_URI may be unset');
+    log.warn('driver not initialized — NEO4J_URI may be unset');
     return false;
   }
 
   try {
     await d.verifyConnectivity();
-    console.log('[neo4j] Connection verified');
+    log.info('connection verified');
     return true;
   } catch (err) {
-    console.error('[neo4j] Connectivity check failed:', err);
+    log.error({ err: err instanceof Error ? err.message : err }, 'connectivity check failed');
     return false;
   }
 }

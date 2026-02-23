@@ -20,6 +20,9 @@ import {
   computeArrivals,
   mergeArrivalMaps,
 } from "../ingestion/arrival-loop.js";
+import { createLogger } from "../lib/logger.js";
+
+const log = createLogger('ns:arrivals');
 
 let arrivalsNsp: Namespace | null = null;
 
@@ -56,7 +59,7 @@ export function setupArrivalsNamespace(io: Server): void {
   arrivalsNsp = io.of("/arrivals");
 
   arrivalsNsp.on("connection", (socket: Socket) => {
-    console.log(`[/arrivals] client connected: ${socket.id}`);
+    log.info({ socketId: socket.id }, 'client connected');
 
     // Track which stations this socket is subscribed to for cleanup
     const socketStations = new Set<string>();
@@ -69,7 +72,7 @@ export function setupArrivalsNamespace(io: Server): void {
       socket.join(room);
       socketStations.add(normalizedId);
       incrementSubscriber(normalizedId);
-      console.log(`[/arrivals] ${socket.id} joined ${room}`);
+      log.debug({ socketId: socket.id, room }, 'joined room');
     });
 
     socket.on("unsubscribe:station", (stationId: string) => {
@@ -82,7 +85,7 @@ export function setupArrivalsNamespace(io: Server): void {
         socketStations.delete(normalizedId);
         decrementSubscriber(normalizedId);
       }
-      console.log(`[/arrivals] ${socket.id} left ${room}`);
+      log.debug({ socketId: socket.id, room }, 'left room');
     });
 
     socket.on("disconnect", (reason) => {
@@ -91,11 +94,11 @@ export function setupArrivalsNamespace(io: Server): void {
         decrementSubscriber(stationId);
       }
       socketStations.clear();
-      console.log(`[/arrivals] ${socket.id} disconnected (${reason})`);
+      log.info({ socketId: socket.id, reason }, 'client disconnected');
     });
   });
 
-  console.log("[/arrivals] Namespace ready");
+  log.info('namespace ready');
 }
 
 /**

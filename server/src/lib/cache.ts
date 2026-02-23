@@ -1,4 +1,7 @@
 import { getCache, setCache, getRedisClient } from './redis.js';
+import { createLogger } from './logger.js';
+
+const log = createLogger('cache');
 
 // ---------------------------------------------------------------------------
 // Key patterns and TTLs
@@ -61,7 +64,7 @@ export async function cacheAside<T>(
     await setCache(key, data, ttlSeconds);
     return data;
   } catch (err) {
-    console.error(`[cache] Fetch failed for key ${key}:`, err);
+    log.error({ key, err: err instanceof Error ? err.message : err }, 'fetch failed');
     return null;
   }
 }

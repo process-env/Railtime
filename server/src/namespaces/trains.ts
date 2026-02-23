@@ -22,6 +22,9 @@ import type { Server, Namespace, Socket } from "socket.io";
 import type { TrainPosition } from "../types.js";
 import { FEED_GROUPS, type FeedUpdateCallback } from "../ingestion/feed-loop.js";
 import { getCachedPositions } from "../lib/cache.js";
+import { createLogger } from "../lib/logger.js";
+
+const log = createLogger('ns:trains');
 
 let trainsNsp: Namespace | null = null;
 
@@ -33,12 +36,12 @@ export function setupTrainsNamespace(io: Server): FeedUpdateCallback {
   trainsNsp = io.of("/trains");
 
   trainsNsp.on("connection", (socket: Socket) => {
-    console.log(`[/trains] client connected: ${socket.id}`);
+    log.info({ socketId: socket.id }, 'client connected');
 
     // --- Subscribe to all trains (full map view) ---
     socket.on("subscribe:all", () => {
       socket.join("all-trains");
-      console.log(`[/trains] ${socket.id} joined all-trains`);
+      log.debug({ socketId: socket.id, room: 'all-trains' }, 'joined room');
 
       // Instantly emit cached positions so the client doesn't wait for the next feed cycle
       (async () => {
@@ -60,7 +63,7 @@ export function setupTrainsNamespace(io: Server): FeedUpdateCallback {
             }
           }
         } catch (err) {
-          console.error(`[/trains] Failed to send cached positions to ${socket.id}:`, err);
+          log.error({ socketId: socket.id, err: err instanceof Error ? err.message : err }, 'failed to send cached positions');
         }
       })();
     });
@@ -70,7 +73,7 @@ export function setupTrainsNamespace(io: Server): FeedUpdateCallback {
       if (typeof routeId !== "string" || !routeId.trim()) return;
       const room = `route:${routeId.toUpperCase()}`;
       socket.join(room);
-      console.log(`[/trains] ${socket.id} joined ${room}`);
+      log.debug({ socketId: socket.id, room }, 'joined room');
     });
 
     // --- Unsubscribe from a specific route ---
@@ -78,15 +81,15 @@ export function setupTrainsNamespace(io: Server): FeedUpdateCallback {
       if (typeof routeId !== "string" || !routeId.trim()) return;
       const room = `route:${routeId.toUpperCase()}`;
       socket.leave(room);
-      console.log(`[/trains] ${socket.id} left ${room}`);
+      log.debug({ socketId: socket.id, room }, 'left room');
     });
 
     socket.on("disconnect", (reason) => {
-      console.log(`[/trains] ${socket.id} disconnected (${reason})`);
+      log.info({ socketId: socket.id, reason }, 'client disconnected');
     });
   });
 
-  console.log("[/trains] Namespace ready");
+  log.info('namespace ready');
 
   // Return the callback that the feed loop should call per group
   return onFeedUpdate;

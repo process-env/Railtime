@@ -1,5 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { createLogger } from '../lib/logger.js';
+
+const log = createLogger('schedule');
 
 const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), '..', 'public', 'data');
 
@@ -91,7 +94,7 @@ function getNycMidnightUtcMs(date: Date): number {
 async function buildScheduleMap(): Promise<Map<string, number>> {
   deviationDiagCount = 0; // Reset so diagnostics fire again after midnight rebuild
   const serviceId = getTodayServiceId();
-  console.log(`[schedule-lookup] Building schedule for service: ${serviceId}`);
+  log.info({ serviceId }, 'building schedule');
 
   // Step 1: Load trips.txt, collect trip IDs for today's service
   const tripsPath = path.join(DATA_DIR, 'trips.txt');
@@ -124,7 +127,7 @@ async function buildScheduleMap(): Promise<Map<string, number>> {
       validPrefixes.add(prefix);
     }
   }
-  console.log(`[schedule-lookup] ${validPrefixes.size} trip prefixes for ${serviceId}`);
+  log.info({ prefixes: validPrefixes.size, serviceId }, 'trip prefixes loaded');
 
   // Step 2: Load stop_times.txt, build map for valid trips only
   const stopTimesPath = path.join(DATA_DIR, 'stop_times.txt');
@@ -166,7 +169,7 @@ async function buildScheduleMap(): Promise<Map<string, number>> {
     loaded++;
   }
 
-  console.log(`[schedule-lookup] Loaded ${loaded} stop times (${Math.round(loaded / 1024)}K entries)`);
+  log.info({ stopTimes: loaded }, 'stop times loaded');
   return map;
 }
 
@@ -195,19 +198,19 @@ function scheduleRebuild(): void {
 
   rebuildTimer = setTimeout(async () => {
     try {
-      console.log('[schedule-lookup] Midnight rebuild triggered');
+      log.info('midnight rebuild triggered');
       scheduleMap = await buildScheduleMap();
       currentServiceId = getTodayServiceId();
       scheduleRebuild(); // Schedule next rebuild
     } catch (err) {
-      console.error('[schedule-lookup] Midnight rebuild failed:', err instanceof Error ? err.message : err);
+      log.error({ err: err instanceof Error ? err.message : err }, 'midnight rebuild failed');
       // Retry in 5 minutes
       rebuildTimer = setTimeout(() => scheduleRebuild(), 5 * 60 * 1000);
     }
   }, delay);
 
   const hours = Math.round(delay / 3600000 * 10) / 10;
-  console.log(`[schedule-lookup] Next rebuild in ${hours}h`);
+  log.info({ nextRebuildHours: hours }, 'rebuild scheduled');
 }
 
 // --- Public API ---
@@ -222,7 +225,7 @@ export async function initScheduleLookup(): Promise<void> {
     currentServiceId = getTodayServiceId();
     scheduleRebuild();
   } catch (err) {
-    console.warn('[schedule-lookup] Failed to load schedule — delay metrics disabled:', err instanceof Error ? err.message : err);
+    log.warn({ err: err instanceof Error ? err.message : err }, 'failed to load schedule — delay metrics disabled');
     scheduleMap = null;
   }
 }
@@ -282,11 +285,7 @@ export function computeDeviation(tripId: string, stopId: string, arrivalTime: st
     const key = `${prefix}:${stopId}`;
     const hasMatch = scheduleMap?.has(key) ?? false;
     const deviation = scheduledSec !== null && actualSec !== null ? actualSec - scheduledSec : null;
-    console.log(
-      `[schedule-lookup] DIAG ${deviationDiagCount}/${DEVIATION_DIAG_LIMIT}: ` +
-      `tripId="${tripId}" stopId="${stopId}" matched=${hasMatch} ` +
-      `scheduled=${scheduledSec} actual=${actualSec} deviation=${deviation}`
-    );
+    log.debug({ diagCount: deviationDiagCount, tripId, stopId, matched: hasMatch, scheduled: scheduledSec, actual: actualSec, deviation }, 'schedule deviation diagnostic');
   }
 
   if (scheduledSec === null) return null;

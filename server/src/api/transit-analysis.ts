@@ -10,6 +10,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getCache } from '../lib/redis.js';
 import { CACHE_KEYS } from '../lib/cache-keys.js';
+import { createLogger } from '../lib/logger.js';
+
+const log = createLogger('api:analysis');
 
 function sendJson(
   res: ServerResponse,
@@ -42,10 +45,7 @@ export async function handleTransitAnalysis(
       model: 'pending',
     });
   } catch (err) {
-    console.error(
-      '[transit-analysis] Error:',
-      err instanceof Error ? err.message : err,
-    );
+    log.error({ err: err instanceof Error ? err.message : err }, 'request error');
     sendJson(res, 500, {
       error: 'Internal server error',
     });
