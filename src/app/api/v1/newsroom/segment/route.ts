@@ -23,6 +23,7 @@ const VALID_TYPES = [
   "weather",
   "news",
   "transit-insight",
+  "news-block",
   "alert-live",
 ] as const;
 
@@ -32,17 +33,19 @@ type SegmentCategory = "evergreen" | "semi-live" | "live";
 
 const CATEGORY_MAP: Record<SegmentType, SegmentCategory> = {
   evergreen: "evergreen",
-  weather: "semi-live",
+  weather: "live",
   news: "semi-live",
   "transit-insight": "semi-live",
+  "news-block": "live",
   "alert-live": "live",
 };
 
 const TTL_MAP: Record<SegmentType, number> = {
   evergreen: 604800, // 7 days
-  weather: 1800, // 30 min
+  weather: 0, // never cached
   news: 600, // 10 min
   "transit-insight": 600, // 10 min
+  "news-block": 0, // never cached
   "alert-live": 0, // never cached
 };
 
@@ -51,6 +54,7 @@ const VOICE_MAP: Record<SegmentType, string> = {
   weather: "echo",
   news: "nova",
   "transit-insight": "fable",
+  "news-block": "nova",
   "alert-live": "fable",
 };
 
@@ -394,6 +398,77 @@ async function generateAlertLive(
   );
 }
 
+async function generateNewsBlock(
+  alerts?: NewsroomRequest["alerts"]
+): Promise<string> {
+  // 1. Fetch RSS headlines
+  const news = await fetchRSSNews();
+  const headlines = news.length > 0
+    ? news.map((n, i) => `${i + 1}. ${n.title}`).join("\n")
+    : "No headlines available at this time.";
+
+  // 2. Format alerts if provided
+  let alertDetails = "";
+  if (alerts && alerts.length > 0) {
+    alertDetails = alerts
+      .map((a) => {
+        const routes = a.affectedRoutes?.join(", ") || "multiple lines";
+        return `${a.headerText} (affecting ${routes})`;
+      })
+      .join(". ");
+  }
+
+  // 3. Fetch transit analysis from WS server
+  let transitExcerpt = "";
+  try {
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+    if (wsUrl) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(`${wsUrl}/api/transit-analysis`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.analysis && data.analysis !== "pending") {
+          const sentences = data.analysis
+            .split(/(?<=[.!?])\s+/)
+            .filter((s: string) => s.trim().length > 10);
+          transitExcerpt = sentences.slice(0, 2).join(" ");
+        }
+      }
+    }
+  } catch {
+    // Transit analysis unavailable — proceed without it
+  }
+
+  // 4. Build comprehensive prompt
+  const prompt = `You are a 1010 WINS NYC news radio anchor. Deliver a comprehensive news break.
+
+Headlines:
+${headlines}
+
+${alertDetails ? `Service Alerts: ${alertDetails}` : ""}
+${transitExcerpt ? `Transit Update: ${transitExcerpt}` : ""}
+
+Rules:
+- Open: "You give us 10 minutes, we give you the world. This is RailTime News."
+- Cover the headlines first (1 sentence each)
+- Weave in any service alerts naturally
+- Close with a transit insight if available
+- End: "Back to your trains. RailTime — know before you go."
+- Under 150 words, punchy and urgent
+- IMPORTANT: Never use degree symbols or abbreviations`;
+
+  const result = await chatCompletion(prompt, 300, 0.7);
+  return (
+    result ||
+    "You give us 10 minutes, we give you the world. This is RailTime News. Stay tuned for updates. Back to your trains."
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Data fetchers (ported from conductor routes)
 // ---------------------------------------------------------------------------
@@ -559,6 +634,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
       }
     }
+    // news-block accepts optional alerts — no validation needed
 
     const category = CATEGORY_MAP[segmentType];
     const ttl = TTL_MAP[segmentType];
@@ -580,6 +656,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       case "transit-insight":
         text = await generateTransitInsight();
         break;
+      case "news-block":
+        text = await generateNewsBlock(body.alerts);
+        break;
       case "alert-live":
         text = await generateAlertLive(body.alerts!);
         break;
@@ -592,8 +671,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // --- SHA-256 hash of generated text ---
     const segmentId = createHash("sha256").update(text).digest("hex");
 
-    // --- For alert-live: skip all caching ---
-    if (segmentType === "alert-live") {
+    // --- For live segments: skip all caching ---
+    if (segmentType === "alert-live" || segmentType === "weather" || segmentType === "news-block") {
       const audioBase64 = await synthesizeSpeech(text, voice);
       const audioUrl = `data:audio/mpeg;base64,${audioBase64}`;
 
