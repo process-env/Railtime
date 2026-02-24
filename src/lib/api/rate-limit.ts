@@ -69,7 +69,7 @@ export const RATE_LIMITS = {
   // Analytics endpoints - lenient
   analytics: { limit: 60, windowMs: 60 * 1000 }, // 60/min
 
-  // Conductor endpoints - strict (OpenAI API calls are expensive)
+  // Newsroom endpoints - strict (OpenAI API calls are expensive)
   conductor: { limit: 10, windowMs: 60 * 1000 }, // 10/min
 } as const;
 

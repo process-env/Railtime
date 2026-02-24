@@ -33,4 +33,8 @@ export const queryKeys = {
 
   // Ridership (MTA Socrata)
   ridership: (days?: number) => ['ridership', days ?? 30] as const,
+
+  // Newsroom
+  newsroomLibrary: (category?: string) =>
+    ['newsroom-library', category] as const,
 };

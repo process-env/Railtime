@@ -1,0 +1,1 @@
+export { NewsroomProvider } from './NewsroomProvider';

@@ -4,6 +4,42 @@ _Last Updated: 2026-02-24_
 
 ---
 
+## Session: Transit Analysis Fix + Unified Newsroom (2026-02-24)
+
+**Goal:** Fix broken AI transit analysis (Bedrock access revoked), then plan Unified Newsroom feature.
+
+### Transit Analysis Fix
+
+AWS Bedrock access was revoked at 05:56 UTC on 2026-02-24 (account-level block, not code issue). After trying multiple fallbacks (direct regional model ID, Anthropic direct API, Amazon Nova Micro), switched entirely to **OpenAI GPT-4.1** via `openai` SDK. Confirmed working.
+
+**Key changes:**
+- `server/src/analytics/transit-analyzer.ts` — Switched from Bedrock to OpenAI GPT-4.1
+- `server/package.json` — Added `openai`, removed `@anthropic-ai/sdk` and `@aws-sdk/client-bedrock-runtime`
+- `infra/docker-compose.prod.yml` — Added `OPENAI_API_KEY` env var
+- `server/src/lib/cache.ts` — Consolidated `transitAnalysis` + `anomalyFeed` keys (completed MIN-33)
+- Deleted `server/src/lib/cache-keys.ts` (consolidated into cache.ts)
+
+**EC2 deployment:** Rebuilt ws-server container with `OPENAI_API_KEY` in `.env.v2`. Transit analysis generating successfully (GPT-4.1, ~2500 chars per analysis).
+
+**Commits:** `e79cb6a` through `964008c` (8 commits, final working: `964008c`)
+
+### Unified Newsroom (planning complete, pending implementation)
+
+Redesigning the conductor system into a "1010 WINS"-style radio broadcast:
+- Single unified API endpoint replacing 3 separate conductor endpoints
+- SHA-256 content hash dedup to avoid duplicate TTS calls
+- 3 segment categories: Evergreen (7-day cache), Semi-live (10-30 min), Live (never cached)
+- 10:1 ratio: 10 cached segments for every 1 live-generated segment
+- Transit analysis insights rewired as radio commentary
+- Alert-infused live segments (current alerts woven into entertaining facts, never cached)
+- Growing Redis-backed audio library
+
+### What's Next
+- Implement Unified Newsroom (6 phases in plan)
+- Deploy to Vercel + EC2
+
+---
+
 ## Session: Deferred L-Effort Items (2026-02-24)
 
 **Goal:** Complete all 5 deferred L-effort items from the codebase health review.

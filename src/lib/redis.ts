@@ -64,3 +64,46 @@ export async function deleteCache(key: string): Promise<void> {
     // Ignore cache errors
   }
 }
+
+// Sorted set utilities - used by newsroom library index
+
+export async function zaddToSet(
+  key: string,
+  score: number,
+  member: string
+): Promise<void> {
+  try {
+    const client = getRedisClient();
+    if (!client) return;
+
+    await client.zadd(key, score, member);
+  } catch {
+    // Ignore cache errors
+  }
+}
+
+export async function zrangeFromSet(
+  key: string,
+  start: number,
+  stop: number
+): Promise<string[]> {
+  try {
+    const client = getRedisClient();
+    if (!client) return [];
+
+    return await client.zrange(key, start, stop);
+  } catch {
+    return [];
+  }
+}
+
+export async function zcardOfSet(key: string): Promise<number> {
+  try {
+    const client = getRedisClient();
+    if (!client) return 0;
+
+    return await client.zcard(key);
+  } catch {
+    return 0;
+  }
+}

@@ -4,7 +4,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AlertBanner } from '@/components/alerts';
 import { PrefetchProvider } from '@/components/providers/PrefetchProvider';
 import { AlertsProvider } from '@/components/providers/AlertsProvider';
-import { ConductorProvider } from '@/components/conductor';
+import { NewsroomProvider } from '@/components/newsroom';
 import {
   SidebarInset,
   SidebarProvider,
@@ -38,7 +38,7 @@ export default async function DashboardLayout({
             </main>
           </SidebarInset>
         </SidebarProvider>
-        <ConductorProvider>{null}</ConductorProvider>
+        <NewsroomProvider>{null}</NewsroomProvider>
       </AlertsProvider>
     </PrefetchProvider>
   );
