@@ -9,7 +9,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getCache } from '../lib/redis.js';
-import { CACHE_KEYS } from '../lib/cache-keys.js';
+import { CACHE_KEYS } from '../lib/cache.js';
 import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('api:analysis');
@@ -32,7 +32,7 @@ export async function handleTransitAnalysis(
       analysis: string;
       generatedAt: string;
       model: string;
-    }>(CACHE_KEYS.TRANSIT_ANALYSIS);
+    }>(CACHE_KEYS.transitAnalysis);
 
     if (cached) {
       sendJson(res, 200, cached);

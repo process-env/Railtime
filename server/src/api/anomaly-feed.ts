@@ -8,7 +8,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getRedisClient } from '../lib/redis.js';
-import { CACHE_KEYS } from '../lib/cache-keys.js';
+import { CACHE_KEYS } from '../lib/cache.js';
 import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('api:anomaly-feed');
@@ -37,7 +37,7 @@ export async function handleAnomalyFeed(
 
     // Get all recent events (newest first)
     const raw = await client.zrevrangebyscore(
-      CACHE_KEYS.ANOMALY_FEED,
+      CACHE_KEYS.anomalyFeed,
       '+inf',
       '-inf',
       'LIMIT',

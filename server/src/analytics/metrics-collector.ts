@@ -20,7 +20,7 @@ import {
 } from './dynamodb-writer.js';
 import { getDynamoClient } from '../lib/dynamodb.js';
 import { getRedisClient } from '../lib/redis.js';
-import { CACHE_KEYS } from '../lib/cache-keys.js';
+import { CACHE_KEYS } from '../lib/cache.js';
 import { computeDeviation } from './schedule-lookup.js';
 import { generateAnalysis } from './transit-analyzer.js';
 import { createLogger } from '../lib/logger.js';
@@ -835,7 +835,7 @@ async function flush(): Promise<void> {
       const redisClient = getRedisClient();
       if (redisClient) {
         try {
-          const ANOMALY_KEY = CACHE_KEYS.ANOMALY_FEED;
+          const ANOMALY_KEY = CACHE_KEYS.anomalyFeed;
           const pipeline = redisClient.pipeline();
           for (const event of anomalyItems) {
             pipeline.zadd(ANOMALY_KEY, event.timestamp, JSON.stringify(event));

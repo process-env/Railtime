@@ -10,7 +10,7 @@ import {
   InvokeModelCommand,
 } from '@aws-sdk/client-bedrock-runtime';
 import { getCache, setCache } from '../lib/redis.js';
-import { CACHE_KEYS } from '../lib/cache-keys.js';
+import { CACHE_KEYS } from '../lib/cache.js';
 import { createLogger } from '../lib/logger.js';
 import type { AlertSummary } from '../types.js';
 import { writeEvents } from './dynamodb-writer.js';
@@ -18,7 +18,7 @@ import type { MetricRecord, EventRecord, RollupRecord } from './dynamodb-writer.
 
 const log = createLogger('analyzer');
 
-const MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
+const MODEL_ID = 'anthropic.claude-sonnet-4-20250514-v1:0';
 const CACHE_TTL_SECONDS = 600; // 10 minutes (2x flush interval for safety)
 
 let bedrockClient: BedrockRuntimeClient | null = null;
@@ -218,7 +218,7 @@ export async function generateAnalysis(input: AnalysisInput): Promise<void> {
       model: MODEL_ID,
     };
 
-    await setCache(CACHE_KEYS.TRANSIT_ANALYSIS, result, CACHE_TTL_SECONDS);
+    await setCache(CACHE_KEYS.transitAnalysis, result, CACHE_TTL_SECONDS);
 
     // Persist analysis to DynamoDB for long-term archival (flows to S3 via DynamoDB Streams)
     writeEvents([{

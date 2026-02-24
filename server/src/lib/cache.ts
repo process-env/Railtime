@@ -26,6 +26,12 @@ export const CACHE_KEYS = {
   // Static data (loaded from Neo4j at startup)
   staticStations: 'static:stations',
   staticRoutes: 'static:routes',
+
+  // Transit analysis (AI-generated insights)
+  transitAnalysis: 'transit-analysis:latest',
+
+  // Anomaly feed (recent anomaly events)
+  anomalyFeed: 'anomaly-feed:recent',
 } as const;
 
 export const CACHE_TTLS = {
@@ -36,6 +42,7 @@ export const CACHE_TTLS = {
   alerts: 60,           // 1 minute
   tripPlan: 300,        // 5 minutes
   staticData: 86400,    // 24 hours
+  transitAnalysis: 600, // 10 minutes
 } as const;
 
 // ---------------------------------------------------------------------------
