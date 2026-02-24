@@ -379,19 +379,39 @@ export function useTrainMarkers(
       }
     });
 
+    // Belt-and-suspenders: also purge fadingOutRef of non-matching routes
+    // This prevents resurrection of wrong-route markers from previous render cycles
+    if (filterSet.size > 0) {
+      fadingOutRef.current.forEach(({ timeoutId, marker, unifiedState }, tripId) => {
+        if (!routeMatchesFilter(unifiedState.routeId ?? '', filterSet)) {
+          clearTimeout(timeoutId);
+          if (unifiedState.cleanupListeners) unifiedState.cleanupListeners();
+          marker.remove();
+          fadingOutRef.current.delete(tripId);
+        }
+      });
+    }
+
     // Process each train
     void Promise.all(displayTrains.map(async (train) => {
       // Bail out if a newer effect has started (stale async chain)
       if (generation !== processingGenRef.current) return;
 
       // If this train is mid-fade-out, cancel the fade and restore it
+      // But ONLY if its route matches the current filter (prevents cross-route resurrection)
       const fading = fadingOutRef.current.get(train.tripId);
       if (fading) {
         clearTimeout(fading.timeoutId);
         fadingOutRef.current.delete(train.tripId);
-        fading.marker.getElement().style.opacity = '1';
-        // Restore to unified map so the existing-marker check below finds it
-        trainMarkersRef.current.set(train.tripId, fading.unifiedState);
+        if (filterSet.size === 0 || routeMatchesFilter(fading.unifiedState.routeId ?? '', filterSet)) {
+          fading.marker.getElement().style.opacity = '1';
+          // Restore to unified map so the existing-marker check below finds it
+          trainMarkersRef.current.set(train.tripId, fading.unifiedState);
+        } else {
+          // Wrong route for current filter — finish removal
+          if (fading.unifiedState.cleanupListeners) fading.unifiedState.cleanupListeners();
+          fading.marker.remove();
+        }
       }
 
       // Entry gate: don't show trains that haven't left their first station
@@ -560,6 +580,17 @@ export function useTrainMarkers(
     })).then(() => {
       // Only schedule animation if this generation is still current
       if (generation === processingGenRef.current) {
+        // Final sweep: remove any markers that slipped through from stale async chains
+        if (filterSet.size > 0) {
+          trainMarkersRef.current.forEach((entry, tripId) => {
+            if (!routeMatchesFilter(entry.routeId ?? '', filterSet)) {
+              entry.popup.remove();
+              if (entry.cleanupListeners) entry.cleanupListeners();
+              entry.marker.remove();
+              trainMarkersRef.current.delete(tripId);
+            }
+          });
+        }
         scheduleAnimation();
       }
     });
