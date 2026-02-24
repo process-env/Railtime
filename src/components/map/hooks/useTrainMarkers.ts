@@ -613,6 +613,30 @@ export function useTrainMarkers(
     };
   }, []);
 
+  // ── Synchronous visibility enforcement ──────────────────────────────
+  // Decoupled from marker lifecycle. This is the single source of truth
+  // for route-filter visibility. Runs instantly when selectedRouteIds
+  // changes — no async, no Promise.all, no generation counter.
+  useEffect(() => {
+    const filterSet = buildRouteFilterSet(selectedRouteIds);
+    trainMarkersRef.current.forEach((entry) => {
+      const el = entry.marker.getElement();
+      if (filterSet.size === 0) {
+        el.style.display = '';
+      } else {
+        el.style.display = routeMatchesFilter(entry.routeId ?? '', filterSet) ? '' : 'none';
+      }
+    });
+
+    // Also hide any fading markers that don't match
+    if (filterSet.size > 0) {
+      fadingOutRef.current.forEach(({ marker, unifiedState }) => {
+        const matches = routeMatchesFilter(unifiedState.routeId ?? '', filterSet);
+        marker.getElement().style.display = matches ? '' : 'none';
+      });
+    }
+  }, [selectedRouteIds, trainMarkersRef]);
+
   // Memoize visible train count (subtract deduped trains)
   // Replicates the dedup grouping logic to count exclusions without accessing refs during render
   const visibleTrainCount = useMemo(() => {
