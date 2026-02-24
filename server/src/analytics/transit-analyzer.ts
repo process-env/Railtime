@@ -20,8 +20,8 @@ import type { MetricRecord, EventRecord, RollupRecord } from './dynamodb-writer.
 const log = createLogger('analyzer');
 
 const BEDROCK_MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
-const DIRECT_MODEL_ID = 'claude-sonnet-4-20250514';
-const CACHE_MODEL_NAME = 'claude-sonnet-4';
+const DIRECT_MODEL_ID = 'claude-haiku-4-5-20251001';
+const CACHE_MODEL_NAME = 'claude-haiku-4-5';
 const CACHE_TTL_SECONDS = 600; // 10 minutes (2x flush interval for safety)
 
 let bedrockClient: BedrockRuntimeClient | null = null;
