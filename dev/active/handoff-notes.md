@@ -4,6 +4,37 @@ _Last Updated: 2026-02-24_
 
 ---
 
+## Session: useReducer Refactor for Train Markers (2026-02-24)
+
+**Goal:** Refactor useTrainMarkers from scattered ref mutations to useReducer for atomic state transitions.
+
+### Previous Session (earlier today)
+- Fixed marker flex layout + tripId dedup (commit `24e3cdd`, deployed)
+- Still broken: async race condition causes wrong-route markers to appear through filter
+  - Root cause: markers created asynchronously by Promise.all materialize AFTER the synchronous visibility effect runs
+  - Generation counter handles staleness but not visibility
+  - Multiple sources of truth (trainMarkersRef, fadingOutRef, processingGenRef, separate visibility effect) fight each other
+
+### This Session: useReducer Refactor
+- **Architecture:** useReducer for logical state (pure data), refs for DOM objects, `stateRef` for async reads
+- **New file:** `src/components/map/hooks/trainMarkerReducer.ts` — pure reducer + types
+- **Modified:** `src/components/map/hooks/useTrainMarkers.ts` — refactored to useReducer + single DOM sync effect
+- **Key fix:** New markers are born with correct visibility because async creation reads `stateRef.current.markers.get(tripId).visible` for latest state
+- **Removed:** forceUpdate hack, separate visibility effect, visibleTrainCount useMemo, belt-and-suspenders sweeps
+- **Preserved:** trainMarkersRef (shared with useMapAnimation), fadingOutRef, latestApiDataRef, all factory functions
+
+### Decisions
+- Reducer owns logical state (which markers exist, visible flag, lifecycle status)
+- Refs own DOM objects (MapLibre markers, popups, fading timeouts)
+- `stateRef` pattern bridges React state → async DOM creation code
+- visibleCount derived directly in reducer, no useMemo
+
+### Unresolved
+- "23 trains active" count needs post-refactor verification against live feed
+- State machine (trainAnimationReducer) still disabled per BOARDING phase bug
+
+---
+
 ## Session: Transit Analysis Fix + Unified Newsroom (2026-02-24)
 
 **Goal:** Fix broken AI transit analysis (Bedrock access revoked), then plan Unified Newsroom feature.

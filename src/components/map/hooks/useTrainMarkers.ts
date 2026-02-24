@@ -8,14 +8,16 @@
  * - Segment change detection and hybrid sync
  */
 
-import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
+import { useEffect, useCallback, useRef, useReducer } from 'react';
 import maplibregl from 'maplibre-gl';
 import { getRouteColor, MAP_CONSTANTS } from '@/lib/constants';
 import { getDirectionFromStopId, getTextColorForBackground } from '@/lib/mta/format';
-import { buildRouteFilterSet, routeMatchesFilter } from '@/lib/mta/route-matching';
+import { routeMatchesFilter } from '@/lib/mta/route-matching';
 import { buildTrainPopupHTML } from '@/components/map/utils/popup';
 import { useUIStore } from '@/stores';
 import { calculateTrainOffsets, type TrainWithPosition } from '@/lib/map/cluster-trains';
+import { trainMarkerReducer, createInitialState } from './trainMarkerReducer';
+import type { TrainMarkerState } from './trainMarkerReducer';
 import type { TrainPosition, ServiceAlert } from '@/types/mta';
 import type { TrainAnimState, TrainMotionState, UnifiedMarkerState } from './useMapAnimation';
 import type { RouteTrack } from '@/lib/map/track-index';
@@ -139,9 +141,6 @@ async function loadTrackUtils() {
   }
 }
 
-const STALE_DIM_MS = 120_000;    // 2 min — dim to 0.4 opacity
-const STALE_CULL_MS = 600_000;   // 10 min — hard cull (ghost train)
-
 const FADE_DURATION_MS = 300;
 
 interface FadingMarker {
@@ -173,8 +172,9 @@ export function useTrainMarkers(
     alerts = [],
   } = options;
 
-  const trackUtilsLoaded = useRef(false);
-  const [, forceUpdate] = useState(0);
+  const [state, dispatch] = useReducer(trainMarkerReducer, undefined, createInitialState);
+  const stateRef = useRef<TrainMarkerState>(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
 
   // Ref to hold latest API data for animation loop (no re-render on update)
   const latestApiDataRef = useRef<Map<string, ApiDataEntry>>(new Map());
@@ -185,19 +185,44 @@ export function useTrainMarkers(
   // Generation counter for cancelling stale async marker processing
   const processingGenRef = useRef(0);
 
-  // Load track utilities on mount
+  // Effect 1: Load track utilities on mount
   useEffect(() => {
     if (useAlphaBetaGamma) {
       Promise.all([loadTrackUtils(), loadRouteTerminals()]).then(() => {
-        trackUtilsLoaded.current = true;
-        forceUpdate(n => n + 1);
+        dispatch({ type: 'TRACK_UTILS_LOADED' });
       });
     }
   }, [useAlphaBetaGamma]);
 
-  // Update latestApiDataRef whenever trains change (for animation loop to read)
+  // Effect 2: Filter changed — guarded against reference-only changes
+  const prevFilterRef = useRef<string[]>([]);
   useEffect(() => {
-    if (!trackUtilsLoaded.current || !getStopArclength) return;
+    const prev = prevFilterRef.current;
+    if (
+      prev.length === selectedRouteIds.length &&
+      prev.every((id, i) => id === selectedRouteIds[i])
+    ) {
+      return; // Same content — skip dispatch to avoid infinite re-render
+    }
+    prevFilterRef.current = selectedRouteIds;
+    dispatch({ type: 'FILTER_CHANGED', selectedRouteIds });
+  }, [selectedRouteIds]);
+
+  // Effect 3: Sync trains (dispatch to reducer)
+  useEffect(() => {
+    if (trains.length === 0) return;
+    dispatch({
+      type: 'SYNC_TRAINS',
+      trains,
+      nowMs: Date.now(),
+      isAtFirstStop,
+      isAtLastStop,
+    });
+  }, [trains]);
+
+  // Effect 4: Update latestApiDataRef whenever trains change (for animation loop to read)
+  useEffect(() => {
+    if (!state.trackUtilsLoaded || !getStopArclength) return;
 
     let cancelled = false;
 
@@ -245,12 +270,7 @@ export function useTrainMarkers(
 
     updateApiData();
     return () => { cancelled = true; };
-  }, [trains]);
-
-  // Helper to calculate distance between two points
-  const getDistance = useCallback((lng1: number, lat1: number, lng2: number, lat2: number) => {
-    return Math.sqrt(Math.pow(lng2 - lng1, 2) + Math.pow(lat2 - lat1, 2));
-  }, []);
+  }, [trains, state.trackUtilsLoaded]);
 
   // Fade out a marker over FADE_DURATION_MS, then remove it from the DOM
   const fadeOutAndRemove = useCallback((
@@ -267,99 +287,62 @@ export function useTrainMarkers(
       if (unifiedState.cleanupListeners) unifiedState.cleanupListeners();
       unifiedState.marker.remove();
       fadingOutRef.current.delete(tripId);
+      dispatch({ type: 'REMOVE_MARKER', tripId });
     }, FADE_DURATION_MS);
 
     fadingOutRef.current.set(tripId, { marker: unifiedState.marker, popup: unifiedState.popup, timeoutId, unifiedState });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update train markers
+  // Effect 5: DOM Sync — maps state.markers → DOM
   useEffect(() => {
     const map = mapRef.current;
     if (!mapLoaded || !map) return;
 
-    // Skip processing when train data is empty — keeps existing markers visible
-    // during data transitions (socket handoff, polling gaps, initial load)
-    if (trains.length === 0) return;
-
-    // Increment generation to cancel stale async chains from previous renders
+    // Increment generation for async cancellation
     const generation = ++processingGenRef.current;
 
-    // Filter trains by selected routes
-    const filterSet = buildRouteFilterSet(selectedRouteIds);
-    const filteredTrains = filterSet.size > 0
-      ? trains.filter((t) => routeMatchesFilter(t.routeId, filterSet))
-      : trains;
-
-    // Deduplicate by tripId — keep first occurrence of each unique trip.
-    // This eliminates true duplicates (stale feed data) while preserving
-    // legitimately bunched trains on the same segment.
-    const seenTrips = new Set<string>();
-    const displayTrains: TrainPosition[] = [];
-    for (const train of filteredTrains) {
-      if (!seenTrips.has(train.tripId)) {
-        seenTrips.add(train.tripId);
-        displayTrains.push(train);
+    // Calculate clustering offsets from visible markers in state
+    const trainsWithPosition: TrainWithPosition[] = [];
+    for (const train of trains) {
+      const record = state.markers.get(train.tripId);
+      if (record && record.visible && record.status === 'active') {
+        trainsWithPosition.push({
+          tripId: train.tripId,
+          lat: train.lat,
+          lon: train.lon,
+          routeId: train.routeId,
+        });
       }
     }
-
-    // Calculate clustering offsets for overlapping trains
-    const trainsWithPosition: TrainWithPosition[] = displayTrains.map(t => ({
-      tripId: t.tripId,
-      lat: t.lat,
-      lon: t.lon,
-      routeId: t.routeId,
-    }));
     const trainOffsets = calculateTrainOffsets(trainsWithPosition);
 
-    const currentTripIds = new Set(displayTrains.map((t) => t.tripId));
-    const now = performance.now();
     const nowMs = Date.now();
+    const now = performance.now();
 
-    // Remove old markers using entry/exit gate model (unified loop):
-    // - Route filtered out → remove immediately
-    // - At last stop → fade out (service complete)
-    // - Mid-route → staleness gradient (dim → cull)
+    // ── Phase 1: REMOVE ──
+    // Remove markers that are in DOM but should be gone
     trainMarkersRef.current.forEach((entry, tripId) => {
-      if (!currentTripIds.has(tripId)) {
-        const routeFilterActive = filterSet.size > 0;
-        const trainRouteMatchesFilter = routeMatchesFilter(entry.routeId ?? '', filterSet);
-        const isFilteredOut = routeFilterActive && !trainRouteMatchesFilter;
-
-        if (isFilteredOut) {
-          // Immediate removal — no fade, no fadingOutRef, no resurrection window
-          entry.popup.remove();
-          if (entry.cleanupListeners) entry.cleanupListeners();
-          entry.marker.remove();
-          trainMarkersRef.current.delete(tripId);
-        } else if (isAtLastStop(entry.routeId, entry.type === 'motion' ? entry.api.nextStopId : entry.nextStopId)) {
+      const record = state.markers.get(tripId);
+      if (!record || record.status === 'removed') {
+        // Immediate removal
+        entry.popup.remove();
+        if (entry.cleanupListeners) entry.cleanupListeners();
+        entry.marker.remove();
+        trainMarkersRef.current.delete(tripId);
+      } else if (record.status === 'fading') {
+        // Fade out (only if not already fading)
+        if (!fadingOutRef.current.has(tripId)) {
           fadeOutAndRemove(tripId, entry);
-          trainMarkersRef.current.delete(tripId);
-        } else {
-          // Mid-route — staleness gradient
-          const timeSinceUpdate = entry.type === 'motion'
-            ? nowMs - entry.api.lastApiUpdate
-            : nowMs - (entry.startTime || 0);
-          if (timeSinceUpdate > STALE_CULL_MS) {
-            fadeOutAndRemove(tripId, entry);
-            trainMarkersRef.current.delete(tripId);
-          } else if (timeSinceUpdate > STALE_DIM_MS) {
-            entry.marker.getElement().style.opacity = '0.4';
-          }
         }
-      } else {
-        // Train is ACTIVE in API — restore full opacity if dimmed
-        const el = entry.marker.getElement();
-        if (el.style.opacity === '0.4') {
-          el.style.opacity = '1';
-        }
+        trainMarkersRef.current.delete(tripId);
       }
     });
 
-    // Belt-and-suspenders: also purge fadingOutRef of non-matching routes
-    // This prevents resurrection of wrong-route markers from previous render cycles
-    if (filterSet.size > 0) {
+    // Also purge fadingOutRef entries that are filtered out
+    if (state.filterSet.size > 0) {
       fadingOutRef.current.forEach(({ timeoutId, marker, unifiedState }, tripId) => {
-        if (!routeMatchesFilter(unifiedState.routeId ?? '', filterSet)) {
+        if (!routeMatchesFilter(unifiedState.routeId ?? '', state.filterSet)) {
           clearTimeout(timeoutId);
           if (unifiedState.cleanupListeners) unifiedState.cleanupListeners();
           marker.remove();
@@ -368,209 +351,220 @@ export function useTrainMarkers(
       });
     }
 
-    // Process each train
-    void Promise.all(displayTrains.map(async (train) => {
-      // Bail out if a newer effect has started (stale async chain)
-      if (generation !== processingGenRef.current) return;
+    // ── Phase 2: UPDATE ──
+    // Update visibility, opacity for existing markers
+    trainMarkersRef.current.forEach((entry, tripId) => {
+      const record = state.markers.get(tripId);
+      if (!record) return;
 
-      // If this train is mid-fade-out, cancel the fade and restore it
-      // But ONLY if its route matches the current filter (prevents cross-route resurrection)
-      const fading = fadingOutRef.current.get(train.tripId);
+      const el = entry.marker.getElement();
+
+      // Atomic visibility from reducer state
+      el.style.display = record.visible ? 'flex' : 'none';
+
+      // Opacity from lifecycle status
+      el.style.opacity = record.status === 'stale-dim' ? '0.4' : '1';
+    });
+
+    // ── Phase 3: CREATE ──
+    // Create markers for records in state but not in DOM
+    const toCreate: Array<{ tripId: string; train: TrainPosition }> = [];
+    state.markers.forEach((record, tripId) => {
+      if (record.status === 'removed' || record.status === 'fading') return;
+      if (trainMarkersRef.current.has(tripId)) return;
+
+      // Find the train data
+      const train = trains.find(t => t.tripId === tripId);
+      if (!train) return;
+
+      // Check for resurrection from fading
+      const fading = fadingOutRef.current.get(tripId);
       if (fading) {
         clearTimeout(fading.timeoutId);
-        fadingOutRef.current.delete(train.tripId);
-        if (filterSet.size === 0 || routeMatchesFilter(fading.unifiedState.routeId ?? '', filterSet)) {
+        fadingOutRef.current.delete(tripId);
+        if (record.visible) {
           fading.marker.getElement().style.opacity = '1';
-          // Restore to unified map so the existing-marker check below finds it
-          trainMarkersRef.current.set(train.tripId, fading.unifiedState);
+          fading.marker.getElement().style.display = 'flex';
         } else {
-          // Wrong route for current filter — finish removal
-          if (fading.unifiedState.cleanupListeners) fading.unifiedState.cleanupListeners();
-          fading.marker.remove();
+          fading.marker.getElement().style.display = 'none';
         }
+        trainMarkersRef.current.set(tripId, fading.unifiedState);
+      } else {
+        toCreate.push({ tripId, train });
       }
+    });
 
-      // Entry gate: don't show trains that haven't left their first station
-      // Only gates NEW markers — existing on-track trains are never affected
-      if (!trainMarkersRef.current.has(train.tripId)) {
-        if (isAtFirstStop(train.routeId, train.prevStopId ?? '')) {
-          return; // Skip — train hasn't departed first station (use return not continue since we're in forEach)
-        }
-      }
+    // Async creation
+    void Promise.all(toCreate.map(async ({ tripId, train }) => {
+      if (generation !== processingGenRef.current) return;
 
       const color = getRouteColor(train.routeId);
       const direction = getDirectionFromStopId(train.nextStopId);
 
-      // Use new motion-based system if enabled and utilities loaded
-      if (useAlphaBetaGamma && trackUtilsLoaded.current && getRouteTrack && getStopArclength) {
-        const existingEntry = trainMarkersRef.current.get(train.tripId);
-        const existingMotion = existingEntry?.type === 'motion' ? existingEntry : undefined;
-
-        if (existingMotion) {
-          // Calculate scheduled duration from GTFS matrix
-          let scheduledDuration = 90;
-          if (durationMatrix && getSegmentDuration) {
-            const duration = getSegmentDuration(
-              durationMatrix,
-              train.routeId,
-              existingMotion.api.prevStopId,
-              existingMotion.api.nextStopId
-            );
-            if (duration) {
-              scheduledDuration = duration;
-            }
-          }
-
-          // Calculate speed multiplier from API timing (NOT alerts)
-          const apiDuration = ((train.nextTimeMs || nowMs + 90000) - (train.prevTimeMs || nowMs)) / 1000;
-          const speedMultiplier = apiDuration > 0 ? scheduledDuration / apiDuration : 1.0;
-
-          // Update state machine with duration and speed
-          // NOTE: This crosses into animation-owned state from the API effect.
-          // The boundary crossing is intentional and made explicit by the sub-object path.
-          if (existingMotion.animation.animState && trainAnimationReducer) {
-            existingMotion.animation.animState = trainAnimationReducer(existingMotion.animation.animState, {
-              type: 'SET_DURATION',
-              duration: scheduledDuration
-            });
-            existingMotion.animation.animState = trainAnimationReducer(existingMotion.animation.animState, {
-              type: 'SET_SPEED_MULTIPLIER',
-              multiplier: speedMultiplier
-            });
-          }
-
-          // Update motion state with new API data
-          await updateMotionState(existingMotion, train, nowMs);
-          if (generation !== processingGenRef.current) return;
-
-          // Pass current arclength and next station arclength for distance-based phase
-          existingMotion.popup.setHTML(buildTrainPopupHTML(
-            train, color, undefined,
-            existingMotion.animation.filter.s, existingMotion.api.nextS
-          ));
-
-          // Apply clustering offset for overlapping trains
-          const offset = trainOffsets.get(train.tripId);
-          if (offset) {
-            existingMotion.marker.setOffset([offset.offsetX, offset.offsetY]);
-          }
-        } else {
-          // Calculate duration and speed for new train
-          let scheduledDuration = 90;
-          if (durationMatrix && getSegmentDuration && train.prevStopId) {
-            const duration = getSegmentDuration(
-              durationMatrix,
-              train.routeId,
-              train.prevStopId,
-              train.nextStopId
-            );
-            if (duration) {
-              scheduledDuration = duration;
-            }
-          }
-
-          const apiDuration = ((train.nextTimeMs || nowMs + 90000) - (train.prevTimeMs || nowMs)) / 1000;
-          const speedMultiplier = apiDuration > 0 ? scheduledDuration / apiDuration : 1.0;
-
-          // Create new motion state with duration and speed
-          const motionState = await createMotionState(
-            train, map, color, direction, nowMs, setSelectedTrain,
-            durationMatrix, scheduledDuration, speedMultiplier, refreshInterval
+      if (useAlphaBetaGamma && state.trackUtilsLoaded && getRouteTrack && getStopArclength) {
+        // Calculate duration and speed for new train
+        let scheduledDuration = 90;
+        if (durationMatrix && getSegmentDuration && train.prevStopId) {
+          const duration = getSegmentDuration(
+            durationMatrix,
+            train.routeId,
+            train.prevStopId,
+            train.nextStopId
           );
-          if (generation !== processingGenRef.current) {
-            // Stale — clean up the marker we just created so it doesn't become a phantom
-            if (motionState) {
-              motionState.marker.remove();
-              motionState.popup.remove();
-            }
-            return;
-          }
-          if (motionState) {
-            trainMarkersRef.current.set(train.tripId, { type: 'motion', ...motionState });
-            // Apply clustering offset for overlapping trains
-            const offset = trainOffsets.get(train.tripId);
-            if (offset) {
-              motionState.marker.setOffset([offset.offsetX, offset.offsetY]);
-            }
-          } else {
-            // Fallback to legacy if track not found
-            // Clean up any existing entry for this train
-            trainMarkersRef.current.delete(train.tripId);
-            // Only create legacy marker if it doesn't already exist
-            const existingLegacy = trainMarkersRef.current.get(train.tripId);
-            if (!existingLegacy || existingLegacy.type !== 'legacy') {
-              createLegacyMarker(train, map, color, direction, now, trainMarkersRef, setSelectedTrain);
-              // Apply clustering offset for overlapping trains
-              const newEntry = trainMarkersRef.current.get(train.tripId);
-              const offset = trainOffsets.get(train.tripId);
-              if (newEntry && offset) {
-                newEntry.marker.setOffset([offset.offsetX, offset.offsetY]);
-              }
-            }
+          if (duration) {
+            scheduledDuration = duration;
           }
         }
-      } else {
-        // Use legacy animation system
-        const existingEntry = trainMarkersRef.current.get(train.tripId);
-        const existingAnim = existingEntry?.type === 'legacy' ? existingEntry : undefined;
 
-        if (existingAnim) {
-          // Update existing animation
-          const elapsed = now - existingAnim.startTime;
-          const progress = Math.min(elapsed / refreshInterval, 1);
+        const apiDuration = ((train.nextTimeMs || nowMs + 90000) - (train.prevTimeMs || nowMs)) / 1000;
+        const speedMultiplier = apiDuration > 0 ? scheduledDuration / apiDuration : 1.0;
 
-          const currentLng = lerp(existingAnim.fromLng, existingAnim.toLng, progress);
-          const currentLat = lerp(existingAnim.fromLat, existingAnim.toLat, progress);
+        // Read LATEST visibility from stateRef (not closure!)
+        const latestRecord = stateRef.current.markers.get(tripId);
+        const visible = latestRecord?.visible ?? true;
 
-          const distance = getDistance(currentLng, currentLat, train.lon, train.lat);
-          const isDwelling = distance < MAP_CONSTANTS.DWELLING_THRESHOLD;
-
-          existingAnim.fromLng = currentLng;
-          existingAnim.fromLat = currentLat;
-          existingAnim.toLng = train.lon;
-          existingAnim.toLat = train.lat;
-          existingAnim.startTime = now;
-          existingAnim.isDwelling = isDwelling;
-          existingAnim.nextStopId = train.nextStopId;
-          existingAnim.nextStopName = train.nextStopName;
-          existingAnim.eta = train.eta;
-          existingAnim.direction = direction;
-
-          existingAnim.popup.setHTML(buildTrainPopupHTML(train, color));
-
-          // Apply clustering offset for overlapping trains
-          const offset = trainOffsets.get(train.tripId);
+        const motionState = await createMotionState(
+          train, map, color, direction, nowMs, setSelectedTrain,
+          durationMatrix, scheduledDuration, speedMultiplier, refreshInterval, visible
+        );
+        if (generation !== processingGenRef.current) {
+          if (motionState) {
+            motionState.marker.remove();
+            motionState.popup.remove();
+          }
+          return;
+        }
+        if (motionState) {
+          trainMarkersRef.current.set(tripId, { type: 'motion', ...motionState });
+          const offset = trainOffsets.get(tripId);
           if (offset) {
-            existingAnim.marker.setOffset([offset.offsetX, offset.offsetY]);
+            motionState.marker.setOffset([offset.offsetX, offset.offsetY]);
           }
         } else {
-          createLegacyMarker(train, map, color, direction, now, trainMarkersRef, setSelectedTrain);
-          // Apply clustering offset for overlapping trains
-          const newEntry = trainMarkersRef.current.get(train.tripId);
-          const offset = trainOffsets.get(train.tripId);
+          // Fallback to legacy
+          const latestRecord2 = stateRef.current.markers.get(tripId);
+          const visible2 = latestRecord2?.visible ?? true;
+          createLegacyMarker(train, map, color, direction, now, trainMarkersRef, setSelectedTrain, visible2);
+          const newEntry = trainMarkersRef.current.get(tripId);
+          const offset = trainOffsets.get(tripId);
           if (newEntry && offset) {
             newEntry.marker.setOffset([offset.offsetX, offset.offsetY]);
           }
         }
+      } else {
+        // Legacy path
+        const latestRecord = stateRef.current.markers.get(tripId);
+        const visible = latestRecord?.visible ?? true;
+        createLegacyMarker(train, map, color, direction, now, trainMarkersRef, setSelectedTrain, visible);
+        const newEntry = trainMarkersRef.current.get(tripId);
+        const offset = trainOffsets.get(tripId);
+        if (newEntry && offset) {
+          newEntry.marker.setOffset([offset.offsetX, offset.offsetY]);
+        }
       }
     })).then(() => {
-      // Only schedule animation if this generation is still current
       if (generation === processingGenRef.current) {
-        // Final sweep: remove any markers that slipped through from stale async chains
-        if (filterSet.size > 0) {
-          trainMarkersRef.current.forEach((entry, tripId) => {
-            if (!routeMatchesFilter(entry.routeId ?? '', filterSet)) {
-              entry.popup.remove();
-              if (entry.cleanupListeners) entry.cleanupListeners();
-              entry.marker.remove();
-              trainMarkersRef.current.delete(tripId);
-            }
-          });
-        }
         scheduleAnimation();
       }
     });
-  }, [mapLoaded, mapRef, trains, selectedRouteIds, lerp, getDistance, refreshInterval, selectedTrainId, setSelectedTrain, trainMarkersRef, scheduleAnimation, useAlphaBetaGamma, durationMatrix, alerts, fadeOutAndRemove]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, mapLoaded]);
+
+  // Effect 6: Update existing markers with new API data
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapLoaded || !map || trains.length === 0) return;
+
+    const generation = processingGenRef.current;
+    const nowMs = Date.now();
+    const now = performance.now();
+
+    // Calculate clustering offsets
+    const trainsWithPosition: TrainWithPosition[] = trains
+      .filter(t => {
+        const r = state.markers.get(t.tripId);
+        return r && r.visible && r.status === 'active';
+      })
+      .map(t => ({ tripId: t.tripId, lat: t.lat, lon: t.lon, routeId: t.routeId }));
+    const trainOffsets = calculateTrainOffsets(trainsWithPosition);
+
+    void Promise.all(trains.map(async (train) => {
+      if (generation !== processingGenRef.current) return;
+
+      const existingEntry = trainMarkersRef.current.get(train.tripId);
+      if (!existingEntry) return;  // New markers handled by DOM sync
+
+      const color = getRouteColor(train.routeId);
+      const direction = getDirectionFromStopId(train.nextStopId);
+
+      if (existingEntry.type === 'motion' && useAlphaBetaGamma && state.trackUtilsLoaded && getRouteTrack && getStopArclength) {
+        // --- Motion marker update ---
+        let scheduledDuration = 90;
+        if (durationMatrix && getSegmentDuration) {
+          const duration = getSegmentDuration(
+            durationMatrix,
+            train.routeId,
+            existingEntry.api.prevStopId,
+            existingEntry.api.nextStopId
+          );
+          if (duration) scheduledDuration = duration;
+        }
+
+        const apiDuration = ((train.nextTimeMs || nowMs + 90000) - (train.prevTimeMs || nowMs)) / 1000;
+        const speedMultiplier = apiDuration > 0 ? scheduledDuration / apiDuration : 1.0;
+
+        if (existingEntry.animation.animState && trainAnimationReducer) {
+          existingEntry.animation.animState = trainAnimationReducer(existingEntry.animation.animState, {
+            type: 'SET_DURATION',
+            duration: scheduledDuration
+          });
+          existingEntry.animation.animState = trainAnimationReducer(existingEntry.animation.animState, {
+            type: 'SET_SPEED_MULTIPLIER',
+            multiplier: speedMultiplier
+          });
+        }
+
+        await updateMotionState(existingEntry, train, nowMs);
+        if (generation !== processingGenRef.current) return;
+
+        existingEntry.popup.setHTML(buildTrainPopupHTML(
+          train, color, undefined,
+          existingEntry.animation.filter.s, existingEntry.api.nextS
+        ));
+
+        const offset = trainOffsets.get(train.tripId);
+        if (offset) existingEntry.marker.setOffset([offset.offsetX, offset.offsetY]);
+
+      } else if (existingEntry.type === 'legacy') {
+        // --- Legacy marker update ---
+        const elapsed = now - existingEntry.startTime;
+        const progress = Math.min(elapsed / refreshInterval, 1);
+
+        const currentLng = lerp(existingEntry.fromLng, existingEntry.toLng, progress);
+        const currentLat = lerp(existingEntry.fromLat, existingEntry.toLat, progress);
+
+        const dist = Math.sqrt(Math.pow(train.lon - currentLng, 2) + Math.pow(train.lat - currentLat, 2));
+        const isDwelling = dist < MAP_CONSTANTS.DWELLING_THRESHOLD;
+
+        existingEntry.fromLng = currentLng;
+        existingEntry.fromLat = currentLat;
+        existingEntry.toLng = train.lon;
+        existingEntry.toLat = train.lat;
+        existingEntry.startTime = now;
+        existingEntry.isDwelling = isDwelling;
+        existingEntry.nextStopId = train.nextStopId;
+        existingEntry.nextStopName = train.nextStopName;
+        existingEntry.eta = train.eta;
+        existingEntry.direction = direction;
+
+        existingEntry.popup.setHTML(buildTrainPopupHTML(train, color));
+
+        const offset = trainOffsets.get(train.tripId);
+        if (offset) existingEntry.marker.setOffset([offset.offsetX, offset.offsetY]);
+      }
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trains, mapLoaded]);
 
   // Cleanup fading markers on unmount to prevent memory leaks from pending timeouts
   useEffect(() => {
@@ -585,42 +579,6 @@ export function useTrainMarkers(
     };
   }, []);
 
-  // ── Synchronous visibility enforcement ──────────────────────────────
-  // Decoupled from marker lifecycle. This is the single source of truth
-  // for route-filter visibility. Runs instantly when selectedRouteIds
-  // changes — no async, no Promise.all, no generation counter.
-  useEffect(() => {
-    const filterSet = buildRouteFilterSet(selectedRouteIds);
-    trainMarkersRef.current.forEach((entry) => {
-      const el = entry.marker.getElement();
-      if (filterSet.size === 0) {
-        el.style.display = 'flex';
-      } else {
-        el.style.display = routeMatchesFilter(entry.routeId ?? '', filterSet) ? 'flex' : 'none';
-      }
-    });
-
-    // Also hide any fading markers that don't match
-    if (filterSet.size > 0) {
-      fadingOutRef.current.forEach(({ marker, unifiedState }) => {
-        const matches = routeMatchesFilter(unifiedState.routeId ?? '', filterSet);
-        marker.getElement().style.display = matches ? 'flex' : 'none';
-      });
-    }
-  }, [selectedRouteIds, trainMarkersRef, trains]);
-
-  // Memoize visible train count — count unique tripIds after route filtering
-  const visibleTrainCount = useMemo(() => {
-    const countFilterSet = buildRouteFilterSet(selectedRouteIds);
-    const filteredTrains = countFilterSet.size === 0
-      ? trains
-      : trains.filter((t) => routeMatchesFilter(t.routeId, countFilterSet));
-
-    // Count unique tripIds
-    const uniqueTrips = new Set(filteredTrains.map((t) => t.tripId));
-    return uniqueTrips.size;
-  }, [trains, selectedRouteIds]);
-
   // Get current phase for a train from motion state
   const getTrainPhase = useCallback((tripId: string): 'BOARDING' | 'ARRIVING' | 'APPROACHING' | null => {
     const entry = trainMarkersRef.current.get(tripId);
@@ -628,7 +586,7 @@ export function useTrainMarkers(
     return entry.animation.lastPhase || getPhaseFromDistance(entry.animation.filter.s, entry.api.nextS);
   }, [trainMarkersRef]);
 
-  return { visibleTrainCount, latestApiDataRef, getTrainPhase };
+  return { visibleTrainCount: state.visibleCount, latestApiDataRef, getTrainPhase };
 }
 
 /**
@@ -648,6 +606,8 @@ export function useTrainMarkers(
  * @param durationMatrix - Pre-computed GTFS schedule durations (optional)
  * @param scheduledDuration - Expected travel time for current segment (seconds)
  * @param speedMultiplier - Speed adjustment factor (>1 = faster than scheduled)
+ * @param refreshInterval - Polling interval in milliseconds
+ * @param visible - Whether the marker should be initially visible
  * @returns TrainMotionState for animation, or null if track data unavailable
  *
  * @remarks
@@ -665,7 +625,8 @@ async function createMotionState(
   durationMatrix: RouteDurationMatrix | null,
   scheduledDuration: number,
   speedMultiplier: number,
-  refreshInterval: number
+  refreshInterval: number,
+  visible: boolean = true
 ): Promise<TrainMotionState | null> {
   if (!getRouteTrack || !getStopArclength || !createFilterState) return null;
 
@@ -696,7 +657,7 @@ async function createMotionState(
     background-color: ${color};
     border: 2px solid white;
     border-radius: 4px;
-    display: flex;
+    display: ${visible ? 'flex' : 'none'};
     align-items: center;
     justify-content: center;
     font-size: 10px;
@@ -940,6 +901,7 @@ async function updateMotionState(
  * @param now - Current timestamp from performance.now()
  * @param trainMarkersRef - Ref holding unified marker states
  * @param setSelectedTrain - Callback to set the selected train in UI state
+ * @param visible - Whether the marker should be initially visible
  */
 function createLegacyMarker(
   train: TrainPosition,
@@ -948,7 +910,8 @@ function createLegacyMarker(
   direction: 'N' | 'S' | null,
   now: number,
   trainMarkersRef: React.MutableRefObject<Map<string, UnifiedMarkerState>>,
-  setSelectedTrain: (tripId: string | null) => void
+  setSelectedTrain: (tripId: string | null) => void,
+  visible: boolean = true
 ): void {
   const el = document.createElement('div');
   el.className = 'train-marker';
@@ -958,7 +921,7 @@ function createLegacyMarker(
     background-color: ${color};
     border: 2px solid white;
     border-radius: 4px;
-    display: flex;
+    display: ${visible ? 'flex' : 'none'};
     align-items: center;
     justify-content: center;
     font-size: 10px;
@@ -1056,4 +1019,3 @@ function getPhaseFromDistance(currentS: number, nextS: number): 'BOARDING' | 'AR
 
 // Train popup HTML is now generated by the shared buildTrainPopupHTML utility
 // in src/components/map/utils/popup.ts to avoid duplication with useMapAnimation.
-
