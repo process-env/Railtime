@@ -132,3 +132,36 @@ export function getRoutesForStop(stop: Stop): string[] {
 
   return [...new Set(routes)];
 }
+
+// --- Route filter matching utilities ---
+
+/** Maps express/variant routeIds to their canonical parent route. */
+export const ROUTE_FAMILY: Record<string, string> = {
+  '5X': '5',
+  '6X': '6',
+  '7X': '7',
+  'FX': 'F',
+  'GS': 'S',
+  'FS': 'S',
+  'SIR': 'SI',
+};
+
+/** Creates an uppercased Set of route IDs for O(1) lookup. */
+export function buildRouteFilterSet(ids: string[]): Set<string> {
+  return new Set(ids.map(id => id.toUpperCase()));
+}
+
+/**
+ * Checks if a routeId matches any route in the filter set.
+ * Empty filter set = show all (returns true).
+ * Also checks family/variant aliases (e.g., 5X matches filter "5").
+ */
+export function routeMatchesFilter(routeId: string, filterSet: Set<string>): boolean {
+  if (filterSet.size === 0) return true;
+  const upper = routeId.toUpperCase();
+  if (filterSet.has(upper)) return true;
+  // Check family alias (e.g., 5X → 5, GS → S)
+  const family = ROUTE_FAMILY[upper];
+  if (family && filterSet.has(family)) return true;
+  return false;
+}

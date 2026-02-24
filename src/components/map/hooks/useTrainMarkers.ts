@@ -12,6 +12,7 @@ import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { getRouteColor, MAP_CONSTANTS } from '@/lib/constants';
 import { getDirectionFromStopId, getTextColorForBackground } from '@/lib/mta/format';
+import { buildRouteFilterSet, routeMatchesFilter } from '@/lib/mta/route-matching';
 import { buildTrainPopupHTML } from '@/components/map/utils/popup';
 import { useUIStore } from '@/stores';
 import { calculateTrainOffsets, type TrainWithPosition } from '@/lib/map/cluster-trains';
@@ -283,8 +284,9 @@ export function useTrainMarkers(
     const generation = ++processingGenRef.current;
 
     // Filter trains by selected routes
-    const filteredTrains = selectedRouteIds.length > 0
-      ? trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase()))
+    const filterSet = buildRouteFilterSet(selectedRouteIds);
+    const filteredTrains = filterSet.size > 0
+      ? trains.filter((t) => routeMatchesFilter(t.routeId, filterSet))
       : trains;
 
     // Deduplicate trains on the same segment — show max 1 per route per segment.
@@ -343,12 +345,15 @@ export function useTrainMarkers(
     // - Mid-route → staleness gradient (dim → cull)
     trainMarkersRef.current.forEach((entry, tripId) => {
       if (!currentTripIds.has(tripId)) {
-        const routeFilterActive = selectedRouteIds.length > 0;
-        const trainRouteMatchesFilter = selectedRouteIds.includes(entry.routeId?.toUpperCase() || '');
+        const routeFilterActive = filterSet.size > 0;
+        const trainRouteMatchesFilter = routeMatchesFilter(entry.routeId ?? '', filterSet);
         const isFilteredOut = routeFilterActive && !trainRouteMatchesFilter;
 
         if (isFilteredOut) {
-          fadeOutAndRemove(tripId, entry);
+          // Immediate removal — no fade, no fadingOutRef, no resurrection window
+          entry.popup.remove();
+          if (entry.cleanupListeners) entry.cleanupListeners();
+          entry.marker.remove();
           trainMarkersRef.current.delete(tripId);
         } else if (isAtLastStop(entry.routeId, entry.type === 'motion' ? entry.api.nextStopId : entry.nextStopId)) {
           fadeOutAndRemove(tripId, entry);
@@ -576,9 +581,10 @@ export function useTrainMarkers(
   // Memoize visible train count (subtract deduped trains)
   // Replicates the dedup grouping logic to count exclusions without accessing refs during render
   const visibleTrainCount = useMemo(() => {
-    const filteredTrains = selectedRouteIds.length === 0
+    const countFilterSet = buildRouteFilterSet(selectedRouteIds);
+    const filteredTrains = countFilterSet.size === 0
       ? trains
-      : trains.filter((t) => selectedRouteIds.includes(t.routeId.toUpperCase()));
+      : trains.filter((t) => routeMatchesFilter(t.routeId, countFilterSet));
 
     // Count unique dedup keys — each key keeps one train, rest are excluded
     const dedupKeys = new Set<string>();
