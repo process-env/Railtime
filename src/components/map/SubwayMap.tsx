@@ -428,7 +428,7 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
 
       {/* Train count */}
       <div className="absolute top-4 left-4 bg-background/90 backdrop-blur px-3 py-2 rounded-lg shadow-lg text-sm">
-        <span className="font-medium">{visibleTrainCount}</span> trains active
+        <span className="font-medium">{selectedRouteIds.length > 0 ? visibleTrainCount : trains.length}</span> trains active
       </div>
 
       {/* Trip Route Markers (origin, destination, transfers) */}
