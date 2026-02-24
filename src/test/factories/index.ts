@@ -9,6 +9,7 @@ import type {
   Stop,
   Route,
 } from '@/types/mta';
+import type { DailyRollup, RollupDataProp } from '@/lib/graphql/types';
 
 let idCounter = 0;
 
@@ -271,6 +272,80 @@ export function createAllSubwayRoutes(): Route[] {
       color,
     })
   );
+}
+
+/**
+ * Create a mock DailyRollup
+ */
+export function createMockDailyRollup(
+  overrides: Partial<DailyRollup> = {}
+): DailyRollup {
+  return {
+    routeId: '1',
+    date: '2026-02-24#N',
+    direction: 'N',
+    avgDelay: 45,
+    onTimePercent: 82,
+    peakTrainCount: 12,
+    totalAlerts: 1,
+    avgHeadway: 360,
+    medianHeadway: 340,
+    totalBunching: 2,
+    totalGaps: 1,
+    totalSkippedStops: 0,
+    totalTrips: 150,
+    ...overrides,
+  };
+}
+
+/**
+ * Create multiple mock DailyRollups across routes and dates
+ */
+export function createMockDailyRollups(
+  routes: string[] = ['1', 'A', 'L'],
+  days: number = 3
+): DailyRollup[] {
+  const rollups: DailyRollup[] = [];
+  for (let d = 0; d < days; d++) {
+    const date = new Date();
+    date.setDate(date.getDate() - d);
+    const dateStr = date.toISOString().split('T')[0];
+    for (const routeId of routes) {
+      for (const dir of ['N', 'S']) {
+        rollups.push(
+          createMockDailyRollup({
+            routeId,
+            date: `${dateStr}#${dir}`,
+            direction: dir,
+            avgDelay: 30 + Math.floor(d * 10),
+            onTimePercent: 85 - d * 3,
+            peakTrainCount: 10 + d,
+            totalAlerts: d,
+            totalBunching: d > 0 ? 1 : 0,
+            totalGaps: d > 1 ? 1 : 0,
+            totalTrips: 100 + d * 20,
+          })
+        );
+      }
+    }
+  }
+  return rollups;
+}
+
+/**
+ * Create a RollupDataProp for testing components that accept shared rollup data
+ */
+export function createMockRollupDataProp(
+  overrides: {
+    rollups?: DailyRollup[];
+    loading?: boolean;
+  } = {}
+): RollupDataProp {
+  const { rollups, loading = false } = overrides;
+  return {
+    data: rollups ? { getDailyRollups: rollups } : undefined,
+    loading,
+  };
 }
 
 /**

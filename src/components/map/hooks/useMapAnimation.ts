@@ -17,6 +17,81 @@ import type { FilterState, FilterParams } from '@/lib/map/alpha-beta-gamma';
 import type { MotionPlan } from '@/lib/map/motion-planner';
 import type { TrainAnimationState, TrainAction } from '@/lib/map/train-state-machine';
 
+/**
+ * Fields owned exclusively by the RAF animation loop.
+ *
+ * Only the `animateTrains` callback in `useMapAnimation` should write to these.
+ * The data-update effect in `useTrainMarkers` may *read* them (e.g. `filter.s`
+ * for segmentStartTime calculation) but should not write directly except through
+ * the `pendingSegment` message queue.
+ */
+export interface TrainAnimationFields {
+  /** Current position / velocity / acceleration from α-β-γ filter */
+  filter: FilterState;
+  /** Timestamp of the last RAF frame (performance.now()) */
+  lastFrameTime: number;
+  /** Last arclength actually rendered — fallback anchor for NaN guard */
+  lastRenderedS?: number;
+  /** State machine state (currently disabled — null) */
+  animState: TrainAnimationState | null;
+  /** Phase tracking for popup updates during animation */
+  lastPhase?: 'BOARDING' | 'ARRIVING' | 'APPROACHING';
+  /** When train arrived at station (ms timestamp) — set by RAF or API effect */
+  dwellStartTime?: number;
+  /**
+   * Pending segment queued by the API data-update effect for the RAF loop to consume.
+   * Written by `updateMotionState`, consumed and cleared by the RAF loop after dwell completes.
+   */
+  pendingSegment?: {
+    prevStopId: string;
+    nextStopId: string;
+    prevS: number;
+    nextS: number;
+    scheduledDuration: number;
+    nextStopName: string;
+    eta: string;
+  };
+}
+
+/**
+ * Fields owned exclusively by the API data-update effect.
+ *
+ * Only `createMotionState`, `updateMotionState`, and the main marker-processing
+ * effect in `useTrainMarkers` should write to these. The RAF animation loop may
+ * *read* them (e.g. `prevS`, `nextS` for interpolation) but should not write
+ * to them except when consuming a `pendingSegment`.
+ */
+export interface TrainApiFields {
+  /** Previous stop ID from API */
+  prevStopId: string;
+  /** Next stop ID from API */
+  nextStopId: string;
+  /** Departure time from previous stop (ms epoch) */
+  prevTimeMs: number;
+  /** Expected arrival time at next stop (ms epoch) */
+  nextTimeMs: number;
+  /** Arclength of previous stop (meters from route start) */
+  prevS: number;
+  /** Arclength of next stop (meters from route start) */
+  nextS: number;
+  /** When train entered this segment (ms epoch) */
+  segmentStartTime: number;
+  /** Expected duration from GTFS matrix (seconds) */
+  scheduledDuration: number;
+  /** API-derived speed adjustment factor */
+  speedMultiplier: number;
+  /** Display: next station name */
+  nextStopName: string;
+  /** Display: estimated arrival time string */
+  eta: string;
+  /** Display: headsign / destination */
+  headsign?: string;
+  /** Travel direction */
+  direction: 'N' | 'S' | null;
+  /** Timestamp of last API data update (Date.now()) */
+  lastApiUpdate: number;
+}
+
 export interface TrainMotionState {
   // Identity
   tripId: string;
@@ -27,53 +102,14 @@ export interface TrainMotionState {
   // Track reference
   track: RouteTrack | null;
 
-  // Position state (simplified from α-β-γ)
-  filter: FilterState;
-
   // Motion plan (deprecated, kept for compatibility)
   plan: MotionPlan | null;
 
-  // Last API data
-  prevStopId: string;
-  nextStopId: string;
-  prevTimeMs: number;
-  nextTimeMs: number;
-  prevS: number;           // Arclength of prev stop
-  nextS: number;           // Arclength of next stop
+  /** Animation state — owned by RAF loop */
+  animation: TrainAnimationFields;
 
-  // Schedule-based animation
-  segmentStartTime: number;    // When train entered this segment (ms)
-  scheduledDuration: number;   // Expected duration from matrix (seconds)
-  speedMultiplier: number;     // Alert-based speed adjustment (0.5-1.0)
-
-  // State machine (new)
-  animState: TrainAnimationState | null;
-
-  // Display data
-  nextStopName: string;
-  eta: string;
-  headsign?: string;
-  direction: 'N' | 'S' | null;
-
-  // Animation state
-  lastFrameTime: number;
-  lastRenderedS?: number;  // Last arclength actually rendered — fallback anchor for NaN guard
-  lastApiUpdate: number;
-
-  // Phase tracking for popup updates
-  lastPhase?: 'BOARDING' | 'ARRIVING' | 'APPROACHING';
-
-  // Dwell and pending segment for smooth station transitions
-  dwellStartTime?: number;  // When train arrived at station (ms timestamp)
-  pendingSegment?: {
-    prevStopId: string;
-    nextStopId: string;
-    prevS: number;
-    nextS: number;
-    scheduledDuration: number;
-    nextStopName: string;
-    eta: string;
-  };
+  /** API data — owned by data-update effect */
+  api: TrainApiFields;
 
   // Event listener cleanup function (removes mouseenter, mouseleave, click)
   cleanupListeners?: () => void;
@@ -261,92 +297,94 @@ export function useMapAnimation(
       if (!motionUtilsLoaded.current || !arclengthToLatLon || !trainAnimationReducer || !getCurrentArclength) return;
       {
         if (!state.track) return;
+        const { animation: anim, api } = state;
 
         anyMoving = true;
-        const frameDtMs = now - state.lastFrameTime;  // Time since last frame (ms)
-        state.lastFrameTime = now;
+        const frameDtMs = now - anim.lastFrameTime;  // Time since last frame (ms)
+        anim.lastFrameTime = now;
 
         // Check distance to current station
-        const distanceToStation = Math.abs(state.nextS - state.filter.s);
+        const distanceToStation = Math.abs(api.nextS - anim.filter.s);
         const atStation = distanceToStation <= STATION_SNAP_DISTANCE;
 
         // Handle dwell and pending segment transitions
         if (atStation) {
           // Snap to exact station position
-          state.filter.s = safeArclength(state.nextS, state.lastRenderedS);
-          state.lastRenderedS = state.filter.s;
+          anim.filter.s = safeArclength(api.nextS, anim.lastRenderedS);
+          anim.lastRenderedS = anim.filter.s;
 
           // Start dwell timer if not already started
-          if (!state.dwellStartTime) {
-            state.dwellStartTime = nowMs;
+          if (!anim.dwellStartTime) {
+            anim.dwellStartTime = nowMs;
           }
 
           // Check if we have a pending segment and dwell is complete
-          if (state.pendingSegment && state.dwellStartTime) {
-            const dwellElapsed = nowMs - state.dwellStartTime;
+          if (anim.pendingSegment && anim.dwellStartTime) {
+            const dwellElapsed = nowMs - anim.dwellStartTime;
             if (dwellElapsed >= DWELL_DURATION_MS) {
               // Dwell complete - transition to pending segment
-              const pending = state.pendingSegment;
-              state.prevStopId = pending.prevStopId;
-              state.nextStopId = pending.nextStopId;
-              state.prevS = pending.prevS;
-              state.nextS = pending.nextS;
-              state.scheduledDuration = pending.scheduledDuration;
-              state.speedMultiplier = 1.0;
-              state.nextStopName = pending.nextStopName;
-              state.eta = pending.eta;
-              state.segmentStartTime = nowMs;
-              state.filter.s = safeArclength(pending.prevS, state.lastRenderedS);  // Start from the station we just left
-              state.lastRenderedS = state.filter.s;
-              state.pendingSegment = undefined;
-              state.dwellStartTime = undefined;
+              // RAF consumes the pending data and writes to api sub-object
+              const pending = anim.pendingSegment;
+              api.prevStopId = pending.prevStopId;
+              api.nextStopId = pending.nextStopId;
+              api.prevS = pending.prevS;
+              api.nextS = pending.nextS;
+              api.scheduledDuration = pending.scheduledDuration;
+              api.speedMultiplier = 1.0;
+              api.nextStopName = pending.nextStopName;
+              api.eta = pending.eta;
+              api.segmentStartTime = nowMs;
+              anim.filter.s = safeArclength(pending.prevS, anim.lastRenderedS);  // Start from the station we just left
+              anim.lastRenderedS = anim.filter.s;
+              anim.pendingSegment = undefined;
+              anim.dwellStartTime = undefined;
             }
           }
 
           // Update marker position at station
-          const [lat, lon] = arclengthToLatLon!(state.filter.s, state.track);
+          const [lat, lon] = arclengthToLatLon!(anim.filter.s, state.track);
           if (Number.isFinite(lat) && Number.isFinite(lon)) {
             state.marker.setLngLat([lon, lat]);
           }
         } else {
           // Not at station - animate toward it
           // Clear dwell timer since we're moving
-          state.dwellStartTime = undefined;
+          anim.dwellStartTime = undefined;
 
           // Use state machine if available
-          if (state.animState) {
+          if (anim.animState) {
             // Dispatch TICK to state machine - handles all timing transitions
-            // Non-null assertion safe: guarded by null check at outer scope (line 277)
-            state.animState = trainAnimationReducer!(state.animState, {
+            // Non-null assertion safe: guarded by null check at outer scope
+            anim.animState = trainAnimationReducer!(anim.animState, {
               type: 'TICK',
               nowMs
             });
 
             // Get current position from state machine
-            const currentS_sm = getCurrentArclength!(state.animState);
-            let targetS_sm = safeArclength(currentS_sm, state.lastRenderedS, state.prevS);
+            const currentS_sm = getCurrentArclength!(anim.animState);
+            let targetS_sm = safeArclength(currentS_sm, anim.lastRenderedS, api.prevS);
 
             // Blend from rendered position toward state machine target
-            const currentRendered = state.lastRenderedS ?? targetS_sm;
+            const currentRendered = anim.lastRenderedS ?? targetS_sm;
 
             // Monotonicity: never move backward — a still train is fine, a reversing train is not
-            if (state.prevS <= state.nextS) {
+            if (api.prevS <= api.nextS) {
               targetS_sm = Math.max(targetS_sm, currentRendered);
             } else {
               targetS_sm = Math.min(targetS_sm, currentRendered);
             }
             const blend_sm = 1 - Math.pow(1 - BLEND_SPEED, Math.max(0.5, frameDtMs / 16.67));
-            state.filter.s = currentRendered + (targetS_sm - currentRendered) * blend_sm;
-            if (Math.abs(state.filter.s - targetS_sm) < 1) {
-              state.filter.s = targetS_sm;
+            anim.filter.s = currentRendered + (targetS_sm - currentRendered) * blend_sm;
+            if (Math.abs(anim.filter.s - targetS_sm) < 1) {
+              anim.filter.s = targetS_sm;
             }
-            if (!Number.isFinite(state.filter.s)) {
-              state.filter.s = state.lastRenderedS ?? state.prevS;
+            if (!Number.isFinite(anim.filter.s)) {
+              anim.filter.s = anim.lastRenderedS ?? api.prevS;
             }
-            state.lastRenderedS = state.filter.s;
+            anim.lastRenderedS = anim.filter.s;
 
             // Convert arclength to lat/lon
-            const [lat, lon] = arclengthToLatLon!(state.filter.s, state.track);
+            const [lat, lon] = arclengthToLatLon!(anim.filter.s, state.track);
 
             // Update marker position
             if (Number.isFinite(lat) && Number.isFinite(lon)) {
@@ -354,33 +392,33 @@ export function useMapAnimation(
             }
           } else {
             // Fallback: schedule-based animation with smooth blending
-            const adjustedDuration = state.scheduledDuration / Math.max(0.01, state.speedMultiplier);
-            const elapsed = (nowMs - state.segmentStartTime) / 1000;
+            const adjustedDuration = api.scheduledDuration / Math.max(0.01, api.speedMultiplier);
+            const elapsed = (nowMs - api.segmentStartTime) / 1000;
             const rawProgress = adjustedDuration > 0 ? elapsed / adjustedDuration : 1;
             const progress = Math.max(0, Math.min(1, rawProgress));
 
             // Calculate target position from schedule
             let targetS: number;
             if (progress >= 1.0) {
-              targetS = state.nextS;
+              targetS = api.nextS;
             } else {
-              targetS = state.prevS + (state.nextS - state.prevS) * progress;
+              targetS = api.prevS + (api.nextS - api.prevS) * progress;
             }
 
             // Clamp target to segment bounds
-            const minS = Math.min(state.prevS, state.nextS);
-            const maxS = Math.max(state.prevS, state.nextS);
+            const minS = Math.min(api.prevS, api.nextS);
+            const maxS = Math.max(api.prevS, api.nextS);
             targetS = Math.max(minS, Math.min(maxS, targetS));
 
             // NaN guard on target
-            targetS = safeArclength(targetS, state.lastRenderedS, state.prevS);
+            targetS = safeArclength(targetS, anim.lastRenderedS, api.prevS);
 
             // Smooth blend from current rendered position toward target
             // Prevents teleportation on segment changes while tracking API data
-            const currentS = state.lastRenderedS ?? targetS;
+            const currentS = anim.lastRenderedS ?? targetS;
 
             // Monotonicity: never move backward — a still train is fine, a reversing train is not
-            if (state.prevS <= state.nextS) {
+            if (api.prevS <= api.nextS) {
               targetS = Math.max(targetS, currentS);
             } else {
               targetS = Math.min(targetS, currentS);
@@ -388,19 +426,19 @@ export function useMapAnimation(
 
             const dtNorm = Math.max(0.5, frameDtMs / 16.67);  // Normalize to 60fps
             const blend = 1 - Math.pow(1 - BLEND_SPEED, dtNorm);
-            state.filter.s = currentS + (targetS - currentS) * blend;
+            anim.filter.s = currentS + (targetS - currentS) * blend;
 
             // Snap when very close to avoid asymptotic hover
-            if (Math.abs(state.filter.s - targetS) < 1) {
-              state.filter.s = targetS;
+            if (Math.abs(anim.filter.s - targetS) < 1) {
+              anim.filter.s = targetS;
             }
-            if (!Number.isFinite(state.filter.s)) {
-              state.filter.s = state.lastRenderedS ?? state.prevS;
+            if (!Number.isFinite(anim.filter.s)) {
+              anim.filter.s = anim.lastRenderedS ?? api.prevS;
             }
 
-            state.lastRenderedS = state.filter.s;
+            anim.lastRenderedS = anim.filter.s;
 
-            const [lat, lon] = arclengthToLatLon!(state.filter.s, state.track);
+            const [lat, lon] = arclengthToLatLon!(anim.filter.s, state.track);
             if (Number.isFinite(lat) && Number.isFinite(lon)) {
               state.marker.setLngLat([lon, lat]);
             }
@@ -408,12 +446,19 @@ export function useMapAnimation(
         }
 
         // Check for phase change and update popup if needed
-        const currentPhase = getPhaseFromDistance(state.filter.s, state.nextS);
-        if (currentPhase !== state.lastPhase) {
-          state.lastPhase = currentPhase;
+        const currentPhase = getPhaseFromDistance(anim.filter.s, api.nextS);
+        if (currentPhase !== anim.lastPhase) {
+          anim.lastPhase = currentPhase;
           // getRouteColor is guaranteed non-null here (guarded by motionUtilsLoaded check above)
           const color = getRouteColor!(state.routeId);
-          const html = buildTrainPopupHTML(state, color, currentPhase);
+          const popupData = {
+            routeId: state.routeId,
+            nextStopId: api.nextStopId,
+            nextStopName: api.nextStopName,
+            eta: api.eta,
+            headsign: api.headsign,
+          };
+          const html = buildTrainPopupHTML(popupData, color, currentPhase);
           if (html) {
             state.popup.setHTML(html);
           }

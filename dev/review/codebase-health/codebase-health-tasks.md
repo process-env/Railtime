@@ -83,10 +83,10 @@ Last Updated: 2026-02-24
 
 ### Test Infrastructure
 
-- [ ] **CRIT-18** [Test] Replace console.log CSV-dump tests with deterministic unit tests | Effort: **L**
+- [x] **CRIT-18** [Test] Replace console.log CSV-dump tests with deterministic unit tests | Effort: **L**
   Move diagnostic output from `real-data.test.ts` and `train-state-machine.test.ts` to `scripts/`. Add deterministic tests for `motion-planner.ts`, `alpha-beta-gamma.ts`, `cluster-trains.ts`, `track-index.ts`, `arclength.ts`.
 
-- [ ] **CRIT-19** [Test] Add Socket.IO path coverage for dual-mode hooks | Effort: **L**
+- [x] **CRIT-19** [Test] Add Socket.IO path coverage for dual-mode hooks | Effort: **L**
   Mock `socket.io-client` and test the store-subscription path in `use-train-positions`, `use-alerts`, `use-arrivals`. Test room subscription, message dispatch, error reconnect, and fallback from Socket.IO to polling.
 
 - [x] **CRIT-20** [Test] Fix Redis mock `set()` signature to match ioredis v5 | Effort: **S**
@@ -151,7 +151,7 @@ Last Updated: 2026-02-24
 - [x] **IMP-16** [Map] Replace naive CSV parser in `track-index.ts` for `stops.txt` | Effort: **S**
   *Cross-ref: CRIT-11*. Same fix -- replace `split(',')` with quote-aware parser. Can share a single CSV utility.
 
-- [ ] **IMP-17** [Map] Separate animation state (RAF-only) from API data (effect-only) in `TrainMotionState` | Effort: **L**
+- [x] **IMP-17** [Map] Separate animation state (RAF-only) from API data (effect-only) in `TrainMotionState` | Effort: **L**
   Split the `TrainMotionState` object into two sub-objects to prevent TOCTOU hazard from concurrent RAF/effect mutations.
 
 ### Trip Planner Algorithm
@@ -159,7 +159,7 @@ Last Updated: 2026-02-24
 - [x] **IMP-18** [Trip] Rename `findAlternativePaths` and document random sampling limitation | Effort: **S**
   Rename to `findRouteVariants`. Remove misleading "Yen's algorithm" comment. Document non-deterministic behavior.
 
-- [ ] **IMP-19** [Trip/Server] Replace Neo4j `shortestPath` with weighted shortest-path procedure | Effort: **L**
+- [x] **IMP-19** [Trip/Server] Replace Neo4j `shortestPath` with weighted shortest-path procedure | Effort: **L**
   Use `apoc.algo.dijkstra` (if APOC available) or `allShortestPaths` as interim. Affects both `neo4j-planner.ts` and `server/src/lib/queries/trip-planner.ts`. *Cross-ref: IMP-44*
 
 - [x] **IMP-20** [Trip] Fix `transferType` heuristic in Neo4j path converter | Effort: **S**
@@ -258,7 +258,7 @@ Last Updated: 2026-02-24
 - [x] **IMP-49** [Test] Fix `QueryWrapper` to use `useState` for stable `QueryClient` | Effort: **S**
   Change `createTestQueryClient()` to `const [queryClient] = useState(() => createTestQueryClient())`.
 
-- [ ] **IMP-50** [Test] Write smoke tests for analytics components | Effort: **L**
+- [x] **IMP-50** [Test] Write smoke tests for analytics components | Effort: **L**
   At minimum: `DelayDistributionChart`, `RoutePerformanceTable`, `LiveSystemDashboard` verifying loading/empty/error states.
 
 - [x] **IMP-51** [Test] Add `geolocation-store.test.ts` | Effort: **S**

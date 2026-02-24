@@ -44,10 +44,86 @@ function getDriver(): Driver | null {
 }
 
 // ---------------------------------------------------------------------------
-// Cypher queries
+// Cypher queries — Three-tier fallback for weighted shortest path
+//
+// Tier 1: APOC Dijkstra — true weighted shortest path (requires APOC plugin)
+// Tier 2: Cypher variable-length path enumeration with cost scoring
+// Tier 3: BFS shortestPath fallback (fewest hops, not lowest cost)
 // ---------------------------------------------------------------------------
 
-const FIND_PATHS_QUERY = `
+// --- Tier 1: APOC Dijkstra (weighted shortest path) -------------------------
+
+const WEIGHTED_APOC_QUERY = `
+  MATCH (o:StationRoute) WHERE o.stationId = $originId
+  WITH collect(o) AS origins
+  MATCH (d:StationRoute) WHERE d.stationId = $destId
+  WITH origins, collect(d) AS dests
+  UNWIND origins AS o
+  UNWIND dests AS d
+  CALL apoc.algo.dijkstra(o, d, 'CONNECTS_TO', 'duration') YIELD path, weight
+  WITH path, weight AS totalCost,
+    size([r IN relationships(path) WHERE r.type = 'transfer']) AS transferCount
+  WHERE transferCount <= $maxTransfers
+  RETURN path, totalCost, transferCount
+  ORDER BY totalCost
+  LIMIT $limit
+`;
+
+const WEIGHTED_APOC_AVOID_QUERY = `
+  MATCH (o:StationRoute) WHERE o.stationId = $originId
+  WITH collect(o) AS origins
+  MATCH (d:StationRoute) WHERE d.stationId = $destId
+  WITH origins, collect(d) AS dests
+  UNWIND origins AS o
+  UNWIND dests AS d
+  CALL apoc.algo.dijkstra(o, d, 'CONNECTS_TO', 'duration') YIELD path, weight
+  WITH path, weight AS totalCost,
+    size([r IN relationships(path) WHERE r.type = 'transfer']) AS transferCount
+  WHERE transferCount <= $maxTransfers
+    AND ALL(r IN relationships(path) WHERE
+      CASE WHEN r.type = 'ride'
+      THEN NOT r.routeId IN $avoidRoutes
+      ELSE true END)
+  RETURN path, totalCost, transferCount
+  ORDER BY totalCost
+  LIMIT $limit
+`;
+
+// --- Tier 2: Cypher variable-length path with cost scoring ------------------
+
+const WEIGHTED_CYPHER_QUERY = `
+  MATCH (o:StationRoute) WHERE o.stationId = $originId
+  MATCH (d:StationRoute) WHERE d.stationId = $destId
+  MATCH path = (o)-[:CONNECTS_TO*..30]->(d)
+  WITH path,
+    reduce(cost = 0, r IN relationships(path) | cost + r.duration) AS totalCost,
+    size([r IN relationships(path) WHERE r.type = 'transfer']) AS transferCount
+  WHERE transferCount <= $maxTransfers
+  RETURN path, totalCost, transferCount
+  ORDER BY totalCost
+  LIMIT $limit
+`;
+
+const WEIGHTED_CYPHER_AVOID_QUERY = `
+  MATCH (o:StationRoute) WHERE o.stationId = $originId
+  MATCH (d:StationRoute) WHERE d.stationId = $destId
+  MATCH path = (o)-[:CONNECTS_TO*..30]->(d)
+  WHERE ALL(r IN relationships(path) WHERE
+    CASE WHEN r.type = 'ride'
+    THEN NOT r.routeId IN $avoidRoutes
+    ELSE true END)
+  WITH path,
+    reduce(cost = 0, r IN relationships(path) | cost + r.duration) AS totalCost,
+    size([r IN relationships(path) WHERE r.type = 'transfer']) AS transferCount
+  WHERE transferCount <= $maxTransfers
+  RETURN path, totalCost, transferCount
+  ORDER BY totalCost
+  LIMIT $limit
+`;
+
+// --- Tier 3: BFS shortestPath fallback (fewest hops, original behavior) -----
+
+const FALLBACK_BFS_QUERY = `
   MATCH (o:StationRoute) WHERE o.stationId = $originId
   MATCH (d:StationRoute) WHERE d.stationId = $destId
   MATCH path = shortestPath((o)-[:CONNECTS_TO*..30]->(d))
@@ -60,7 +136,7 @@ const FIND_PATHS_QUERY = `
   LIMIT $limit
 `;
 
-const FIND_PATHS_AVOID_QUERY = `
+const FALLBACK_BFS_AVOID_QUERY = `
   MATCH (o:StationRoute) WHERE o.stationId = $originId
   MATCH (d:StationRoute) WHERE d.stationId = $destId
   MATCH path = shortestPath((o)-[:CONNECTS_TO*..30]->(d))
@@ -262,11 +338,66 @@ function convertPathToTripPlan(
 }
 
 // ---------------------------------------------------------------------------
+// Tiered query execution — tries APOC Dijkstra, then Cypher enumeration,
+// then BFS fallback. Each tier produces the same (path, totalCost,
+// transferCount) result shape so downstream conversion is identical.
+// ---------------------------------------------------------------------------
+
+interface QueryResult {
+  records: { get: (key: string) => unknown }[];
+  tier: 'apoc-dijkstra' | 'cypher-weighted' | 'bfs-fallback';
+}
+
+async function runPathfindingWithFallback(
+  session: Session,
+  params: Record<string, unknown>,
+  useAvoidQuery: boolean,
+): Promise<QueryResult> {
+  // Tier 1: APOC Dijkstra (true weighted shortest path)
+  const apocQuery = useAvoidQuery ? WEIGHTED_APOC_AVOID_QUERY : WEIGHTED_APOC_QUERY;
+  try {
+    const result = await session.run(apocQuery, params);
+    if (result.records.length > 0) {
+      return { records: result.records, tier: 'apoc-dijkstra' };
+    }
+  } catch (err) {
+    console.warn(
+      '[neo4j-planner] APOC Dijkstra unavailable, falling back to Cypher weighted paths:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // Tier 2: Variable-length path enumeration scored by duration
+  const cypherQuery = useAvoidQuery ? WEIGHTED_CYPHER_AVOID_QUERY : WEIGHTED_CYPHER_QUERY;
+  try {
+    const result = await session.run(cypherQuery, params);
+    if (result.records.length > 0) {
+      return { records: result.records, tier: 'cypher-weighted' };
+    }
+  } catch (err) {
+    console.warn(
+      '[neo4j-planner] Cypher weighted path query failed, falling back to BFS:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // Tier 3: Original BFS shortestPath (fewest hops)
+  const bfsQuery = useAvoidQuery ? FALLBACK_BFS_AVOID_QUERY : FALLBACK_BFS_QUERY;
+  const result = await session.run(bfsQuery, params);
+  return { records: result.records, tier: 'bfs-fallback' };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
- * Find optimal trips between two stations using Neo4j's shortestPath.
+ * Find optimal trips between two stations using Neo4j.
+ *
+ * Uses a three-tier query strategy:
+ *   1. APOC Dijkstra — true weighted shortest path (requires APOC plugin)
+ *   2. Cypher variable-length path enumeration with cost scoring
+ *   3. BFS shortestPath fallback (fewest hops, original behavior)
  *
  * Returns an array of deduplicated TripPlans sorted by travel time,
  * or **null** when Neo4j is not configured / unreachable — the caller
@@ -292,8 +423,7 @@ export async function findTripsNeo4j(
   try {
     session = d.session({ database: 'neo4j' });
 
-    // 1. Run pathfinding query
-    const query = avoidRoutes.length > 0 ? FIND_PATHS_AVOID_QUERY : FIND_PATHS_QUERY;
+    // 1. Run pathfinding query with tiered fallback
     const params: Record<string, unknown> = {
       originId: originStationId,
       destId: destStationId,
@@ -304,14 +434,22 @@ export async function findTripsNeo4j(
       params.avoidRoutes = avoidRoutes;
     }
 
-    const result = await session.run(query, params);
+    const { records, tier } = await runPathfindingWithFallback(
+      session,
+      params,
+      avoidRoutes.length > 0,
+    );
 
-    if (result.records.length === 0) return null;
+    console.log(
+      `[neo4j-planner] ${originStationId} -> ${destStationId}: ${records.length} path(s) via ${tier}`,
+    );
+
+    if (records.length === 0) return null;
 
     // 2. Collect all unique station IDs across all paths
     const stationIds = new Set<string>();
-    for (const record of result.records) {
-      const path = record.get('path');
+    for (const record of records) {
+      const path = record.get('path') as { segments: PathSegment[] };
       for (const seg of path.segments) {
         stationIds.add((seg.start.properties as Record<string, unknown>).stationId as string);
         stationIds.add((seg.end.properties as Record<string, unknown>).stationId as string);
@@ -324,21 +462,21 @@ export async function findTripsNeo4j(
     });
     const stationNames = new Map<string, string>();
     for (const rec of nameResult.records) {
-      stationNames.set(rec.get('id'), rec.get('name'));
+      stationNames.set(rec.get('id') as string, rec.get('name') as string);
     }
 
     // 4. Convert each path to a TripPlan
     const trips: TripPlan[] = [];
-    for (let i = 0; i < result.records.length; i++) {
-      const record = result.records[i];
-      const path = record.get('path');
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      const path = record.get('path') as { segments: PathSegment[] };
       const totalCost = record.get('totalCost');
       const transferCount = record.get('transferCount');
 
       const plan = convertPathToTripPlan(
         path.segments as PathSegment[],
-        totalCost,
-        transferCount,
+        totalCost as number,
+        transferCount as number,
         stationNames,
         originStationId,
         destStationId,

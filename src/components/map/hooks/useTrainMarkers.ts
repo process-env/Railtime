@@ -350,13 +350,13 @@ export function useTrainMarkers(
         if (isFilteredOut) {
           fadeOutAndRemove(tripId, entry);
           trainMarkersRef.current.delete(tripId);
-        } else if (isAtLastStop(entry.routeId, entry.nextStopId)) {
+        } else if (isAtLastStop(entry.routeId, entry.type === 'motion' ? entry.api.nextStopId : entry.nextStopId)) {
           fadeOutAndRemove(tripId, entry);
           trainMarkersRef.current.delete(tripId);
         } else {
           // Mid-route — staleness gradient
           const timeSinceUpdate = entry.type === 'motion'
-            ? nowMs - entry.lastApiUpdate
+            ? nowMs - entry.api.lastApiUpdate
             : nowMs - (entry.startTime || 0);
           if (timeSinceUpdate > STALE_CULL_MS) {
             fadeOutAndRemove(tripId, entry);
@@ -412,8 +412,8 @@ export function useTrainMarkers(
             const duration = getSegmentDuration(
               durationMatrix,
               train.routeId,
-              existingMotion.prevStopId,
-              existingMotion.nextStopId
+              existingMotion.api.prevStopId,
+              existingMotion.api.nextStopId
             );
             if (duration) {
               scheduledDuration = duration;
@@ -425,12 +425,14 @@ export function useTrainMarkers(
           const speedMultiplier = apiDuration > 0 ? scheduledDuration / apiDuration : 1.0;
 
           // Update state machine with duration and speed
-          if (existingMotion.animState && trainAnimationReducer) {
-            existingMotion.animState = trainAnimationReducer(existingMotion.animState, {
+          // NOTE: This crosses into animation-owned state from the API effect.
+          // The boundary crossing is intentional and made explicit by the sub-object path.
+          if (existingMotion.animation.animState && trainAnimationReducer) {
+            existingMotion.animation.animState = trainAnimationReducer(existingMotion.animation.animState, {
               type: 'SET_DURATION',
               duration: scheduledDuration
             });
-            existingMotion.animState = trainAnimationReducer(existingMotion.animState, {
+            existingMotion.animation.animState = trainAnimationReducer(existingMotion.animation.animState, {
               type: 'SET_SPEED_MULTIPLIER',
               multiplier: speedMultiplier
             });
@@ -441,7 +443,10 @@ export function useTrainMarkers(
           if (generation !== processingGenRef.current) return;
 
           // Pass current arclength and next station arclength for distance-based phase
-          existingMotion.popup.setHTML(buildTrainPopupHTML(train, color, undefined, existingMotion.filter.s, existingMotion.nextS));
+          existingMotion.popup.setHTML(buildTrainPopupHTML(
+            train, color, undefined,
+            existingMotion.animation.filter.s, existingMotion.api.nextS
+          ));
 
           // Apply clustering offset for overlapping trains
           const offset = trainOffsets.get(train.tripId);
@@ -588,7 +593,7 @@ export function useTrainMarkers(
   const getTrainPhase = useCallback((tripId: string): 'BOARDING' | 'ARRIVING' | 'APPROACHING' | null => {
     const entry = trainMarkersRef.current.get(tripId);
     if (!entry || entry.type !== 'motion') return null;
-    return entry.lastPhase || getPhaseFromDistance(entry.filter.s, entry.nextS);
+    return entry.animation.lastPhase || getPhaseFromDistance(entry.animation.filter.s, entry.api.nextS);
   }, [trainMarkersRef]);
 
   return { visibleTrainCount, latestApiDataRef, getTrainPhase };
@@ -721,31 +726,31 @@ async function createMotionState(
     marker,
     popup,
     track,
-    filter: createFilterState(initialS, 0, 0, nowMs),
     plan: null,
-    prevStopId: train.prevStopId || '',
-    nextStopId: train.nextStopId,
-    prevTimeMs,
-    nextTimeMs,
-    prevS,
-    nextS,
-    // Schedule-based animation fields (deprecated - use animState)
-    segmentStartTime: nowMs - elapsed,
-    scheduledDuration,
-    speedMultiplier,
-    // State machine
-    animState,
-    nextStopName: train.nextStopName,
-    eta: train.eta,
-    headsign: train.headsign,
-    direction,
-    lastFrameTime: performance.now(),
-    lastRenderedS: initialS,
-    lastApiUpdate: nowMs,
-    // Phase tracking for popup updates during animation
-    lastPhase: initialPhase,
-    // Event listener cleanup
-    cleanupListeners
+    animation: {
+      filter: createFilterState(initialS, 0, 0, nowMs),
+      lastFrameTime: performance.now(),
+      lastRenderedS: initialS,
+      animState,
+      lastPhase: initialPhase,
+    },
+    api: {
+      prevStopId: train.prevStopId || '',
+      nextStopId: train.nextStopId,
+      prevTimeMs,
+      nextTimeMs,
+      prevS,
+      nextS,
+      segmentStartTime: nowMs - elapsed,
+      scheduledDuration,
+      speedMultiplier,
+      nextStopName: train.nextStopName,
+      eta: train.eta,
+      headsign: train.headsign,
+      direction,
+      lastApiUpdate: nowMs,
+    },
+    cleanupListeners,
   };
 }
 
@@ -780,11 +785,13 @@ async function updateMotionState(
 ): Promise<void> {
   if (!getStopArclength) return;
 
+  const { animation: anim, api } = state;
+
   // Get new arclengths
   const resolvedPrevS = train.prevStopId
     ? await getStopArclength(train.routeId, train.prevStopId)
     : undefined;
-  const prevS = resolvedPrevS ?? state.prevS;
+  const prevS = resolvedPrevS ?? api.prevS;
   const nextS = await getStopArclength(train.routeId, train.nextStopId);
 
   if (nextS === undefined) return;
@@ -795,8 +802,9 @@ async function updateMotionState(
   const apiProgress = totalTime > 0 ? Math.max(0, Math.min(1, elapsed / totalTime)) : 0;
 
   // CRITICAL: Dispatch API_UPDATE to state machine (if using state machine)
-  if (state.animState && trainAnimationReducer && prevS !== undefined) {
-    state.animState = trainAnimationReducer(state.animState, {
+  // NOTE: This crosses into animation-owned state from the API effect.
+  if (anim.animState && trainAnimationReducer && prevS !== undefined) {
+    anim.animState = trainAnimationReducer(anim.animState, {
       type: 'API_UPDATE',
       nowMs,
       prevStopId: train.prevStopId || '',
@@ -809,12 +817,13 @@ async function updateMotionState(
 
   // Detect segment change (train moved to new station pair)
   const segmentChanged =
-    train.prevStopId !== state.prevStopId ||
-    train.nextStopId !== state.nextStopId;
+    train.prevStopId !== api.prevStopId ||
+    train.nextStopId !== api.nextStopId;
 
   if (segmentChanged && prevS !== undefined) {
     // Check if train has already reached current station
-    const distanceToCurrentStation = Math.abs(state.nextS - state.filter.s);
+    // NOTE: Reading animation-owned filter.s from API effect (explicit boundary crossing)
+    const distanceToCurrentStation = Math.abs(api.nextS - anim.filter.s);
     const atStation = distanceToCurrentStation <= STATION_SNAP_DISTANCE;
 
     // Calculate duration from API timing (or use default)
@@ -822,9 +831,9 @@ async function updateMotionState(
     const newScheduledDuration = apiDurationMs > 0 ? apiDurationMs / 1000 : 90;
 
     if (atStation) {
-      // Train is at station - queue segment and start dwell
+      // Train is at station - queue segment via pendingSegment message and start dwell
       if (Number.isFinite(prevS) && Number.isFinite(nextS)) {
-        state.pendingSegment = {
+        anim.pendingSegment = {
           prevStopId: train.prevStopId || '',
           nextStopId: train.nextStopId,
           prevS: prevS,
@@ -833,50 +842,51 @@ async function updateMotionState(
           nextStopName: train.nextStopName,
           eta: train.eta,
         };
-        if (!state.dwellStartTime) {
-          state.dwellStartTime = nowMs;
+        if (!anim.dwellStartTime) {
+          anim.dwellStartTime = nowMs;
         }
       }
     } else {
       // Train NOT at station - immediately update segment to keep moving
       // This prevents trains from getting stuck
       if (Number.isFinite(prevS) && Number.isFinite(nextS)) {
-        state.prevStopId = train.prevStopId || '';
-        state.nextStopId = train.nextStopId;
-        state.prevS = prevS;
-        state.nextS = nextS;
-        state.scheduledDuration = newScheduledDuration;
-        state.speedMultiplier = 1.0;
-        state.nextStopName = train.nextStopName;
-        state.eta = train.eta;
+        api.prevStopId = train.prevStopId || '';
+        api.nextStopId = train.nextStopId;
+        api.prevS = prevS;
+        api.nextS = nextS;
+        api.scheduledDuration = newScheduledDuration;
+        api.speedMultiplier = 1.0;
+        api.nextStopName = train.nextStopName;
+        api.eta = train.eta;
         // Calculate segmentStartTime from current rendered position
+        // NOTE: Reading animation-owned filter.s from API effect (explicit boundary crossing)
         const segmentRange = nextS - prevS;
         const segmentDurationMs = newScheduledDuration * 1000;
         if (Math.abs(segmentRange) > 0 && segmentDurationMs > 0) {
-          const positionInSegment = (state.filter.s - prevS) / segmentRange;
+          const positionInSegment = (anim.filter.s - prevS) / segmentRange;
           const clampedProgress = Math.max(0, Math.min(1, positionInSegment));
-          state.segmentStartTime = nowMs - (clampedProgress * segmentDurationMs);
+          api.segmentStartTime = nowMs - (clampedProgress * segmentDurationMs);
         } else {
-          state.segmentStartTime = nowMs;
+          api.segmentStartTime = nowMs;
         }
         // Clear any pending since we just updated directly
-        state.pendingSegment = undefined;
-        state.dwellStartTime = undefined;
+        anim.pendingSegment = undefined;
+        anim.dwellStartTime = undefined;
       }
       // else: skip — don't corrupt state with bad arclengths
     }
   }
 
   // Update display info
-  state.prevTimeMs = train.prevTimeMs || state.prevTimeMs;
-  state.nextTimeMs = train.nextTimeMs || state.nextTimeMs;
-  state.headsign = train.headsign;
-  state.lastApiUpdate = nowMs;
+  api.prevTimeMs = train.prevTimeMs || api.prevTimeMs;
+  api.nextTimeMs = train.nextTimeMs || api.nextTimeMs;
+  api.headsign = train.headsign;
+  api.lastApiUpdate = nowMs;
 
   // Update display data if no pending segment
-  if (!state.pendingSegment) {
-    state.nextStopName = train.nextStopName;
-    state.eta = train.eta;
+  if (!anim.pendingSegment) {
+    api.nextStopName = train.nextStopName;
+    api.eta = train.eta;
   }
 }
 

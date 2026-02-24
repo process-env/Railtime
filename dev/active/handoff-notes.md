@@ -4,6 +4,43 @@ _Last Updated: 2026-02-24_
 
 ---
 
+## Session: Deferred L-Effort Items (2026-02-24)
+
+**Goal:** Complete all 5 deferred L-effort items from the codebase health review.
+
+### Results
+
+**All 5 deferred L-effort items completed.**
+
+### Key Changes
+
+- **CRIT-18** [Test]: Replaced CSV-dump diagnostic tests with 127 deterministic unit tests across 5 new test files (motion-planner, alpha-beta-gamma, cluster-trains, arclength, train-state-machine). Deleted real-data.test.ts.
+- **CRIT-19** [Test]: Added 46 Socket.IO path tests for all 3 dual-mode hooks (use-train-positions, use-alerts, use-arrivals). Covers connection, event handling, room subscription, filtering, fallback to polling, cleanup.
+- **IMP-17** [Map]: Split TrainMotionState into animation + api sub-objects with explicit ownership boundaries. 3 intentional boundary crossings documented with NOTE comments.
+- **IMP-19** [Trip/Server]: Three-tier weighted Neo4j pathfinding -- APOC Dijkstra, variable-length enumeration, BFS fallback. Updated both neo4j-planner.ts and server trip-planner.ts.
+- **IMP-50** [Test]: 36 smoke tests across 7 analytics components (DelayDistribution, RoutePerformance, LiveSystemDashboard, BunchingGap, SystemHealth, TripCompletion, OperationalStatsBar). Added 3 new mock data factories.
+
+### Quality Gates -- ALL PASSED
+- TypeScript: zero errors (app + server)
+- Tests: 879 passing (up from 683)
+- No API contract changes
+
+### Remaining Deferred
+- **IMP-56** [Test] Create server test infrastructure and add `feed-loop.ts` tests -- XL
+- 6 XL strategic items (STRAT-01, -03, -05, -07, -08, -11)
+
+### Full Review Summary
+- **130 of 131 findings remediated** across 4 tiers (Tier 1: 21/21, Tier 2: 55/56, Tier 3: 42/42, Tier 4: 6/12 + 6 unchecked XL strategic)
+- 1 remaining deferred item from earlier tiers: IMP-56 (XL)
+- 6 remaining XL strategic items
+
+### What's Next
+- Commit, push, deploy (Vercel + EC2)
+- All S/M/L codebase health items complete -- only XL architectural efforts remain
+- Task list: `dev/review/codebase-health/codebase-health-tasks.md`
+
+---
+
 ## Session: Tier 4 Strategic Fixes (2026-02-24)
 
 **Goal:** Complete all feasible Tier 4 Strategic items from the codebase health review.

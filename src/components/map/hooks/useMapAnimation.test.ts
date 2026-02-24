@@ -404,24 +404,28 @@ describe('useMapAnimation - motion-based animation', () => {
         marker: mockMarker as unknown as maplibregl.Marker,
         popup: mockPopup as unknown as maplibregl.Popup,
         track: { points: [], stopArclengths: new Map() } as unknown as import('@/lib/map/track-index').RouteTrack,
-        filter: { s: 1000, v: 0, a: 0, lastUpdateTime: Date.now() },
         plan: null,
-        prevStopId: 'A01',
-        nextStopId: 'A02',
-        prevTimeMs: Date.now() - 30000,
-        nextTimeMs: Date.now() + 60000,
-        prevS: 0,
-        nextS: 5000,
-        segmentStartTime: Date.now() - 30000,
-        scheduledDuration: 90,
-        speedMultiplier: 1.0,
-        animState: null,
-        nextStopName: 'Test Station',
-        eta: '5 min',
-        headsign: 'Uptown',
-        direction: 'N',
-        lastFrameTime: performance.now(),
-        lastApiUpdate: Date.now(),
+        animation: {
+          filter: { s: 1000, v: 0, a: 0, lastUpdateTime: Date.now() },
+          lastFrameTime: performance.now(),
+          animState: null,
+        },
+        api: {
+          prevStopId: 'A01',
+          nextStopId: 'A02',
+          prevTimeMs: Date.now() - 30000,
+          nextTimeMs: Date.now() + 60000,
+          prevS: 0,
+          nextS: 5000,
+          segmentStartTime: Date.now() - 30000,
+          scheduledDuration: 90,
+          speedMultiplier: 1.0,
+          nextStopName: 'Test Station',
+          eta: '5 min',
+          headsign: 'Uptown',
+          direction: 'N',
+          lastApiUpdate: Date.now(),
+        },
       });
     });
 
@@ -853,55 +857,64 @@ describe('Dwell and pending segment', () => {
   });
 
   it('pending segment is consumed: after dwell, prevS advances to pendingSegment.prevS', () => {
-    // Simulate the dwell-completion logic from useMapAnimation.ts lines 312-329
+    // Simulate the dwell-completion logic from useMapAnimation.ts (RAF loop)
+    // Uses the split animation/api sub-object structure
     const state = {
-      prevStopId: 'A01',
-      nextStopId: 'A02',
-      prevS: 0,
-      nextS: 5000,
-      scheduledDuration: 90,
-      nextStopName: 'Station A',
-      eta: '2 min',
-      segmentStartTime: 1_000_000,
-      filter: { s: 5000 },
-      lastRenderedS: 5000,
-      pendingSegment: {
-        prevStopId: 'A02',
-        nextStopId: 'A03',
-        prevS: 5000,
-        nextS: 9000,
-        scheduledDuration: 60,
-        nextStopName: 'Station B',
-        eta: '3 min',
+      api: {
+        prevStopId: 'A01',
+        nextStopId: 'A02',
+        prevS: 0,
+        nextS: 5000,
+        scheduledDuration: 90,
+        speedMultiplier: 1.0,
+        nextStopName: 'Station A',
+        eta: '2 min',
+        segmentStartTime: 1_000_000,
       },
-      dwellStartTime: 1_000_000,
+      animation: {
+        filter: { s: 5000 },
+        lastRenderedS: 5000,
+        pendingSegment: {
+          prevStopId: 'A02',
+          nextStopId: 'A03',
+          prevS: 5000,
+          nextS: 9000,
+          scheduledDuration: 60,
+          nextStopName: 'Station B',
+          eta: '3 min',
+        } as { prevStopId: string; nextStopId: string; prevS: number; nextS: number; scheduledDuration: number; nextStopName: string; eta: string } | undefined,
+        dwellStartTime: 1_000_000 as number | undefined,
+      },
     };
 
-    const nowMs = state.dwellStartTime + DWELL_DURATION_MS;  // exactly expired
-    const dwellElapsed = nowMs - state.dwellStartTime;
+    const { animation: anim, api } = state;
+    const nowMs = anim.dwellStartTime! + DWELL_DURATION_MS;  // exactly expired
+    const dwellElapsed = nowMs - anim.dwellStartTime!;
 
-    if (dwellElapsed >= DWELL_DURATION_MS && state.pendingSegment) {
-      const pending = state.pendingSegment;
-      state.prevStopId = pending.prevStopId;
-      state.nextStopId = pending.nextStopId;
-      state.prevS = pending.prevS;
-      state.nextS = pending.nextS;
-      state.scheduledDuration = pending.scheduledDuration;
-      state.nextStopName = pending.nextStopName;
-      state.eta = pending.eta;
-      state.segmentStartTime = nowMs;
-      state.filter.s = safeArclength(pending.prevS, state.lastRenderedS);
-      state.lastRenderedS = state.filter.s;
-      (state as { pendingSegment?: unknown }).pendingSegment = undefined;
+    if (dwellElapsed >= DWELL_DURATION_MS && anim.pendingSegment) {
+      const pending = anim.pendingSegment;
+      api.prevStopId = pending.prevStopId;
+      api.nextStopId = pending.nextStopId;
+      api.prevS = pending.prevS;
+      api.nextS = pending.nextS;
+      api.scheduledDuration = pending.scheduledDuration;
+      api.speedMultiplier = 1.0;
+      api.nextStopName = pending.nextStopName;
+      api.eta = pending.eta;
+      api.segmentStartTime = nowMs;
+      anim.filter.s = safeArclength(pending.prevS, anim.lastRenderedS);
+      anim.lastRenderedS = anim.filter.s;
+      anim.pendingSegment = undefined;
+      anim.dwellStartTime = undefined;
     }
 
     // After dwell completion the segment should have advanced
-    expect(state.prevStopId).toBe('A02');
-    expect(state.nextStopId).toBe('A03');
-    expect(state.prevS).toBe(5000);
-    expect(state.nextS).toBe(9000);
-    expect(state.scheduledDuration).toBe(60);
-    expect(state.filter.s).toBe(5000);   // filter snapped to new prevS
-    expect(state.pendingSegment).toBeUndefined();
+    expect(api.prevStopId).toBe('A02');
+    expect(api.nextStopId).toBe('A03');
+    expect(api.prevS).toBe(5000);
+    expect(api.nextS).toBe(9000);
+    expect(api.scheduledDuration).toBe(60);
+    expect(anim.filter.s).toBe(5000);   // filter snapped to new prevS
+    expect(anim.pendingSegment).toBeUndefined();
   });
 });
