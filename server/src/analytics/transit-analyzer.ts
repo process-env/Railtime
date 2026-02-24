@@ -2,7 +2,7 @@
  * Transit Analyzer — generates AI-powered insights from flush data.
  *
  * Called by the metrics-collector after each 5-minute flush.
- * Uses Claude Sonnet 4 on Bedrock to find non-obvious patterns
+ * Uses Amazon Nova Micro on Bedrock to find non-obvious patterns
  * in the raw metrics, then caches the result in Redis.
  */
 import {
@@ -19,9 +19,9 @@ import type { MetricRecord, EventRecord, RollupRecord } from './dynamodb-writer.
 
 const log = createLogger('analyzer');
 
-const BEDROCK_MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
+const BEDROCK_MODEL_ID = 'us.amazon.nova-micro-v1:0';
 const DIRECT_MODEL_ID = 'claude-haiku-4-5-20251001';
-const CACHE_MODEL_NAME = 'claude-haiku-4-5';
+const CACHE_MODEL_NAME = 'amazon-nova-micro';
 const CACHE_TTL_SECONDS = 600; // 10 minutes (2x flush interval for safety)
 
 let bedrockClient: BedrockRuntimeClient | null = null;
@@ -193,11 +193,12 @@ async function callModel(prompt: string): Promise<{ text: string; source: 'bedro
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify({
-        anthropic_version: 'bedrock-2023-05-31',
-        max_tokens: 1024,
-        temperature: 0.3,
+        inferenceConfig: {
+          max_new_tokens: 1024,
+          temperature: 0.3,
+        },
         messages: [
-          { role: 'user', content: prompt },
+          { role: 'user', content: [{ text: prompt }] },
         ],
       }),
     });
@@ -206,7 +207,7 @@ async function callModel(prompt: string): Promise<{ text: string; source: 'bedro
     const responseBody = JSON.parse(
       new TextDecoder().decode(response.body),
     );
-    const text: string = responseBody.content?.[0]?.text ?? '';
+    const text: string = responseBody.output?.message?.content?.[0]?.text ?? '';
     if (!text) {
       log.warn('empty response from Bedrock');
       return null;
