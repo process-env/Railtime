@@ -2,14 +2,10 @@
  * Transit Analyzer — generates AI-powered insights from flush data.
  *
  * Called by the metrics-collector after each 5-minute flush.
- * Uses Amazon Nova Micro on Bedrock to find non-obvious patterns
+ * Uses OpenAI GPT-4.1 to find non-obvious patterns
  * in the raw metrics, then caches the result in Redis.
  */
-import {
-  BedrockRuntimeClient,
-  InvokeModelCommand,
-} from '@aws-sdk/client-bedrock-runtime';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { getCache, setCache } from '../lib/redis.js';
 import { CACHE_KEYS } from '../lib/cache.js';
 import { createLogger } from '../lib/logger.js';
@@ -19,21 +15,9 @@ import type { MetricRecord, EventRecord, RollupRecord } from './dynamodb-writer.
 
 const log = createLogger('analyzer');
 
-const BEDROCK_MODEL_ID = 'us.amazon.nova-micro-v1:0';
-const DIRECT_MODEL_ID = 'claude-haiku-4-5-20251001';
-const CACHE_MODEL_NAME = 'amazon-nova-micro';
+const MODEL_ID = 'gpt-4.1';
+const CACHE_MODEL_NAME = 'gpt-4.1';
 const CACHE_TTL_SECONDS = 600; // 10 minutes (2x flush interval for safety)
-
-let bedrockClient: BedrockRuntimeClient | null = null;
-
-function getBedrockClient(): BedrockRuntimeClient {
-  if (!bedrockClient) {
-    bedrockClient = new BedrockRuntimeClient({
-      region: process.env.AWS_REGION ?? 'us-east-1',
-    });
-  }
-  return bedrockClient;
-}
 
 export interface AnalysisInput {
   metrics: MetricRecord[];
@@ -180,81 +164,25 @@ Examples of good insights:
 Do NOT restate raw numbers, list best/worst routes, or give generic rider advice.`;
 }
 
-/**
- * Try Bedrock first. If access is revoked, fall back to Anthropic direct API.
- * Returns the analysis text or null if both fail.
- */
-async function callModel(prompt: string): Promise<{ text: string; source: 'bedrock' | 'direct' } | null> {
-  // --- Attempt 1: AWS Bedrock ---
-  try {
-    const client = getBedrockClient();
-    const command = new InvokeModelCommand({
-      modelId: BEDROCK_MODEL_ID,
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify({
-        inferenceConfig: {
-          max_new_tokens: 1024,
-          temperature: 0.3,
-        },
-        messages: [
-          { role: 'user', content: [{ text: prompt }] },
-        ],
-      }),
-    });
-
-    const response = await client.send(command);
-    const responseBody = JSON.parse(
-      new TextDecoder().decode(response.body),
-    );
-    const text: string = responseBody.output?.message?.content?.[0]?.text ?? '';
-    if (!text) {
-      log.warn('empty response from Bedrock');
-      return null;
-    }
-    return { text, source: 'bedrock' };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const isAccessError = message.includes('not allowed') || message.includes('Access');
-
-    if (!isAccessError) {
-      // Non-access error — don't retry with direct API
-      log.error({ err: message }, 'Bedrock call failed (non-access error)');
-      return null;
-    }
-
-    log.warn({ err: message }, 'Bedrock access denied, falling back to Anthropic direct API');
-  }
-
-  // --- Attempt 2: Anthropic Direct API ---
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+async function callModel(prompt: string): Promise<{ text: string } | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    log.error('ANTHROPIC_API_KEY not set — cannot fall back to direct API');
+    log.error('OPENAI_API_KEY not set');
     return null;
   }
-
-  try {
-    const anthropic = new Anthropic({ apiKey });
-    const response = await anthropic.messages.create({
-      model: DIRECT_MODEL_ID,
-      max_tokens: 1024,
-      temperature: 0.3,
-      messages: [
-        { role: 'user', content: prompt },
-      ],
-    });
-
-    const text = response.content[0].type === 'text' ? response.content[0].text : '';
-    if (!text) {
-      log.warn('empty response from Anthropic direct API');
-      return null;
-    }
-    return { text, source: 'direct' };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    log.error({ err: message }, 'Anthropic direct API call failed');
+  const client = new OpenAI({ apiKey });
+  const response = await client.chat.completions.create({
+    model: MODEL_ID,
+    max_tokens: 1024,
+    temperature: 0.3,
+    messages: [{ role: 'user', content: prompt }],
+  });
+  const text = response.choices[0]?.message?.content ?? '';
+  if (!text) {
+    log.warn('empty response from OpenAI');
     return null;
   }
+  return { text };
 }
 
 /**
@@ -272,7 +200,7 @@ export async function generateAnalysis(input: AnalysisInput): Promise<void> {
     const analysisResult: AnalysisResult = {
       analysis: result.text,
       generatedAt: new Date().toISOString(),
-      model: CACHE_MODEL_NAME,
+      model: MODEL_ID,
     };
 
     await setCache(CACHE_KEYS.transitAnalysis, analysisResult, CACHE_TTL_SECONDS);
@@ -288,7 +216,7 @@ export async function generateAnalysis(input: AnalysisInput): Promise<void> {
     );
 
     log.info(
-      { model: CACHE_MODEL_NAME, source: result.source, charCount: result.text.length },
+      { model: MODEL_ID, charCount: result.text.length },
       'analysis generated and cached',
     );
   } catch (err) {

@@ -15,8 +15,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.995.0",
     "@aws-sdk/client-dynamodb": "^3.995.0",
     "@aws-sdk/client-s3": "^3.995.0",
     "@aws-sdk/lib-dynamodb": "^3.995.0",
@@ -25,6 +23,7 @@
     "cors": "^2.8.5",
     "ioredis": "^5.8.2",
     "neo4j-driver": "^5.27.0",
+    "openai": "^6.24.0",
     "pino": "^9.6.0",
     "protobufjs": "^7.5.4",
     "socket.io": "^4.8.1"
