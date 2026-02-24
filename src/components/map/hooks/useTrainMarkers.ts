@@ -215,7 +215,6 @@ export function useTrainMarkers(
       type: 'SYNC_TRAINS',
       trains,
       nowMs: Date.now(),
-      isAtFirstStop,
       isAtLastStop,
     });
   }, [trains]);

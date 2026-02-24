@@ -33,6 +33,7 @@ export interface MarkerRecord {
 
 export interface TrainMarkerState {
   markers: Map<string, MarkerRecord>;
+  lastTrainRoutes: Map<string, string>;  // tripId → routeId from last SYNC
   filterRouteIds: string[];
   filterSet: Set<string>;     // cached from filterRouteIds for O(1) lookup
   trackUtilsLoaded: boolean;
@@ -45,7 +46,6 @@ export type TrainMarkerAction =
       type: 'SYNC_TRAINS';
       trains: TrainPosition[];
       nowMs: number;
-      isAtFirstStop: (routeId: string, prevStopId: string) => boolean;
       isAtLastStop: (routeId: string, nextStopId: string) => boolean;
     }
   | { type: 'FILTER_CHANGED'; selectedRouteIds: string[] }
@@ -59,6 +59,7 @@ export type TrainMarkerAction =
 export function createInitialState(): TrainMarkerState {
   return {
     markers: new Map(),
+    lastTrainRoutes: new Map(),
     filterRouteIds: [],
     filterSet: new Set(),
     trackUtilsLoaded: false,
@@ -90,20 +91,6 @@ export function trainMarkerReducer(
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function countVisible(markers: Map<string, MarkerRecord>): number {
-  let count = 0;
-  markers.forEach((record) => {
-    if (record.visible && record.status !== 'removed' && record.status !== 'fading') {
-      count++;
-    }
-  });
-  return count;
-}
-
-// ---------------------------------------------------------------------------
 // SYNC_TRAINS
 // ---------------------------------------------------------------------------
 
@@ -111,7 +98,7 @@ function handleSyncTrains(
   state: TrainMarkerState,
   action: Extract<TrainMarkerAction, { type: 'SYNC_TRAINS' }>,
 ): TrainMarkerState {
-  const { trains, nowMs, isAtFirstStop, isAtLastStop } = action;
+  const { trains, nowMs, isAtLastStop } = action;
   const { filterSet } = state;
 
   // 1. Copy markers for immutability
@@ -145,12 +132,7 @@ function handleSyncTrains(
         visible: routeMatchesFilter(train.routeId, filterSet),
       });
     } else {
-      // Entry gate: skip trains sitting at their first stop
-      if (isAtFirstStop(train.routeId, train.prevStopId ?? '')) {
-        continue;
-      }
-
-      // Add new marker
+      // Add new marker (NO entry gate - every positioned train gets a marker)
       next.set(train.tripId, {
         tripId: train.tripId,
         routeId: train.routeId,
@@ -189,12 +171,24 @@ function handleSyncTrains(
     // Otherwise leave status unchanged
   });
 
-  // 5. Derive visible count
-  const visibleCount = countVisible(next);
+  // 5. Count visible from API data (not gated markers)
+  let visibleCount = 0;
+  for (const train of deduped) {
+    if (routeMatchesFilter(train.routeId, filterSet)) {
+      visibleCount++;
+    }
+  }
+
+  // Save train routes for FILTER_CHANGED recount
+  const lastTrainRoutes = new Map<string, string>();
+  for (const train of deduped) {
+    lastTrainRoutes.set(train.tripId, train.routeId);
+  }
 
   return {
     ...state,
     markers: next,
+    lastTrainRoutes,
     generation: state.generation + 1,
     visibleCount,
   };
@@ -218,7 +212,12 @@ function handleFilterChanged(
     }
   });
 
-  const visibleCount = countVisible(next);
+  let visibleCount = 0;
+  state.lastTrainRoutes.forEach((routeId) => {
+    if (filterSet.size === 0 || routeMatchesFilter(routeId, filterSet)) {
+      visibleCount++;
+    }
+  });
 
   return {
     ...state,
@@ -239,11 +238,9 @@ function handleRemoveMarker(
 ): TrainMarkerState {
   const next = new Map(state.markers);
   next.delete(action.tripId);
-  const visibleCount = countVisible(next);
 
   return {
     ...state,
     markers: next,
-    visibleCount,
   };
 }
