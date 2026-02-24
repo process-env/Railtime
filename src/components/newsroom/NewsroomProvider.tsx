@@ -293,27 +293,57 @@ export function NewsroomProvider({ children }: NewsroomProviderProps) {
       // localStorage may be unavailable
     }
 
-    // --- First-minute "full monty" sequence ---
-    const fullMontyTypes: Array<{ type: SegmentType; withAlerts?: boolean }> = [
-      { type: 'news-block', withAlerts: true },
+    // --- Play welcome stinger instantly + prefetch first segment in parallel ---
+    console.log('[Newsroom] Playing welcome stinger');
+
+    // Build alerts payload for the news-block fetch
+    let newsBlockAlerts: Array<{ id: string; headerText: string; affectedRoutes?: string[] }> | undefined;
+    if (alertsRef.current && alertsRef.current.length > 0) {
+      newsBlockAlerts = alertsRef.current.map((a) => ({
+        id: a.id,
+        headerText: a.headerText,
+        affectedRoutes: a.affectedRoutes,
+      }));
+    }
+
+    // Start welcome audio and news-block fetch concurrently
+    const welcomePromise = playAudio('/audio/welcome.mp3');
+    const newsBlockPromise = fetchSegment('news-block', newsBlockAlerts).catch((err) => {
+      console.error('[Newsroom] Full monty news-block failed:', err);
+      return null;
+    });
+
+    // Wait for welcome audio to finish playing
+    await welcomePromise;
+    if (unmountedRef.current) return;
+
+    // News-block fetch should already be resolved (welcome is ~5s);
+    // if not, we await the remaining time here
+    const newsBlockSegment = await newsBlockPromise;
+    if (unmountedRef.current) return;
+
+    if (newsBlockSegment) {
+      trackRecent(newsBlockSegment.segmentId);
+      await playAudio(newsBlockSegment.audioUrl);
+    }
+
+    if (unmountedRef.current) return;
+
+    // 3-second gap before next segment
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // --- Remaining full monty segments (sequential) ---
+    const remainingTypes: Array<{ type: SegmentType }> = [
       { type: 'weather' },
       { type: 'transit-insight' },
       { type: 'evergreen' },
     ];
 
-    for (const item of fullMontyTypes) {
+    for (const item of remainingTypes) {
       if (unmountedRef.current) return;
 
       try {
-        let alerts: Array<{ id: string; headerText: string; affectedRoutes?: string[] }> | undefined;
-        if (item.withAlerts && alertsRef.current && alertsRef.current.length > 0) {
-          alerts = alertsRef.current.map((a) => ({
-            id: a.id,
-            headerText: a.headerText,
-            affectedRoutes: a.affectedRoutes,
-          }));
-        }
-        const segment = await fetchSegment(item.type, alerts);
+        const segment = await fetchSegment(item.type);
         if (unmountedRef.current) return;
         if (segment) {
           trackRecent(segment.segmentId);
