@@ -61,7 +61,7 @@ describe('useAlerts', () => {
     renderHook(() => useAlerts({ routeIds: ['A', 'C'], refreshInterval: 0 }), { wrapper: QueryWrapper });
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith('/api/v1/alerts?route=A,C');
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/alerts?route=A%2CC');
     });
   });
 

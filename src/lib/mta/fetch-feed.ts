@@ -91,7 +91,7 @@ export async function fetchFeed(
       const sId = stu.stopId || null;
       stopUpdates.push({
         stopId: sId,
-        stopName: sId && stopDict[sId]?.name || null,
+        stopName: sId ? (stopDict[sId]?.name ?? null) : null,
         arrival: {
           time: formatTimestamp(stu.arrival?.time),
           delay: stu.arrival?.delay ?? null,

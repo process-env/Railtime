@@ -61,7 +61,15 @@ export interface TrainOffset {
 export type TrainOffsetMap = Map<string, TrainOffset>;
 
 /**
- * Create a spatial grid key for efficient neighbor lookups
+ * Create a spatial grid key for efficient neighbor lookups.
+ *
+ * Note: The grid uses a fixed degree-based cell size, so the physical width of
+ * each cell varies with latitude. At the equator, 1 degree of longitude is ~111 km,
+ * but at NYC's latitude (~40.7N) it is only ~84 km. This is acceptable for our use
+ * case because (1) all trains are within the NYC metro area where cos(lat) is roughly
+ * constant, and (2) the 3x3 neighborhood check in clusterTrains compensates for
+ * boundary effects. A more precise approach would scale the longitude grid size by
+ * 1/cos(lat), but the added complexity is not warranted for a single-city application.
  */
 function getGridKey(lat: number, lon: number): string {
   // Use a grid cell size slightly larger than threshold for overlap detection

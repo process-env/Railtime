@@ -16,6 +16,7 @@ export default defineConfig({
       '**/real-data.test.ts',
     ],
     coverage: {
+      provider: 'v8',
       thresholds: {
         lines: 70,
         functions: 70,

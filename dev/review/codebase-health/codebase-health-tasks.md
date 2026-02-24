@@ -1,4 +1,4 @@
-Last Updated: 2026-02-23
+Last Updated: 2026-02-24
 
 # Codebase Health Review -- Task List
 
@@ -285,63 +285,63 @@ Last Updated: 2026-02-23
 
 ### API & Data Pipeline
 
-- [ ] **MIN-09** [API] Fix operator precedence in `fetch-feed.ts` stopName expression | Effort: **S**
-- [ ] **MIN-10** [API] Validate and sanitize trip cache key inputs | Effort: **S**
-- [ ] **MIN-11** [API] Consider removing service name from unauthenticated health endpoint | Effort: **S**
-- [ ] **MIN-12** [API] Standardize OpenAI model ID across conductor routes | Effort: **S**
-- [ ] **MIN-13** [API] Add service day invalidation to `scheduleDataCache` | Effort: **S**
-- [ ] **MIN-14** [API] Use `URLSearchParams` in `mtaApi.getAlerts` URL construction | Effort: **S**
-- [ ] **MIN-15** [API] Consolidate two `checkRateLimit` modules into one canonical module | Effort: **M**
+- [x] **MIN-09** [API] Fix operator precedence in `fetch-feed.ts` stopName expression | Effort: **S**
+- [x] **MIN-10** [API] Validate and sanitize trip cache key inputs | Effort: **S**
+- [x] **MIN-11** [API] Consider removing service name from unauthenticated health endpoint | Effort: **S**
+- [x] **MIN-12** [API] Standardize OpenAI model ID across conductor routes | Effort: **S**
+- [x] **MIN-13** [API] Add service day invalidation to `scheduleDataCache` | Effort: **S**
+- [x] **MIN-14** [API] Use `URLSearchParams` in `mtaApi.getAlerts` URL construction | Effort: **S**
+- [x] **MIN-15** [API] Consolidate two `checkRateLimit` modules into one canonical module | Effort: **M**
 
 ### Map Components & Hooks
 
-- [ ] **MIN-01** [Map] Extract shared `buildPopupHTML` utility from duplicate popup functions | Effort: **S**
-- [ ] **MIN-02** [Map] Consolidate duplicate `haversineDistance` implementations | Effort: **S**
-- [ ] **MIN-22** [Map] Group module-level mutable globals into single typed `TrackUtils` interface | Effort: **S**
-- [ ] **MIN-23** [Map] Add latitude-dependence note to `getGridKey` comment | Effort: **S**
-- [ ] **MIN-24** [Map] Add `hasFlewToRef` guard to `MyLocationButton.tsx` flyTo effect | Effort: **S**
-- [ ] **MIN-25** [Map] Move pulse animation keyframe from injected `<style>` to `globals.css` | Effort: **S**
-- [ ] **MIN-26** [Map] Add `@returns [lat, lon]` coordinate-order JSDoc to `arclengthToLatLon` | Effort: **S**
-- [ ] **MIN-27** [Map] Document intentional `setMapLoaded(true)` before GeoJSON fetch | Effort: **S**
+- [x] **MIN-01** [Map] Extract shared `buildPopupHTML` utility from duplicate popup functions | Effort: **S**
+- [x] **MIN-02** [Map] Consolidate duplicate `haversineDistance` implementations | Effort: **S**
+- [x] **MIN-22** [Map] Group module-level mutable globals into single typed `TrackUtils` interface | Effort: **S**
+- [x] **MIN-23** [Map] Add latitude-dependence note to `getGridKey` comment | Effort: **S**
+- [x] **MIN-24** [Map] Add `hasFlewToRef` guard to `MyLocationButton.tsx` flyTo effect | Effort: **S**
+- [x] **MIN-25** [Map] Move pulse animation keyframe from injected `<style>` to `globals.css` | Effort: **S**
+- [x] **MIN-26** [Map] Add `@returns [lat, lon]` coordinate-order JSDoc to `arclengthToLatLon` | Effort: **S**
+- [x] **MIN-27** [Map] Document intentional `setMapLoaded(true)` before GeoJSON fetch | Effort: **S**
 
 ### Trip Planner Algorithm
 
-- [ ] **MIN-30** [Trip] Replace deprecated `substr` with `substring` in `generateTripId` | Effort: **S**
-- [ ] **MIN-31** [Trip] Replace O(E) edge-count log with running counter | Effort: **S**
-- [ ] **MIN-32** [Trip] Add TODO comment to unpopulated `TripSegment.direction` field | Effort: **S**
+- [x] **MIN-30** [Trip] Replace deprecated `substr` with `substring` in `generateTripId` | Effort: **S**
+- [x] **MIN-31** [Trip] Replace O(E) edge-count log with running counter | Effort: **S**
+- [x] **MIN-32** [Trip] Add TODO comment to unpopulated `TripSegment.direction` field | Effort: **S**
 
 ### Frontend UI & State
 
-- [ ] **MIN-07** [UI] Remove redundant `?? []` in `AlertList` | Effort: **S**
-- [ ] **MIN-08** [UI] Clarify overlapping `!data` branches in `TransitAnalysisCard` | Effort: **S**
-- [ ] **MIN-16** [UI] Replace `<span role="button">` with `<button>` in `StationCard` | Effort: **S**
-- [ ] **MIN-17** [UI] Add `aria-hidden="true"` to escalator SVG in `EquipmentStatusCard` | Effort: **S**
-- [ ] **MIN-18** [UI] Extract `GradeCell` sub-component from IIFE in `RoutePerformanceTable` | Effort: **S**
-- [ ] **MIN-19** [UI] Add `(estimated)` label to `DelayDistributionChart` approximation | Effort: **S**
-- [ ] **MIN-20** [UI] Wire theme store to DOM class -- add theme-applier component | Effort: **M**
-- [ ] **MIN-21** [UI] Vendor PDF.js worker instead of fetching from unpkg CDN | Effort: **S**
-- [ ] **MIN-46** [UI] Add `'use client'` directive to `use-mobile.ts` | Effort: **S**
-- [ ] **MIN-47** [UI] Move `formatTimeRange` outside `AlertCard` component body | Effort: **S**
-- [ ] **MIN-48** [UI] Extract shared `CHART_TOOLTIP_STYLE` constant for Recharts tooltips | Effort: **S**
+- [x] **MIN-07** [UI] Remove redundant `?? []` in `AlertList` | Effort: **S**
+- [x] **MIN-08** [UI] Clarify overlapping `!data` branches in `TransitAnalysisCard` | Effort: **S**
+- [x] **MIN-16** [UI] Replace `<span role="button">` with `<button>` in `StationCard` | Effort: **S**
+- [x] **MIN-17** [UI] Add `aria-hidden="true"` to escalator SVG in `EquipmentStatusCard` | Effort: **S**
+- [x] **MIN-18** [UI] Extract `GradeCell` sub-component from IIFE in `RoutePerformanceTable` | Effort: **S**
+- [x] **MIN-19** [UI] Add `(estimated)` label to `DelayDistributionChart` approximation | Effort: **S**
+- [x] **MIN-20** [UI] Wire theme store to DOM class -- add theme-applier component | Effort: **M**
+- [x] **MIN-21** [UI] Vendor PDF.js worker instead of fetching from unpkg CDN | Effort: **S**
+- [x] **MIN-46** [UI] Add `'use client'` directive to `use-mobile.ts` | Effort: **S**
+- [x] **MIN-47** [UI] Move `formatTimeRange` outside `AlertCard` component body | Effort: **S**
+- [x] **MIN-48** [UI] Extract shared `CHART_TOOLTIP_STYLE` constant for Recharts tooltips | Effort: **S**
 
 ### WebSocket Server
 
-- [ ] **MIN-33** [Server] Consolidate `CACHE_KEYS` from `cache.ts` and `cache-keys.ts` into one registry | Effort: **S**
-- [ ] **MIN-34** [Server] Restrict `pino-pretty` transport to `NODE_ENV === 'development'` only | Effort: **S**
-- [ ] **MIN-35** [Server] Add production-deps stage to Dockerfile to exclude devDependencies | Effort: **S**
-- [ ] **MIN-36** [Server] Use streaming parse for `stop_times.txt` nightly rebuild to reduce peak memory | Effort: **M**
-- [ ] **MIN-37** [Server] Fix `humanEta` to show `'just left'` instead of `'0m ago'` | Effort: **S**
+- [x] **MIN-33** [Server] Consolidate `CACHE_KEYS` from `cache.ts` and `cache-keys.ts` into one registry | Effort: **S**
+- [x] **MIN-34** [Server] Restrict `pino-pretty` transport to `NODE_ENV === 'development'` only | Effort: **S**
+- [x] **MIN-35** [Server] Add production-deps stage to Dockerfile to exclude devDependencies | Effort: **S**
+- [x] **MIN-36** [Server] Use streaming parse for `stop_times.txt` nightly rebuild to reduce peak memory | Effort: **M**
+- [x] **MIN-37** [Server] Fix `humanEta` to show `'just left'` instead of `'0m ago'` | Effort: **S**
 
 ### Test Infrastructure
 
-- [ ] **MIN-38** [Test] Add global `afterEach` with `vi.clearAllMocks()` in `src/test/setup.ts` | Effort: **S**
-- [ ] **MIN-39** [Test] Auto-reset factory ID counter between tests | Effort: **S**
-- [ ] **MIN-40** [Test] Remove `waitForElement` alias re-export from test helpers | Effort: **S**
-- [ ] **MIN-41** [Test] Remove duplicate test in `use-arrivals.test.ts` | Effort: **S**
-- [ ] **MIN-42** [Test] Replace `vi.waitFor` with `@testing-library/react` `waitFor` in alert tests | Effort: **S**
-- [ ] **MIN-43** [Test] Add test for `next.config.ts` cache header values | Effort: **S**
-- [ ] **MIN-44** [Test] Add server tests to CI pipeline | Effort: **S**
-- [ ] **MIN-45** [Test] Specify explicit coverage provider in `test:coverage` script | Effort: **S**
+- [x] **MIN-38** [Test] Add global `afterEach` with `vi.clearAllMocks()` in `src/test/setup.ts` | Effort: **S**
+- [x] **MIN-39** [Test] Auto-reset factory ID counter between tests | Effort: **S**
+- [x] **MIN-40** [Test] Remove `waitForElement` alias re-export from test helpers | Effort: **S**
+- [x] **MIN-41** [Test] Remove duplicate test in `use-arrivals.test.ts` | Effort: **S**
+- [x] **MIN-42** [Test] Replace `vi.waitFor` with `@testing-library/react` `waitFor` in alert tests | Effort: **S**
+- [x] **MIN-43** [Test] Add test for `next.config.ts` cache header values | Effort: **S**
+- [x] **MIN-44** [Test] Add server tests to CI pipeline | Effort: **S**
+- [x] **MIN-45** [Test] Specify explicit coverage provider in `test:coverage` script | Effort: **S**
 
 ---
 

@@ -1,8 +1,15 @@
 import { promises as fs } from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
-import { checkRateLimit, getClientIdentifier, createRateLimitHeaders } from "@/lib/rate-limit";
+import {
+  checkRateLimit,
+  getClientId,
+  createRateLimitKey,
+  RATE_LIMITS,
+} from "@/lib/api/rate-limit";
+import { rateLimited } from "@/lib/api/errors";
 import { getCache, setCache } from "@/lib/redis";
+import { CONDUCTOR_CHAT_MODEL } from "../constants";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 // OpenAI TTS voices: alloy, echo, fable, onyx, nova, shimmer
@@ -232,13 +239,11 @@ function getRelevantFact(
 
 export async function POST(request: NextRequest) {
   // Rate limit check
-  const clientId = getClientIdentifier(request);
-  const { allowed, remaining, resetIn } = checkRateLimit(clientId, '/api/v1/conductor/announce');
-  if (!allowed) {
-    return NextResponse.json(
-      { error: 'Rate limit exceeded' },
-      { status: 429, headers: createRateLimitHeaders(false, remaining, resetIn, '/api/v1/conductor/announce') }
-    );
+  const clientId = getClientId(request);
+  const key = createRateLimitKey(clientId, '/api/v1/conductor/announce');
+  const limit = checkRateLimit(key, RATE_LIMITS.conductor);
+  if (!limit.success) {
+    return rateLimited(limit.resetIn);
   }
 
   try {
@@ -453,7 +458,7 @@ Rules:
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-4.1-mini",
+      model: CONDUCTOR_CHAT_MODEL,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 80,
       temperature: 0.8,

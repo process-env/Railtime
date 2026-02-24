@@ -190,7 +190,11 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
         map.current.setPaintProperty(layer.id, 'text-halo-width', 1.5);
       });
 
-      // Signal map ready — markers can render immediately
+      // Intentional: setMapLoaded(true) is called BEFORE the subway-lines GeoJSON
+      // fetch below. This allows train markers and station markers to begin rendering
+      // immediately on the interactive map, while the cosmetic subway line overlay
+      // loads asynchronously. The subway lines are purely visual decoration — all
+      // functional layers (trains, stations, trip routes) work without them.
       setMapLoaded(true);
 
       // Add subway lines GeoJSON (cosmetic, non-blocking)

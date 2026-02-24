@@ -1,6 +1,90 @@
 # Handoff Notes
 
-_Last Updated: 2026-02-23_
+_Last Updated: 2026-02-24_
+
+---
+
+## Session: Tier 3 Minor Fixes (2026-02-24)
+
+**Goal:** Complete all 42 Tier 3 Minor items from the codebase health review in a single wave.
+
+### Results
+
+**All 42 Tier 3 items completed** in one wave (6 parallel agents, 3 resumed after rate limit).
+
+### Key Changes by Domain
+
+#### API & Data Pipeline (7 items: MIN-09 through MIN-15)
+- Fixed operator precedence in `fetch-feed.ts` stopName expression
+- Added validation and sanitization to trip cache key inputs
+- Minimized health endpoint response (removed service name from unauthenticated output)
+- Standardized OpenAI model ID across conductor routes
+- Added service day invalidation to `scheduleDataCache`
+- Switched to `URLSearchParams` in `mtaApi.getAlerts` URL construction
+- Consolidated two `checkRateLimit` modules into one canonical module
+
+#### Map Components & Hooks (8 items: MIN-01, MIN-02, MIN-22 through MIN-27)
+- Extracted shared `buildPopupHTML` utility from duplicate popup functions
+- Consolidated duplicate `haversineDistance` implementations into single import
+- Grouped module-level mutable globals into single typed `TrackUtils` interface in track-index
+- Added latitude-dependence note to `getGridKey` comment
+- Added `hasFlewToRef` guard to `MyLocationButton.tsx` flyTo effect
+- Moved pulse animation keyframe from injected `<style>` to `globals.css`
+- Added `@returns [lat, lon]` coordinate-order JSDoc to `arclengthToLatLon`
+- Documented intentional `setMapLoaded(true)` before GeoJSON fetch in SubwayMap
+
+#### Trip Planner Algorithm (3 items: MIN-30 through MIN-32)
+- Replaced deprecated `substr` with `substring` in `generateTripId`
+- Replaced O(E) edge-count log with O(1) running counter
+- Added TODO comment to unpopulated `TripSegment.direction` field
+
+#### Frontend UI & State (11 items: MIN-07, MIN-08, MIN-16 through MIN-21, MIN-46 through MIN-48)
+- Removed redundant `?? []` in `AlertList`
+- Clarified overlapping `!data` branches in `TransitAnalysisCard`
+- Replaced `<span role="button">` with `<button>` in `StationCard`
+- Added `aria-hidden="true"` to escalator SVG in `EquipmentStatusCard`
+- Extracted `GradeCell` sub-component from IIFE in `RoutePerformanceTable`
+- Added `(estimated)` label to `DelayDistributionChart` approximation
+- Added ThemeApplier component to wire theme store to DOM class
+- Changed PDF.js worker from unpkg CDN to vendored/cdnjs source
+- Added `'use client'` directive to `use-mobile.ts`
+- Hoisted `formatTimeRange` outside `AlertCard` component body
+- Extracted shared `CHART_TOOLTIP_STYLE` constant for Recharts tooltips
+
+#### WebSocket Server (5 items: MIN-33 through MIN-37)
+- Consolidated `CACHE_KEYS` from `cache.ts` and `cache-keys.ts` into one registry (deleted `cache-keys.ts`)
+- Confirmed `pino-pretty` transport already guarded by `NODE_ENV` check
+- Added production-deps stage to Dockerfile to exclude devDependencies
+- Switched to streaming parse for `stop_times.txt` to reduce peak memory
+- Fixed `humanEta` to show `'just left'` instead of `'0m ago'`
+
+#### Test Infrastructure (8 items: MIN-38 through MIN-45)
+- Added global `afterEach` with `vi.clearAllMocks()` in `src/test/setup.ts`
+- Added auto-reset of factory ID counter between tests
+- Removed `waitForElement` alias re-export from test helpers
+- Removed duplicate test in `use-arrivals.test.ts`
+- Confirmed `vi.waitFor` usage already clean (no replacement needed)
+- Added test for `next.config.ts` cache header values
+- Added server tests to CI pipeline
+- Specified explicit v8 coverage provider in vitest config
+
+### Quality Gates -- ALL PASSED
+- TypeScript: zero errors (app + server)
+- Tests: 684 passing, 3 skipped
+- No API contract changes
+
+### What's Next
+- Commit, push, deploy (Vercel + EC2)
+- Begin Tier 4 strategic items or tackle deferred L/XL items from Tier 1/2
+- Task list: `dev/review/codebase-health/codebase-health-tasks.md`
+
+### Still Deferred (L/XL effort from earlier tiers)
+- **CRIT-18** [Test] Replace CSV-dump tests with deterministic unit tests -- L
+- **CRIT-19** [Test] Add Socket.IO path coverage for dual-mode hooks -- L
+- **IMP-17** [Map] Separate animation state from API data in `TrainMotionState` -- L
+- **IMP-19** [Trip/Server] Replace Neo4j `shortestPath` with weighted shortest-path -- L
+- **IMP-50** [Test] Write smoke tests for analytics components -- L
+- **IMP-56** [Test] Create server test infrastructure and add `feed-loop.ts` tests -- XL
 
 ---
 

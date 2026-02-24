@@ -260,6 +260,21 @@
   background-color: #4ade80 !important;
 }
 
+/* User location marker pulse animation.
+   Previously injected at runtime via document.createElement('style') in
+   useUserLocationMarker.ts. Moved here so all keyframes live in the stylesheet
+   rather than being dynamically appended to <head>. */
+@keyframes userLocationPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
 /* Sidebar scrollbar - thin and subtle, visible on hover */
 [data-sidebar="content"] {
   scrollbar-width: thin;

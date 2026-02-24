@@ -63,6 +63,15 @@ export async function GET(request: NextRequest) {
       return badRequest('Origin and destination cannot be the same');
     }
 
+    // Validate station ID format to prevent cache key injection
+    const STATION_ID_PATTERN = /^[A-Za-z0-9_-]{1,20}$/;
+    if (!STATION_ID_PATTERN.test(origin)) {
+      return badRequest('Invalid origin station ID format');
+    }
+    if (!STATION_ID_PATTERN.test(destination)) {
+      return badRequest('Invalid destination station ID format');
+    }
+
     // Parse optional params
     const alternativesParam = searchParams.get('alternatives');
     const alternativesRaw = alternativesParam !== null ? parseInt(alternativesParam, 10) : NaN;

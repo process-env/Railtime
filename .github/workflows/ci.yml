@@ -38,6 +38,7 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
+      - run: npm test
       - run: npm run build
 
   # Job 3: Docker build test (verify Dockerfile works)

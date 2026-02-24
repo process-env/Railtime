@@ -34,10 +34,12 @@ export const mtaApi = {
   },
 
   getAlerts: async (routeIds?: string[]): Promise<{ alerts: ServiceAlert[] }> => {
-    let url = '/api/v1/alerts';
+    const params = new URLSearchParams();
     if (routeIds?.length) {
-      url += `?route=${routeIds.join(',')}`;
+      params.set('route', routeIds.join(','));
     }
+    const query = params.toString();
+    const url = query ? `/api/v1/alerts?${query}` : '/api/v1/alerts';
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch alerts');
     return res.json();

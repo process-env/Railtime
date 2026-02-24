@@ -75,7 +75,13 @@ export function projectToTrack(
 }
 
 /**
- * Convert an arclength value to lat/lon coordinates on the track
+ * Convert an arclength value to lat/lon coordinates on the track.
+ *
+ * @param s - Arclength in meters from track start
+ * @param track - The route track geometry to interpolate along
+ * @returns [lat, lon] tuple in geographic coordinates (latitude first, longitude second).
+ *   Note: this is the opposite order from GeoJSON/MapLibre which use [lon, lat].
+ *   Callers passing to MapLibre APIs must swap: `const [lat, lon] = arclengthToLatLon(...)`.
  */
 export function arclengthToLatLon(
   s: number,

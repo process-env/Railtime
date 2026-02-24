@@ -52,29 +52,8 @@ function createUserLocationElement(): HTMLDivElement {
   return el;
 }
 
-/**
- * Injects CSS animation for the pulsing effect
- */
-function injectPulseAnimation(): void {
-  const styleId = 'user-location-pulse-style';
-  if (document.getElementById(styleId)) return;
-
-  const style = document.createElement('style');
-  style.id = styleId;
-  style.textContent = `
-    @keyframes userLocationPulse {
-      0% {
-        transform: translate(-50%, -50%) scale(0.5);
-        opacity: 1;
-      }
-      100% {
-        transform: translate(-50%, -50%) scale(2);
-        opacity: 0;
-      }
-    }
-  `;
-  document.head.appendChild(style);
-}
+// The @keyframes userLocationPulse animation is defined in src/app/globals.css
+// rather than being injected at runtime via document.createElement('style').
 
 interface UseUserLocationMarkerOptions {
   /**
@@ -95,11 +74,6 @@ export function useUserLocationMarker(
   const position = useUserPosition();
   const status = useGeolocationStatus();
   const markerRef = useRef<maplibregl.Marker | null>(null);
-
-  // Inject CSS animation on mount
-  useEffect(() => {
-    injectPulseAnimation();
-  }, []);
 
   // Create/update/remove marker based on position
   useEffect(() => {

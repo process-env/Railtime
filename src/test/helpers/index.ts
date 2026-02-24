@@ -184,7 +184,6 @@ export async function getResponseJson<T>(response: Response): Promise<T> {
 export {
   screen,
   fireEvent,
-  waitFor as waitForElement,
   within,
   act,
 } from '@testing-library/react';

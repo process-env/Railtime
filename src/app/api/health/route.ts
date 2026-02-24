@@ -18,7 +18,6 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    service: 'mta-dashboard-api',
     time: new Date().toISOString(),
   });
 }

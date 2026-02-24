@@ -8,6 +8,12 @@
  */
 
 import type { Feature, MultiLineString } from 'geojson';
+import { haversineDistance } from '@/lib/geo/nearest-stations';
+
+// Re-export haversineDistance from the canonical geo location so existing
+// consumers (arclength.ts, useTripRouteLayer.ts) that import from track-index
+// continue to work without import changes.
+export { haversineDistance } from '@/lib/geo/nearest-stations';
 
 export interface RouteTrack {
   routeId: string;
@@ -22,27 +28,23 @@ export interface TrackIndex {
   stops: Map<string, { lat: number; lon: number; name: string }>;
 }
 
-// Singleton cache
-let trackIndexCache: TrackIndex | null = null;
-let loadingPromise: Promise<TrackIndex> | null = null;
-
 /**
- * Haversine distance between two points in meters
+ * Module-level mutable state for track index singleton.
+ * Grouped into a single object to make it explicit that these are the only
+ * mutable globals in this module and they are tightly coupled (loadingPromise
+ * resolves to populate cache).
  */
-export function haversineDistance(
-  lat1: number, lon1: number,
-  lat2: number, lon2: number
-): number {
-  const R = 6371000; // Earth radius in meters
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+interface TrackIndexState {
+  /** Cached track index after successful load */
+  cache: TrackIndex | null;
+  /** In-flight loading promise to deduplicate concurrent requests */
+  loadingPromise: Promise<TrackIndex> | null;
 }
+
+const trackState: TrackIndexState = {
+  cache: null,
+  loadingPromise: null,
+};
 
 /**
  * Compute cumulative distances for a coordinate array
@@ -331,18 +333,18 @@ function arclengthToCoord(
  * Get the track index (loads lazily on first call)
  */
 export async function getTrackIndex(): Promise<TrackIndex> {
-  if (trackIndexCache) {
-    return trackIndexCache;
+  if (trackState.cache) {
+    return trackState.cache;
   }
 
-  if (!loadingPromise) {
-    loadingPromise = buildTrackIndex().then(index => {
-      trackIndexCache = index;
+  if (!trackState.loadingPromise) {
+    trackState.loadingPromise = buildTrackIndex().then(index => {
+      trackState.cache = index;
       return index;
     });
   }
 
-  return loadingPromise;
+  return trackState.loadingPromise;
 }
 
 /**

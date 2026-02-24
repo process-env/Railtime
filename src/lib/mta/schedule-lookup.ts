@@ -10,6 +10,9 @@ const CACHE_FILE = path.join(DATA_DIR, 'schedule-cache.json');
 // Promise-based loading to prevent duplicate loads
 let loadingPromise: Promise<void> | null = null;
 
+// Track the MTA service date when caches were loaded (for day-change invalidation)
+let cachedServiceDate: string | null = null;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -86,6 +89,25 @@ function extractDirectionFromShape(shape: string): string | null {
  */
 function normalizeStopId(stopId: string): string {
   return stopId.replace(/[NS]$/, '');
+}
+
+/**
+ * Get the current MTA service date string (YYYY-MM-DD).
+ * MTA service days change at approximately 3 AM Eastern, so we
+ * subtract 3 hours before taking the date to align with their schedule.
+ */
+function getCurrentServiceDate(): string {
+  const now = new Date();
+  // Format in Eastern time then parse to get local-equivalent components
+  const eastern = new Date(
+    now.toLocaleString('en-US', { timeZone: 'America/New_York' })
+  );
+  // Subtract 3 hours so that 12:00 AM - 2:59 AM still counts as the previous service day
+  eastern.setHours(eastern.getHours() - 3);
+  const year = eastern.getFullYear();
+  const month = String(eastern.getMonth() + 1).padStart(2, '0');
+  const day = String(eastern.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // ============================================================================
@@ -261,6 +283,15 @@ async function loadFromCSV(): Promise<void> {
  * Prevents duplicate concurrent loads.
  */
 async function loadScheduleData(): Promise<void> {
+  // Invalidate caches when the MTA service day changes (rolls over ~3 AM ET)
+  const currentServiceDate = getCurrentServiceDate();
+  if (cachedServiceDate && cachedServiceDate !== currentServiceDate) {
+    console.log(
+      `Service day changed (${cachedServiceDate} -> ${currentServiceDate}), clearing schedule caches`
+    );
+    clearScheduleCache();
+  }
+
   // Already loaded
   if (scheduleCache && tripRouteCache && shapeScheduleIndex && directionScheduleIndex) return;
 
@@ -282,6 +313,8 @@ async function loadScheduleData(): Promise<void> {
     } else {
       await loadFromCSV();
     }
+
+    cachedServiceDate = currentServiceDate;
   })();
 
   await loadingPromise;
@@ -479,4 +512,5 @@ export function clearScheduleCache(): void {
   directionScheduleIndex = null;
   tripRouteCache = null;
   loadingPromise = null;
+  cachedServiceDate = null;
 }

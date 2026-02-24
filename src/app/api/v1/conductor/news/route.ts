@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkRateLimit, getClientIdentifier, createRateLimitHeaders } from "@/lib/rate-limit";
+import {
+  checkRateLimit,
+  getClientId,
+  createRateLimitKey,
+  RATE_LIMITS,
+} from "@/lib/api/rate-limit";
+import { rateLimited } from "@/lib/api/errors";
+import { CONDUCTOR_CHAT_MODEL } from "../constants";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -93,7 +100,7 @@ Rules:
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: CONDUCTOR_CHAT_MODEL,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 200,
       temperature: 0.7,
@@ -139,13 +146,11 @@ async function synthesizeNews(text: string): Promise<string> {
 
 export async function GET(request: NextRequest) {
   // Rate limit check
-  const clientId = getClientIdentifier(request);
-  const { allowed, remaining, resetIn } = checkRateLimit(clientId, '/api/v1/conductor/news');
-  if (!allowed) {
-    return NextResponse.json(
-      { error: 'Rate limit exceeded' },
-      { status: 429, headers: createRateLimitHeaders(false, remaining, resetIn, '/api/v1/conductor/news') }
-    );
+  const clientId = getClientId(request);
+  const key = createRateLimitKey(clientId, '/api/v1/conductor/news');
+  const limit = checkRateLimit(key, RATE_LIMITS.conductor);
+  if (!limit.success) {
+    return rateLimited(limit.resetIn);
   }
 
   try {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Locate, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +24,11 @@ export function MyLocationButton({ mapRef, mapLoaded }: MyLocationButtonProps) {
   const position = useUserPosition();
   const { watchLocation, error, clearError } = useGeolocationStore();
 
+  // Guard: only auto-flyTo on the first location acquisition after mount.
+  // Without this, every re-render that sees (position + active) would re-trigger
+  // the flyTo animation. The user can still manually fly via the button click.
+  const hasFlewToRef = useRef(false);
+
   // Handle button click
   const handleClick = useCallback(() => {
     // Clear any previous error
@@ -43,10 +48,11 @@ export function MyLocationButton({ mapRef, mapLoaded }: MyLocationButtonProps) {
     watchLocation();
   }, [position, status, mapRef, watchLocation, clearError]);
 
-  // Fly to position when it first becomes available
+  // Fly to position when it first becomes available (one-shot after mount)
   useEffect(() => {
     const map = mapRef.current;
-    if (position && status === 'active' && map && mapLoaded) {
+    if (position && status === 'active' && map && mapLoaded && !hasFlewToRef.current) {
+      hasFlewToRef.current = true;
       map.flyTo({
         center: [position.lon, position.lat],
         zoom: 15,

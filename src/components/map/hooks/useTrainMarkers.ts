@@ -11,7 +11,8 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { getRouteColor, MAP_CONSTANTS } from '@/lib/constants';
-import { getDirectionFromStopId, formatEta, getDirectionLabel, getTextColorForBackground } from '@/lib/mta/format';
+import { getDirectionFromStopId, getTextColorForBackground } from '@/lib/mta/format';
+import { buildTrainPopupHTML } from '@/components/map/utils/popup';
 import { useUIStore } from '@/stores';
 import { calculateTrainOffsets, type TrainWithPosition } from '@/lib/map/cluster-trains';
 import type { TrainPosition, ServiceAlert } from '@/types/mta';
@@ -478,7 +479,7 @@ export function useTrainMarkers(
           if (generation !== processingGenRef.current) return;
 
           // Pass current arclength and next station arclength for distance-based phase
-          existingMotion.popup.setHTML(createPopupHTML(train, color, existingMotion.filter.s, existingMotion.nextS));
+          existingMotion.popup.setHTML(buildTrainPopupHTML(train, color, undefined, existingMotion.filter.s, existingMotion.nextS));
 
           // Apply clustering offset for overlapping trains
           const offset = trainOffsets.get(train.tripId);
@@ -565,7 +566,7 @@ export function useTrainMarkers(
           existingAnim.eta = train.eta;
           existingAnim.direction = direction;
 
-          existingAnim.popup.setHTML(createPopupHTML(train, color));
+          existingAnim.popup.setHTML(buildTrainPopupHTML(train, color));
 
           // Apply clustering offset for overlapping trains
           const offset = trainOffsets.get(train.tripId);
@@ -714,7 +715,7 @@ async function createMotionState(
     closeOnClick: false,
     offset: MAP_CONSTANTS.POPUP_OFFSET_TRAIN,
     className: 'train-popup',
-  }).setHTML(createPopupHTML(train, color, initialS, nextS));
+  }).setHTML(buildTrainPopupHTML(train, color, undefined, initialS, nextS));
 
   // Create marker
   const marker = new maplibregl.Marker({ element: el })
@@ -970,7 +971,7 @@ function createLegacyMarker(
     closeOnClick: false,
     offset: MAP_CONSTANTS.POPUP_OFFSET_TRAIN,
     className: 'train-popup',
-  }).setHTML(createPopupHTML(train, color));
+  }).setHTML(buildTrainPopupHTML(train, color));
 
   const marker = new maplibregl.Marker({ element: el })
     .setLngLat([train.lon, train.lat])
@@ -1047,95 +1048,6 @@ function getPhaseFromDistance(currentS: number, nextS: number): 'BOARDING' | 'AR
   return 'APPROACHING';
 }
 
-/**
- * Creates HTML content for train popup tooltip.
- *
- * Displays train route, destination, next station, and current phase.
- * Phase is determined using distance-based detection when arclength data
- * is available, with ETA-based fallback for legacy trains.
- *
- * **Phase detection priority:**
- * 1. Distance-based (preferred): Uses currentS/nextS arclength positions
- * 2. ETA-based (fallback): Parses train.eta for legacy trains
- *
- * **Phase display mapping:**
- * - BOARDING (≤20m) → "At Station" (amber)
- * - ARRIVING (≤200m) → "Arriving" (green)
- * - APPROACHING (>200m) → "En Route · ETA" (light green)
- *
- * @param train - Train position data from MTA API
- * @param color - Route color for visual badge
- * @param currentS - Current arclength position (meters from route start)
- * @param nextS - Next station arclength position (meters from route start)
- * @returns HTML string for MapLibre popup
- */
-function createPopupHTML(train: TrainPosition, color: string, currentS?: number, nextS?: number): string {
-  const direction = getDirectionFromStopId(train.nextStopId);
-  const destinationLabel = train.headsign || getDirectionLabel(direction);
-
-  // Calculate phase from DISTANCE if available (preferred), otherwise fallback to ETA
-  let derivedPhase: string | undefined;
-
-  if (currentS !== undefined && nextS !== undefined) {
-    // Distance-based phase detection (reliable)
-    const distanceToStation = Math.abs(nextS - currentS);
-    if (distanceToStation <= STATION_SNAP_DISTANCE) {
-      derivedPhase = 'BOARDING';
-    } else if (distanceToStation <= ARRIVING_DISTANCE) {
-      derivedPhase = 'ARRIVING';
-    } else {
-      derivedPhase = 'APPROACHING';
-    }
-  } else if (train.eta) {
-    // Fallback to ETA for legacy trains without arclength data
-    try {
-      const etaDate = new Date(train.eta);
-      if (!isNaN(etaDate.getTime())) {
-        const diffMs = etaDate.getTime() - Date.now();
-        const diffMins = Math.round(diffMs / 60000);
-        if (diffMins <= 0) {
-          derivedPhase = 'BOARDING';
-        } else if (diffMins === 1) {
-          derivedPhase = 'ARRIVING';
-        } else {
-          derivedPhase = 'APPROACHING';
-        }
-      }
-    } catch {
-      derivedPhase = 'APPROACHING';
-    }
-  }
-
-  // Format phase for display
-  const phaseColor = derivedPhase === 'BOARDING' ? '#f59e0b' :
-                     derivedPhase === 'ARRIVING' ? '#22c55e' : '#4ade80';
-
-  return `
-    <div style="padding: 8px 12px; background: #1a1a1a; border-radius: 6px; min-width: 160px;">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-        <div style="
-          width: 24px;
-          height: 24px;
-          background-color: ${color};
-          border-radius: 4px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 12px;
-          font-weight: bold;
-          color: ${getTextColorForBackground(color)};
-        ">${train.routeId}</div>
-        <span style="color: #888; font-size: 12px;">${destinationLabel}</span>
-      </div>
-      <div style="color: white; font-size: 13px; margin-bottom: 4px;">
-        <strong>Next:</strong> ${train.nextStopName || 'Unknown'}
-      </div>
-      <div style="color: ${phaseColor}; font-size: 13px; font-weight: 600;">
-        ${derivedPhase === 'BOARDING' ? 'At Station' :
-          derivedPhase === 'ARRIVING' ? 'Arriving' :
-          'En Route · ' + formatEta(train.eta)}
-      </div>
-    </div>
-  `;
-}
+// Train popup HTML is now generated by the shared buildTrainPopupHTML utility
+// in src/components/map/utils/popup.ts to avoid duplication with useMapAnimation.
 

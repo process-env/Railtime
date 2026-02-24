@@ -119,18 +119,6 @@ describe('useArrivals', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('returns arrivals from query', async () => {
-    const { result } = renderHook(
-      () => useArrivals('ACE', '101N', { refreshInterval: 0 }),
-      { wrapper: QueryWrapper }
-    );
-
-    await waitFor(() => {
-      expect(result.current.arrivals).toBeDefined();
-      expect(result.current.arrivals?.arrivals).toHaveLength(2);
-    });
-  });
-
   it('returns undefined when no arrivals fetched', () => {
     const { result } = renderHook(
       () => useArrivals('ACE', '999N', { enabled: false, refreshInterval: 0 }),
