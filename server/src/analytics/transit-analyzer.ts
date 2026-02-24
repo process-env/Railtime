@@ -9,6 +9,7 @@ import {
   BedrockRuntimeClient,
   InvokeModelCommand,
 } from '@aws-sdk/client-bedrock-runtime';
+import Anthropic from '@anthropic-ai/sdk';
 import { getCache, setCache } from '../lib/redis.js';
 import { CACHE_KEYS } from '../lib/cache.js';
 import { createLogger } from '../lib/logger.js';
@@ -18,7 +19,9 @@ import type { MetricRecord, EventRecord, RollupRecord } from './dynamodb-writer.
 
 const log = createLogger('analyzer');
 
-const MODEL_ID = 'anthropic.claude-sonnet-4-20250514-v1:0';
+const BEDROCK_MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
+const DIRECT_MODEL_ID = 'claude-sonnet-4-20250514';
+const CACHE_MODEL_NAME = 'claude-sonnet-4';
 const CACHE_TTL_SECONDS = 600; // 10 minutes (2x flush interval for safety)
 
 let bedrockClient: BedrockRuntimeClient | null = null;
@@ -178,17 +181,15 @@ Do NOT restate raw numbers, list best/worst routes, or give generic rider advice
 }
 
 /**
- * Generate transit analysis and cache it.
- * Called by metrics-collector after each successful flush.
- * Runs async — errors are logged but don't break the flush cycle.
+ * Try Bedrock first. If access is revoked, fall back to Anthropic direct API.
+ * Returns the analysis text or null if both fail.
  */
-export async function generateAnalysis(input: AnalysisInput): Promise<void> {
+async function callModel(prompt: string): Promise<{ text: string; source: 'bedrock' | 'direct' } | null> {
+  // --- Attempt 1: AWS Bedrock ---
   try {
-    const prompt = buildPrompt(input);
     const client = getBedrockClient();
-
     const command = new InvokeModelCommand({
-      modelId: MODEL_ID,
+      modelId: BEDROCK_MODEL_ID,
       contentType: 'application/json',
       accept: 'application/json',
       body: JSON.stringify({
@@ -205,32 +206,90 @@ export async function generateAnalysis(input: AnalysisInput): Promise<void> {
     const responseBody = JSON.parse(
       new TextDecoder().decode(response.body),
     );
-    const analysisText: string = responseBody.content?.[0]?.text ?? '';
-
-    if (!analysisText) {
+    const text: string = responseBody.content?.[0]?.text ?? '';
+    if (!text) {
       log.warn('empty response from Bedrock');
-      return;
+      return null;
+    }
+    return { text, source: 'bedrock' };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const isAccessError = message.includes('not allowed') || message.includes('Access');
+
+    if (!isAccessError) {
+      // Non-access error — don't retry with direct API
+      log.error({ err: message }, 'Bedrock call failed (non-access error)');
+      return null;
     }
 
-    const result: AnalysisResult = {
-      analysis: analysisText,
+    log.warn({ err: message }, 'Bedrock access denied, falling back to Anthropic direct API');
+  }
+
+  // --- Attempt 2: Anthropic Direct API ---
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    log.error('ANTHROPIC_API_KEY not set — cannot fall back to direct API');
+    return null;
+  }
+
+  try {
+    const anthropic = new Anthropic({ apiKey });
+    const response = await anthropic.messages.create({
+      model: DIRECT_MODEL_ID,
+      max_tokens: 1024,
+      temperature: 0.3,
+      messages: [
+        { role: 'user', content: prompt },
+      ],
+    });
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    if (!text) {
+      log.warn('empty response from Anthropic direct API');
+      return null;
+    }
+    return { text, source: 'direct' };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.error({ err: message }, 'Anthropic direct API call failed');
+    return null;
+  }
+}
+
+/**
+ * Generate transit analysis and cache it.
+ * Called by metrics-collector after each successful flush.
+ * Runs async — errors are logged but don't break the flush cycle.
+ */
+export async function generateAnalysis(input: AnalysisInput): Promise<void> {
+  try {
+    const prompt = buildPrompt(input);
+
+    const result = await callModel(prompt);
+    if (!result) return;
+
+    const analysisResult: AnalysisResult = {
+      analysis: result.text,
       generatedAt: new Date().toISOString(),
-      model: MODEL_ID,
+      model: CACHE_MODEL_NAME,
     };
 
-    await setCache(CACHE_KEYS.transitAnalysis, result, CACHE_TTL_SECONDS);
+    await setCache(CACHE_KEYS.transitAnalysis, analysisResult, CACHE_TTL_SECONDS);
 
     // Persist analysis to DynamoDB for long-term archival (flows to S3 via DynamoDB Streams)
     writeEvents([{
       pk: 'ANALYSIS#SYSTEM',
       timestamp: Date.now(),
-      description: JSON.stringify(result),
+      description: JSON.stringify(analysisResult),
       expireAt: Math.floor(Date.now() / 1000) + 365 * 86400,
     }]).catch(err =>
       log.error({ err: err instanceof Error ? err.message : err }, 'failed to persist analysis'),
     );
 
-    log.info({ model: MODEL_ID, charCount: analysisText.length }, 'analysis generated and cached');
+    log.info(
+      { model: CACHE_MODEL_NAME, source: result.source, charCount: result.text.length },
+      'analysis generated and cached',
+    );
   } catch (err) {
     log.error({ err: err instanceof Error ? err.message : err }, 'failed to generate analysis');
   }
