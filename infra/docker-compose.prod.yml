@@ -77,6 +77,7 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
       - NODE_ENV=production
       - AWS_REGION=${AWS_REGION:-us-east-1}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       # AWS credentials provided via EC2 instance profile (railtime-ec2-dynamodb role)
       # Do NOT set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY — blocks SDK metadata fallback
       - DYNAMODB_TABLE_METRICS=${DYNAMODB_TABLE_METRICS:-railtime-metrics}
