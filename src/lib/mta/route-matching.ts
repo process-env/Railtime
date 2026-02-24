@@ -28,7 +28,11 @@ const ROUTE_RULES: Record<string, { prefixes?: string[]; ranges?: [number, numbe
   SI: { prefixes: ['S'] },
 };
 
-// Tokenized route cache
+/**
+ * In-process memoization cache for string tokenization results.
+ * Safe to keep in-process: this is a pure-function memo — the same input always
+ * produces the same output. No cross-instance consistency concern.
+ */
 const tokenCache = new Map<string, string[]>();
 
 function tokenize(str: string): string[] {

@@ -65,8 +65,7 @@ describe('useMapAnimation', () => {
       useMapAnimation(false, { refreshInterval: 15000 })
     );
 
-    expect(result.current).toHaveProperty('trainAnimsRef');
-    expect(result.current).toHaveProperty('trainMotionRef');
+    expect(result.current).toHaveProperty('trainMarkersRef');
     expect(result.current).toHaveProperty('lerp');
     expect(result.current).toHaveProperty('scheduleAnimation');
   });
@@ -85,22 +84,13 @@ describe('useMapAnimation', () => {
     expect(lerp(10, 20, 0.3)).toBeCloseTo(13);
   });
 
-  it('trainAnimsRef starts as empty Map', () => {
+  it('trainMarkersRef starts as empty Map', () => {
     const { result } = renderHook(() =>
       useMapAnimation(false, { refreshInterval: 15000 })
     );
 
-    expect(result.current.trainAnimsRef.current).toBeInstanceOf(Map);
-    expect(result.current.trainAnimsRef.current.size).toBe(0);
-  });
-
-  it('trainMotionRef starts as empty Map', () => {
-    const { result } = renderHook(() =>
-      useMapAnimation(true, { refreshInterval: 15000, useAlphaBetaGamma: true })
-    );
-
-    expect(result.current.trainMotionRef.current).toBeInstanceOf(Map);
-    expect(result.current.trainMotionRef.current.size).toBe(0);
+    expect(result.current.trainMarkersRef.current).toBeInstanceOf(Map);
+    expect(result.current.trainMarkersRef.current.size).toBe(0);
   });
 
   it('does not schedule animation when map not loaded', () => {
@@ -146,7 +136,8 @@ describe('useMapAnimation', () => {
         addTo: vi.fn(),
       };
 
-      result.current.trainAnimsRef.current.set('test-trip', {
+      result.current.trainMarkersRef.current.set('test-trip', {
+        type: 'legacy',
         marker: mockMarker as unknown as maplibregl.Marker,
         popup: mockPopup as unknown as maplibregl.Popup,
         fromLng: -74.0,
@@ -189,7 +180,8 @@ describe('useMapAnimation', () => {
     const startTime = performance.now();
 
     act(() => {
-      result.current.trainAnimsRef.current.set('test-trip', {
+      result.current.trainMarkersRef.current.set('test-trip', {
+        type: 'legacy',
         marker: mockMarker as unknown as maplibregl.Marker,
         popup: mockPopup as unknown as maplibregl.Popup,
         fromLng: -74.0,
@@ -241,7 +233,8 @@ describe('useMapAnimation', () => {
     };
 
     act(() => {
-      result.current.trainAnimsRef.current.set('test-trip', {
+      result.current.trainMarkersRef.current.set('test-trip', {
+        type: 'legacy',
         marker: mockMarker as unknown as maplibregl.Marker,
         popup: mockPopup as unknown as maplibregl.Popup,
         fromLng: -74.0,
@@ -284,7 +277,8 @@ describe('useMapAnimation', () => {
         addTo: vi.fn(),
       };
 
-      result.current.trainAnimsRef.current.set('test-trip', {
+      result.current.trainMarkersRef.current.set('test-trip', {
+        type: 'legacy',
         marker: mockMarker as unknown as maplibregl.Marker,
         popup: mockPopup as unknown as maplibregl.Popup,
         fromLng: -74.0,
@@ -326,7 +320,8 @@ describe('useMapAnimation', () => {
         addTo: vi.fn(),
       };
 
-      result.current.trainAnimsRef.current.set('test-trip', {
+      result.current.trainMarkersRef.current.set('test-trip', {
+        type: 'legacy',
         marker: mockMarker as unknown as maplibregl.Marker,
         popup: mockPopup as unknown as maplibregl.Popup,
         fromLng: -74.0,
@@ -376,7 +371,7 @@ describe('useMapAnimation - motion-based animation', () => {
       useMapAnimation(true, { refreshInterval: 15000, useAlphaBetaGamma: true })
     );
 
-    expect(result.current.trainMotionRef.current).toBeInstanceOf(Map);
+    expect(result.current.trainMarkersRef.current).toBeInstanceOf(Map);
   });
 
   it('schedules animation for motion-based trains', async () => {
@@ -402,7 +397,8 @@ describe('useMapAnimation - motion-based animation', () => {
         addTo: vi.fn(),
       };
 
-      result.current.trainMotionRef.current.set('test-trip', {
+      result.current.trainMarkersRef.current.set('test-trip', {
+        type: 'motion',
         tripId: 'test-trip',
         routeId: '1',
         marker: mockMarker as unknown as maplibregl.Marker,
@@ -524,6 +520,7 @@ function simulateFrame({
   targetS = Math.max(minS, Math.min(maxS, targetS));
 
   // Smooth blend
+  // eslint-disable-next-line testing-library/render-result-naming-convention -- not a render result; this is a helper function variable
   const currentS = lastRenderedS;
   const dtNorm = Math.max(0.5, frameDtMs / 16.67);
   const blend = 1 - Math.pow(1 - BLEND_SPEED, dtNorm);

@@ -17,7 +17,12 @@ const OPENAI_TTS_VOICE = process.env.OPENAI_TTS_VOICE || "fable";
 
 const CACHE_TTL_SECONDS = 300; // 5 minutes
 
-// Route data cache
+/**
+ * In-process caches for static reference files (routes.txt, stations-enriched.json,
+ * subway-facts.json). Safe to keep in-process: these are immutable data files
+ * read from disk. They never change at runtime and have no cross-instance
+ * consistency concern — every instance loads the same files.
+ */
 let routeDataCache: Map<
   string,
   { longName: string; description: string }

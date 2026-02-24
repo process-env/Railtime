@@ -15,7 +15,12 @@ interface RateLimitEntry {
   resetTime: number;
 }
 
-// In-memory store (resets on server restart)
+/**
+ * In-process rate limit store. Intentionally kept in-process rather than Redis:
+ * per-instance rate limiting is acceptable for this app's scale, and the store
+ * resets naturally on server restart. Cross-instance rate limiting (via Redis)
+ * would be a separate enhancement if needed.
+ */
 const store = new Map<string, RateLimitEntry>();
 
 // Cleanup old entries every 5 minutes

@@ -109,25 +109,40 @@ export function setupArrivalsNamespace(io: Server): void {
 }
 
 /**
- * Called after each feed cycle with the raw entities for one feed group.
- * Computes arrivals only for stations with active subscribers, then
- * broadcasts to the appropriate station rooms.
+ * Batch broadcast: merges arrival maps from ALL feed groups in a single
+ * cycle and broadcasts one merged event per station. This ensures clients
+ * receive complete arrival data for multi-feed stations (e.g., Times Square)
+ * in a single update instead of up to 8 partial ones.
  *
- * Call this once per feed group per cycle, or batch all entities and call once.
+ * This is the primary broadcast entry point. Called once per feed cycle
+ * from the cycle-complete callback in index.ts.
  */
-export function broadcastArrivals(
-  feedGroupId: string,
-  entities: FeedEntity[],
+export function broadcastArrivalsBatch(
+  allEntities: Map<string, FeedEntity[]>,
 ): void {
   if (!arrivalsNsp) return;
 
   const subscribedIds = getSubscribedStationIds();
-  if (subscribedIds.size === 0) return; // nobody watching
+  if (subscribedIds.size === 0) {
+    log.debug('skipping arrival broadcast — no subscribers');
+    return;
+  }
 
-  const arrivalMap = computeArrivals(entities, subscribedIds);
+  const feedGroupIds = Array.from(allEntities.keys());
+  const maps = Array.from(allEntities.values()).map((entities) =>
+    computeArrivals(entities, subscribedIds),
+  );
+
+  const merged = mergeArrivalMaps(...maps);
   const updatedAt = new Date().toISOString();
 
-  for (const [stopId, arrivals] of arrivalMap.entries()) {
+  let stationsBroadcast = 0;
+  let totalArrivals = 0;
+
+  for (const [stopId, arrivals] of merged.entries()) {
+    stationsBroadcast++;
+    totalArrivals += arrivals.length;
+
     // Broadcast to the exact stop ID room
     arrivalsNsp.to(`station:${stopId}`).emit("arrivals:update", {
       stationId: stopId,
@@ -145,42 +160,14 @@ export function broadcastArrivals(
       });
     }
   }
-}
 
-/**
- * Batch broadcast: merges arrival maps from multiple feed groups and
- * broadcasts to all subscribed stations. Use this if you accumulate
- * entities from all feeds before broadcasting.
- */
-export function broadcastArrivalsBatch(
-  allEntities: Map<string, FeedEntity[]>,
-): void {
-  if (!arrivalsNsp) return;
-
-  const subscribedIds = getSubscribedStationIds();
-  if (subscribedIds.size === 0) return;
-
-  const maps = Array.from(allEntities.values()).map((entities) =>
-    computeArrivals(entities, subscribedIds),
+  log.debug(
+    {
+      feedGroups: feedGroupIds.length,
+      subscribers: subscribedIds.size,
+      stationsBroadcast,
+      totalArrivals,
+    },
+    'batched arrival broadcast complete',
   );
-
-  const merged = mergeArrivalMaps(...maps);
-  const updatedAt = new Date().toISOString();
-
-  for (const [stopId, arrivals] of merged.entries()) {
-    arrivalsNsp.to(`station:${stopId}`).emit("arrivals:update", {
-      stationId: stopId,
-      arrivals,
-      updatedAt,
-    });
-
-    const parentId = stopId.replace(/[NS]$/, "");
-    if (parentId !== stopId) {
-      arrivalsNsp.to(`station:${parentId}`).emit("arrivals:update", {
-        stationId: parentId,
-        arrivals,
-        updatedAt,
-      });
-    }
-  }
 }

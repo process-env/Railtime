@@ -7,7 +7,12 @@ import { getFeedGroupForRoute } from './feed-groups';
 const DATA_DIR = path.join(process.cwd(), 'public', 'data');
 const ROUTES_CSV = path.join(DATA_DIR, 'routes.txt');
 
-// Cache
+/**
+ * In-process cache for parsed GTFS routes.txt data.
+ * Safe to keep in-process: this is immutable static GTFS data loaded from disk
+ * at startup. It never changes at runtime and has no cross-instance consistency
+ * concern — every instance loads the same file.
+ */
 let routesCache: { list: Route[]; dict: Record<string, Route> } | null = null;
 
 export async function loadRoutes(): Promise<{

@@ -33,6 +33,10 @@ export interface TrackIndex {
  * Grouped into a single object to make it explicit that these are the only
  * mutable globals in this module and they are tightly coupled (loadingPromise
  * resolves to populate cache).
+ *
+ * Safe to keep in-process: this is immutable GeoJSON + stops.txt data loaded
+ * from static files in the browser. It runs client-side and never changes at
+ * runtime. No cross-instance concern (each browser tab is its own instance).
  */
 interface TrackIndexState {
   /** Cached track index after successful load */

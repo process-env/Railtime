@@ -150,7 +150,14 @@ async function buildGraph(): Promise<TransitGraph> {
   };
 
   // Step 1: Add ride edges from route segments
-  // For each route, create nodes at each station and edges between consecutive stops
+  // Each direction in route-segments.json contains edges with direction-specific
+  // travel times derived from GTFS schedules. Direction 0 provides edges for one
+  // direction of travel (e.g., southbound), direction 1 provides the reverse
+  // (e.g., northbound). NYC subway travel times differ by direction due to
+  // express/local track patterns and varying stop spacing, so we create only the
+  // forward edge per direction entry rather than synthetic bidirectional edges.
+  // Analysis of GTFS data shows 72.7% of stop pairs have asymmetric travel times,
+  // with deltas up to 315 seconds. (STRAT-06)
   for (const [routeId, routeData] of Object.entries(segmentsData.routes)) {
     for (const [, direction] of Object.entries(routeData.directions)) {
       const { stops, edges: segmentEdges } = direction;
@@ -160,24 +167,16 @@ async function buildGraph(): Promise<TransitGraph> {
         addNode(stopId, routeId);
       }
 
-      // Create ride edges between consecutive stops (bidirectional)
+      // Create ride edges in the stated direction only.
+      // The opposite direction's edge list provides the reverse edges with
+      // its own direction-specific travel time -- no synthetic reverse needed.
       for (const edge of segmentEdges) {
         const fromKey = nodeKey(edge.from, routeId);
-        const toKey = nodeKey(edge.to, routeId);
 
-        // Forward edge
         addEdge(fromKey, {
           type: 'ride',
           from: { stationId: edge.from, routeId },
           to: { stationId: edge.to, routeId },
-          durationSeconds: edge.seconds,
-        });
-
-        // Reverse edge (same duration for simplicity)
-        addEdge(toKey, {
-          type: 'ride',
-          from: { stationId: edge.to, routeId },
-          to: { stationId: edge.from, routeId },
           durationSeconds: edge.seconds,
         });
       }

@@ -53,13 +53,12 @@ vi.stubGlobal('fetch', mockFetch);
 
 // Import hook after mocks are set up
 import { useTrainMarkers } from './useTrainMarkers';
-import type { TrainAnimState, TrainMotionState } from './useMapAnimation';
+import type { UnifiedMarkerState } from './useMapAnimation';
 
 describe('useTrainMarkers', () => {
-  // Create refs that mimic what useMapAnimation provides
-  const createMockRefs = () => ({
-    trainAnimsRef: { current: new Map<string, TrainAnimState>() },
-    trainMotionRef: { current: new Map<string, TrainMotionState>() },
+  // Create ref that mimics what useMapAnimation provides (unified map)
+  const createMockRef = () => ({
+    trainMarkersRef: { current: new Map<string, UnifiedMarkerState>() },
   });
 
   const mockLerp = (start: number, end: number, t: number) => start + (end - start) * t;
@@ -81,14 +80,13 @@ describe('useTrainMarkers', () => {
   });
 
   it('returns expected interface', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
 
     const { result } = renderHook(() =>
       useTrainMarkers(
         { current: null },
         false,
-        refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-        refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+        refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
         mockLerp,
         {
           trains: [],
@@ -107,14 +105,13 @@ describe('useTrainMarkers', () => {
   });
 
   it('returns 0 visible trains when trains array is empty', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
 
     const { result } = renderHook(() =>
       useTrainMarkers(
         { current: null },
         false,
-        refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-        refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+        refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
         mockLerp,
         {
           trains: [],
@@ -131,7 +128,7 @@ describe('useTrainMarkers', () => {
   });
 
   it('counts all trains when no route filter is applied', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
     const trains: TrainPosition[] = [
       {
         tripId: 'trip1',
@@ -175,8 +172,7 @@ describe('useTrainMarkers', () => {
       useTrainMarkers(
         { current: null },
         false,
-        refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-        refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+        refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
         mockLerp,
         {
           trains,
@@ -193,7 +189,7 @@ describe('useTrainMarkers', () => {
   });
 
   it('filters trains by selected route', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
     const trains: TrainPosition[] = [
       {
         tripId: 'trip1',
@@ -237,8 +233,7 @@ describe('useTrainMarkers', () => {
       useTrainMarkers(
         { current: null },
         false,
-        refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-        refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+        refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
         mockLerp,
         {
           trains,
@@ -255,14 +250,13 @@ describe('useTrainMarkers', () => {
   });
 
   it('getTrainPhase returns null for unknown train', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
 
     const { result } = renderHook(() =>
       useTrainMarkers(
         { current: null },
         false,
-        refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-        refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+        refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
         mockLerp,
         {
           trains: [],
@@ -279,14 +273,13 @@ describe('useTrainMarkers', () => {
   });
 
   it('latestApiDataRef is a Map', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
 
     const { result } = renderHook(() =>
       useTrainMarkers(
         { current: null },
         false,
-        refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-        refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+        refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
         mockLerp,
         {
           trains: [],
@@ -303,7 +296,7 @@ describe('useTrainMarkers', () => {
   });
 
   it('visible count updates when trains change', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
     const initialTrains: TrainPosition[] = [
       {
         tripId: 'trip1',
@@ -324,8 +317,7 @@ describe('useTrainMarkers', () => {
         useTrainMarkers(
           { current: null },
           false,
-          refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-          refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+          refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
           mockLerp,
           {
             trains,
@@ -364,7 +356,7 @@ describe('useTrainMarkers', () => {
   });
 
   it('visible count updates when route filter changes', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
     const trains: TrainPosition[] = [
       {
         tripId: 'trip1',
@@ -397,8 +389,7 @@ describe('useTrainMarkers', () => {
         useTrainMarkers(
           { current: null },
           false,
-          refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-          refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+          refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
           mockLerp,
           {
             trains,
@@ -421,7 +412,7 @@ describe('useTrainMarkers', () => {
   });
 
   it('handles case-insensitive route matching', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
     const trains: TrainPosition[] = [
       {
         tripId: 'trip1',
@@ -441,8 +432,7 @@ describe('useTrainMarkers', () => {
       useTrainMarkers(
         { current: null },
         false,
-        refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-        refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+        refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
         mockLerp,
         {
           trains,
@@ -461,9 +451,8 @@ describe('useTrainMarkers', () => {
 
 describe('Phase detection', () => {
   // Test the getPhaseFromDistance logic by checking motion states
-  const createMockRefs = () => ({
-    trainAnimsRef: { current: new Map<string, TrainAnimState>() },
-    trainMotionRef: { current: new Map<string, TrainMotionState>() },
+  const createMockRef = () => ({
+    trainMarkersRef: { current: new Map<string, UnifiedMarkerState>() },
   });
 
   const mockLerp = (start: number, end: number, t: number) => start + (end - start) * t;
@@ -471,7 +460,7 @@ describe('Phase detection', () => {
   const mockSetSelectedTrain = vi.fn();
 
   it('getTrainPhase returns phase from motion state lastPhase', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
 
     // Add a motion state with a known phase
     const mockMarker = {
@@ -487,7 +476,8 @@ describe('Phase detection', () => {
       addTo: vi.fn().mockReturnThis(),
     };
 
-    refs.trainMotionRef.current.set('trip-boarding', {
+    refs.trainMarkersRef.current.set('trip-boarding', {
+      type: 'motion',
       tripId: 'trip-boarding',
       routeId: '1',
       marker: mockMarker as unknown as maplibregl.Marker,
@@ -518,8 +508,7 @@ describe('Phase detection', () => {
       useTrainMarkers(
         { current: null },
         false,
-        refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-        refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+        refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
         mockLerp,
         {
           trains: [],
@@ -536,7 +525,7 @@ describe('Phase detection', () => {
   });
 
   it('getTrainPhase calculates phase from distance when lastPhase not set', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
 
     const mockMarker = {
       setLngLat: vi.fn().mockReturnThis(),
@@ -552,7 +541,8 @@ describe('Phase detection', () => {
     };
 
     // Train at 1000m, station at 1500m (500m away = APPROACHING)
-    refs.trainMotionRef.current.set('trip-approaching', {
+    refs.trainMarkersRef.current.set('trip-approaching', {
+      type: 'motion',
       tripId: 'trip-approaching',
       routeId: '1',
       marker: mockMarker as unknown as maplibregl.Marker,
@@ -583,8 +573,7 @@ describe('Phase detection', () => {
       useTrainMarkers(
         { current: null },
         false,
-        refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-        refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+        refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
         mockLerp,
         {
           trains: [],
@@ -602,7 +591,7 @@ describe('Phase detection', () => {
   });
 
   it('getTrainPhase returns ARRIVING when within 200m', () => {
-    const refs = createMockRefs();
+    const refs = createMockRef();
 
     const mockMarker = {
       setLngLat: vi.fn().mockReturnThis(),
@@ -618,7 +607,8 @@ describe('Phase detection', () => {
     };
 
     // Train at 1000m, station at 1100m (100m away = ARRIVING)
-    refs.trainMotionRef.current.set('trip-arriving', {
+    refs.trainMarkersRef.current.set('trip-arriving', {
+      type: 'motion',
       tripId: 'trip-arriving',
       routeId: '1',
       marker: mockMarker as unknown as maplibregl.Marker,
@@ -648,8 +638,7 @@ describe('Phase detection', () => {
       useTrainMarkers(
         { current: null },
         false,
-        refs.trainAnimsRef as React.MutableRefObject<Map<string, TrainAnimState>>,
-        refs.trainMotionRef as React.MutableRefObject<Map<string, TrainMotionState>>,
+        refs.trainMarkersRef as React.MutableRefObject<Map<string, UnifiedMarkerState>>,
         mockLerp,
         {
           trains: [],

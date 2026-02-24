@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
@@ -6,7 +7,7 @@ import { closeDriver as closeNeo4j } from "./lib/neo4j.js";
 import { closeDynamoClient } from "./lib/dynamodb.js";
 import { startFeedLoop, stopFeedLoop } from "./ingestion/feed-loop.js";
 import { startAlertLoop, stopAlertLoop } from "./ingestion/alert-loop.js";
-import { broadcastArrivals } from "./namespaces/arrivals.js";
+import { broadcastArrivalsBatch } from "./namespaces/arrivals.js";
 import { setupTrainsNamespace } from "./namespaces/trains.js";
 import { setupAlertsNamespace } from "./namespaces/alerts.js";
 import { setupArrivalsNamespace } from "./namespaces/arrivals.js";
@@ -26,6 +27,7 @@ const log = createLogger('server');
 // ---------------------------------------------------------------------------
 
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
+const INSTANCE_ID = process.env.INSTANCE_ID ?? randomUUID();
 
 const allowedOrigins = [
   "http://localhost:3000",
@@ -69,6 +71,7 @@ const httpServer = createServer(async (req, res) => {
     JSON.stringify({
       status: "ok",
       service: "railtime-ws-server",
+      instanceId: INSTANCE_ID,
       uptime: process.uptime(),
     }),
   );
@@ -178,7 +181,7 @@ process.on("uncaughtException", (err) => {
 // ---------------------------------------------------------------------------
 
 httpServer.listen(PORT, async () => {
-  log.info({ port: PORT }, 'railtime ws server listening');
+  log.info({ port: PORT, instanceId: INSTANCE_ID }, 'railtime ws server listening — single-instance mode (see SCALING.md)');
   log.info({ origins: allowedOrigins }, 'CORS origins configured');
 
   // Attach Redis adapter (non-blocking — continues without it)
@@ -193,22 +196,36 @@ httpServer.listen(PORT, async () => {
   await initScheduleLookup();
 
   // Start ingestion loops
-  startFeedLoop((feedGroupId, trains, removedTripIds, entities, latencyMs, status) => {
-    // Forward to /trains namespace
-    onTrainUpdate(feedGroupId, trains, removedTripIds, entities, latencyMs, status);
+  startFeedLoop(
+    // Per-group callback: trains, analytics, archiving
+    (feedGroupId, trains, removedTripIds, entities, latencyMs, status) => {
+      // Forward to /trains namespace
+      onTrainUpdate(feedGroupId, trains, removedTripIds, entities, latencyMs, status);
 
-    // Forward to /arrivals namespace (compute arrivals for subscribed stations)
-    broadcastArrivals(feedGroupId, entities as FeedEntity[]);
+      // Forward to analytics collector (DynamoDB persistence)
+      collectMetrics(feedGroupId, trains, entities as FeedEntity[], latencyMs, status);
 
-    // Forward to analytics collector (DynamoDB persistence)
-    collectMetrics(feedGroupId, trains, entities as FeedEntity[], latencyMs, status);
+      // Track trip lifecycle (TRIP_END events for removed trains)
+      collectRemovedTrips(feedGroupId, removedTripIds);
 
-    // Track trip lifecycle (TRIP_END events for removed trains)
-    collectRemovedTrips(feedGroupId, removedTripIds);
-
-    // Archive raw positions to S3 for ML pipeline
-    archivePositions(feedGroupId, trains);
-  });
+      // Archive raw positions to S3 for ML pipeline
+      archivePositions(feedGroupId, trains);
+    },
+    // Cycle-complete callback: batched arrival broadcast (STRAT-10)
+    // Merges all feed groups' arrivals into a single broadcast per station,
+    // so clients receive one complete update instead of up to 8 partial ones.
+    (results) => {
+      const allEntities = new Map<string, FeedEntity[]>();
+      for (const r of results) {
+        if (r.status === "success" && r.entities.length > 0) {
+          allEntities.set(r.feedGroupId, r.entities as FeedEntity[]);
+        }
+      }
+      if (allEntities.size > 0) {
+        broadcastArrivalsBatch(allEntities);
+      }
+    },
+  );
 
   startAlertLoop((alerts) => {
     onAlertUpdate(alerts);

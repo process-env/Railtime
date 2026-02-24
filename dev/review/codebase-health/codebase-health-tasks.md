@@ -352,7 +352,7 @@ Last Updated: 2026-02-24
 - [ ] **STRAT-01** [API] Move `conductor/announce` audio to object store (S3/Vercel Blob) and return signed URLs | Effort: **XL**
   Replace 100-200 KB base64 data URI responses with URL indirection. Reduces API response size and serverless memory pressure.
 
-- [ ] **STRAT-02** [API] Unify caching strategy: Redis for cross-instance, in-process only for immutable data | Effort: **L**
+- [x] **STRAT-02** [API] Unify caching strategy: Redis for cross-instance, in-process only for immutable data | Effort: **L**
   Audit all module-level caches. Migrate `equipment`, `poi/nearby`, and any other mutable in-process caches to Redis.
 
 ### Map Components & Hooks
@@ -360,7 +360,7 @@ Last Updated: 2026-02-24
 - [ ] **STRAT-03** [Map] Resolve disabled state machine: fix BOARDING bug or remove state machine entirely | Effort: **XL**
   The intentionally disabled `TrainAnimationState` in `useTrainMarkers.ts` creates two partially-maintained animation paths. Decide: fix and re-enable, or remove and accept simpler lerp system.
 
-- [ ] **STRAT-04** [Map] Unify dual ref map into single marker map with `type: 'motion' | 'legacy'` discriminant | Effort: **L**
+- [x] **STRAT-04** [Map] Unify dual ref map into single marker map with `type: 'motion' | 'legacy'` discriminant | Effort: **L**
   Replace `trainAnimsRef` and `trainMotionRef` with a single `Map<string, UnifiedMarkerState>` containing a type discriminant. Simplifies cleanup, display updates, and reasoning about state.
 
 ### Trip Planner Algorithm
@@ -368,7 +368,7 @@ Last Updated: 2026-02-24
 - [ ] **STRAT-05** [Trip] Implement true k-shortest-paths (Yen's algorithm) or document limitation permanently | Effort: **XL**
   Replace random route-exclusion with spur-node enumeration for deterministic, genuinely distinct k-shortest paths.
 
-- [ ] **STRAT-06** [Trip] Add directional travel times to graph model | Effort: **L**
+- [x] **STRAT-06** [Trip] Add directional travel times to graph model | Effort: **L**
   The graph is currently undirected with symmetric costs. NYC subway travel times can differ by direction. Add direction-specific edge weights from GTFS schedule data.
 
 ### Frontend UI & State
@@ -381,10 +381,10 @@ Last Updated: 2026-02-24
 
 ### WebSocket Server
 
-- [ ] **STRAT-09** [Server] Document single-instance constraint and add scale-out safeguards | Effort: **M**
+- [x] **STRAT-09** [Server] Document single-instance constraint and add scale-out safeguards | Effort: **M**
   Add README documentation and Docker Compose `deploy.replicas: 1` constraint. Consider externalizing `previousTripIds` and `subscriberCount` to Redis if scale-out becomes necessary.
 
-- [ ] **STRAT-10** [Server] Merge per-feed-group arrival broadcasts into single-cycle batched broadcast | Effort: **L**
+- [x] **STRAT-10** [Server] Merge per-feed-group arrival broadcasts into single-cycle batched broadcast | Effort: **L**
   Accumulate all 8 feed groups' entities within one cycle and call `broadcastArrivalsBatch` once. Reduces Socket.IO events from up to 8 per station to 1, producing correct merged views.
 
 ### Test Infrastructure
@@ -392,7 +392,7 @@ Last Updated: 2026-02-24
 - [ ] **STRAT-11** [Test] Build genuine integration test suite with component tree rendering against mocked APIs | Effort: **XL**
   Render `SubwayMap` with full store + mocked feed response. Render `TripPlannerPanel` with origin/destination input. Render `/api/v1/trains` handler with mocked `fetchFeed`.
 
-- [ ] **STRAT-12** [Test] Add ESLint plugins `eslint-plugin-testing-library` and `eslint-plugin-vitest` | Effort: **S**
+- [x] **STRAT-12** [Test] Add ESLint plugins `eslint-plugin-testing-library` and `eslint-plugin-vitest` | Effort: **S**
   Catches common mistakes: `getBy` inside `waitFor`, `vi.waitFor` vs RTL `waitFor`, `expect` outside `it` blocks.
 
 ---

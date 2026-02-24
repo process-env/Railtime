@@ -1,4 +1,4 @@
-export { useMapAnimation, type TrainAnimState } from './useMapAnimation';
+export { useMapAnimation, type TrainAnimState, type TrainMotionState, type UnifiedMarkerState } from './useMapAnimation';
 export { useStationMarkers } from './useStationMarkers';
 export { useTrainMarkers } from './useTrainMarkers';
 export { useTripRouteLayer, getTripBounds } from './useTripRouteLayer';

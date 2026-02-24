@@ -63,6 +63,12 @@ export interface ScheduleData {
 // Cache
 // ============================================================================
 
+/**
+ * In-process caches for parsed GTFS schedule data (stop_times.txt, trips.txt,
+ * stops.txt). Safe to keep in-process: these are immutable static GTFS data
+ * loaded from disk. They never change at runtime and have no cross-instance
+ * consistency concern — every instance loads the same files.
+ */
 let stopTimesCache: Map<string, StopTime[]> | null = null;
 let tripsInfoCache: Map<string, { routeId: string; serviceId: string; headsign: string; directionId: string }> | null = null;
 let stopsNameCache: Map<string, string> | null = null;

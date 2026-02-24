@@ -518,13 +518,25 @@ export type FeedUpdateCallback = (
   status: "success" | "error" | "timeout",
 ) => void;
 
+/**
+ * Called once per cycle after all feed groups have been fetched and
+ * per-group callbacks have fired. Receives the complete set of results
+ * so consumers can perform cross-group work (e.g., merging arrivals).
+ */
+export type FeedCycleCompleteCallback = (
+  results: FeedCycleResult[],
+) => void;
+
 let loopTimer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
 
 /**
  * Run one full cycle across all 8 feed groups in parallel.
  */
-async function runCycle(onUpdate: FeedUpdateCallback): Promise<void> {
+async function runCycle(
+  onUpdate: FeedUpdateCallback,
+  onCycleComplete?: FeedCycleCompleteCallback,
+): Promise<void> {
   const results = await Promise.all(
     FEED_GROUPS.map((group) => fetchAndProcessFeed(group)),
   );
@@ -544,6 +556,15 @@ async function runCycle(onUpdate: FeedUpdateCallback): Promise<void> {
     }
   }
 
+  // Fire the cycle-complete callback with all results
+  if (onCycleComplete) {
+    try {
+      onCycleComplete(results);
+    } catch (err) {
+      log.error({ err: err instanceof Error ? err.message : err }, 'onCycleComplete callback error');
+    }
+  }
+
   const totalTrains = results.reduce((sum, r) => sum + r.trains.length, 0);
   const failed = results.filter((r) => r.status !== "success").length;
   if (failed > 0) {
@@ -558,8 +579,14 @@ async function runCycle(onUpdate: FeedUpdateCallback): Promise<void> {
  * POLL_INTERVAL_MS (15s) AFTER each cycle completes before scheduling the
  * next. This self-scheduling setTimeout pattern prevents overlapping cycles
  * when a feed fetch takes close to the timeout duration.
+ *
+ * @param onUpdate - Called once per feed group with that group's results
+ * @param onCycleComplete - Called once per cycle after all groups are processed
  */
-export function startFeedLoop(onUpdate: FeedUpdateCallback): void {
+export function startFeedLoop(
+  onUpdate: FeedUpdateCallback,
+  onCycleComplete?: FeedCycleCompleteCallback,
+): void {
   if (running) {
     log.warn('already running');
     return;
@@ -569,7 +596,7 @@ export function startFeedLoop(onUpdate: FeedUpdateCallback): void {
   log.info({ feeds: FEED_GROUPS.length, intervalMs: POLL_INTERVAL_MS }, 'starting ingestion');
 
   async function scheduledCycle() {
-    await runCycle(onUpdate).catch((err) =>
+    await runCycle(onUpdate, onCycleComplete).catch((err) =>
       log.error({ err: err instanceof Error ? err.message : err }, 'cycle error'),
     );
     if (loopTimer !== null) {
@@ -578,7 +605,7 @@ export function startFeedLoop(onUpdate: FeedUpdateCallback): void {
   }
 
   // Warm up stops + protobuf on first cycle, then self-schedule
-  runCycle(onUpdate)
+  runCycle(onUpdate, onCycleComplete)
     .catch((err) =>
       log.error({ err: err instanceof Error ? err.message : err }, 'initial cycle error'),
     )

@@ -128,11 +128,11 @@ describe('useTrainPositions - WebSocket mode', () => {
         'trains:update',
         expect.any(Function)
       );
-      expect(mockSocketOn).toHaveBeenCalledWith(
-        'trains:remove',
-        expect.any(Function)
-      );
     });
+    expect(mockSocketOn).toHaveBeenCalledWith(
+      'trains:remove',
+      expect.any(Function)
+    );
   });
 
   it('stops polling once socket becomes active', async () => {

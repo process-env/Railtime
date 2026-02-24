@@ -46,8 +46,12 @@ export const FEED_GROUPS: FeedGroup[] = [
   },
 ];
 
-// Pre-built reverse lookup: route (uppercased) -> feed group ID
-// Includes express suffixes (e.g., 6X -> 6 -> 1234567)
+/**
+ * Pre-built reverse lookup: route (uppercased) -> feed group ID.
+ * Safe to keep in-process: this is a constant lookup table derived from the
+ * static FEED_GROUPS config above. It is built once at module load time and
+ * never mutated. No cross-instance consistency concern.
+ */
 const _routeToGroupMap = new Map<string, string>();
 for (const group of FEED_GROUPS) {
   for (const route of group.routes) {

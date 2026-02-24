@@ -92,6 +92,7 @@ services:
       redis:
         condition: service_healthy
     deploy:
+      replicas: 1  # REQUIRED: server relies on in-memory state — see server/SCALING.md
       resources:
         limits:
           memory: 512M

@@ -27,16 +27,25 @@ interface ScheduleEntry {
 // Cache - 3-Tier Lookup System
 // ============================================================================
 
-// Tier 1: Primary - Key: "tripId:stopId" → ScheduleEntry
+/**
+ * In-process caches for the 3-tier schedule lookup system, built from GTFS
+ * static files (stop_times.txt, trips.txt). Safe to keep in-process: these are
+ * immutable static GTFS data parsed from disk. The only invalidation is on MTA
+ * service-day rollover (~3 AM ET), which reloads the same static files with a
+ * different day filter. No cross-instance consistency concern — every instance
+ * loads the same data.
+ */
+
+/** Tier 1: Primary - Key: "tripId:stopId" -> ScheduleEntry */
 let scheduleCache: Map<string, ScheduleEntry> | null = null;
 
-// Tier 2: Shape-based fallback - Key: "routeId:shapeId:stopId" → ScheduleEntry
+/** Tier 2: Shape-based fallback - Key: "routeId:shapeId:stopId" -> ScheduleEntry */
 let shapeScheduleIndex: Map<string, ScheduleEntry> | null = null;
 
-// Tier 3: Direction-only fallback - Key: "routeId:direction:stopId" → ScheduleEntry
+/** Tier 3: Direction-only fallback - Key: "routeId:direction:stopId" -> ScheduleEntry */
 let directionScheduleIndex: Map<string, ScheduleEntry> | null = null;
 
-// Trip to route mapping - Key: "tripId" → routeId
+/** Trip to route mapping - Key: "tripId" -> routeId */
 let tripRouteCache: Map<string, string> | null = null;
 
 // ============================================================================

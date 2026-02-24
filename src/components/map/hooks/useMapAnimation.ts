@@ -101,14 +101,21 @@ export interface TrainAnimState {
   cleanupListeners?: () => void;
 }
 
+/**
+ * Discriminated union that unifies motion-based and legacy marker states
+ * into a single map. Use `entry.type` to narrow before accessing type-specific fields.
+ */
+export type UnifiedMarkerState =
+  | ({ type: 'motion' } & TrainMotionState)
+  | ({ type: 'legacy' } & TrainAnimState);
+
 interface UseMapAnimationOptions {
   refreshInterval: number;
   useAlphaBetaGamma?: boolean;  // Enable new animation system
 }
 
 interface UseMapAnimationReturn {
-  trainAnimsRef: React.MutableRefObject<Map<string, TrainAnimState>>;
-  trainMotionRef: React.MutableRefObject<Map<string, TrainMotionState>>;
+  trainMarkersRef: React.MutableRefObject<Map<string, UnifiedMarkerState>>;
   lerp: (start: number, end: number, t: number) => number;
   scheduleAnimation: () => void;
 }
@@ -190,11 +197,8 @@ export function useMapAnimation(
   mapLoaded: boolean,
   options: UseMapAnimationOptions
 ): UseMapAnimationReturn {
-  // Legacy animation state (for backward compatibility)
-  const trainAnimsRef = useRef<Map<string, TrainAnimState>>(new Map());
-
-  // New motion-based animation state
-  const trainMotionRef = useRef<Map<string, TrainMotionState>>(new Map());
+  // Unified marker state: single map with 'motion' | 'legacy' discriminant
+  const trainMarkersRef = useRef<Map<string, UnifiedMarkerState>>(new Map());
 
   const animationFrameRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
@@ -217,20 +221,18 @@ export function useMapAnimation(
 
   // Check if any trains need animation
   const hasMovingTrains = useCallback(() => {
-    // Check legacy animations
     const now = performance.now();
-    for (const anim of trainAnimsRef.current.values()) {
-      if (anim.isDwelling) continue;
-      const elapsed = now - anim.startTime;
-      const progress = elapsed / options.refreshInterval;
-      if (progress < 1) return true;
+    for (const entry of trainMarkersRef.current.values()) {
+      if (entry.type === 'legacy') {
+        if (entry.isDwelling) continue;
+        const elapsed = now - entry.startTime;
+        const progress = elapsed / options.refreshInterval;
+        if (progress < 1) return true;
+      } else {
+        // Motion-based trains always need animation
+        return true;
+      }
     }
-
-    // Check motion-based animations
-    if (trainMotionRef.current.size > 0) {
-      return true; // Always animate if using motion system
-    }
-
     return false;
   }, [options.refreshInterval]);
 
@@ -240,22 +242,24 @@ export function useMapAnimation(
     const nowMs = Date.now();
     let anyMoving = false;
 
-    // Legacy animation loop removed - now using only motion-based system
-    // The trainAnimsRef is still maintained for fallback when track data unavailable
-    trainAnimsRef.current.forEach((anim) => {
-      if (anim.isDwelling) return;
-      const elapsed = now - anim.startTime;
-      const progress = Math.min(elapsed / options.refreshInterval, 1);
-      if (progress < 1) anyMoving = true;
-      const currentLng = lerp(anim.fromLng, anim.toLng, progress);
-      const currentLat = lerp(anim.fromLat, anim.toLat, progress);
-      anim.marker.setLngLat([currentLng, currentLat]);
-    });
+    // Animate all markers from the unified map
+    trainMarkersRef.current.forEach((entry) => {
+      // Legacy animation: simple lat/lng interpolation
+      if (entry.type === 'legacy') {
+        if (entry.isDwelling) return;
+        const elapsed = now - entry.startTime;
+        const progress = Math.min(elapsed / options.refreshInterval, 1);
+        if (progress < 1) anyMoving = true;
+        const currentLng = lerp(entry.fromLng, entry.toLng, progress);
+        const currentLat = lerp(entry.fromLat, entry.toLat, progress);
+        entry.marker.setLngLat([currentLng, currentLat]);
+        return; // Done with this legacy entry
+      }
 
-    // Animate motion-based trains using state machine
-    // Uses state machine reducer for predictable timing transitions
-    if (motionUtilsLoaded.current && arclengthToLatLon && trainAnimationReducer && getCurrentArclength) {
-      trainMotionRef.current.forEach((state) => {
+      // Motion-based animation: arclength along track
+      const state = entry; // type narrowed to 'motion' & TrainMotionState
+      if (!motionUtilsLoaded.current || !arclengthToLatLon || !trainAnimationReducer || !getCurrentArclength) return;
+      {
         if (!state.track) return;
 
         anyMoving = true;
@@ -414,8 +418,8 @@ export function useMapAnimation(
             state.popup.setHTML(html);
           }
         }
-      });
-    }
+      } // end block for motion utils guard
+    }); // end trainMarkersRef.current.forEach
 
     // Continue animation loop if there are moving trains
     if (anyMoving) {
@@ -446,7 +450,7 @@ export function useMapAnimation(
 
   // Start animation loop when map loads
   useEffect(() => {
-    if (mapLoaded && (trainAnimsRef.current.size > 0 || trainMotionRef.current.size > 0)) {
+    if (mapLoaded && trainMarkersRef.current.size > 0) {
       scheduleAnimation();
     }
 
@@ -459,8 +463,7 @@ export function useMapAnimation(
   }, [mapLoaded, scheduleAnimation]);
 
   return {
-    trainAnimsRef,
-    trainMotionRef,
+    trainMarkersRef,
     lerp,
     scheduleAnimation,
   };

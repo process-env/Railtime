@@ -70,13 +70,13 @@ export function SubwayMap({ trains, alerts }: SubwayMapProps) {
   }, []);
 
   // Animation hook - enable schedule-based animation
-  const { trainAnimsRef, trainMotionRef, lerp, scheduleAnimation } = useMapAnimation(mapLoaded, {
+  const { trainMarkersRef, lerp, scheduleAnimation } = useMapAnimation(mapLoaded, {
     refreshInterval: REFRESH_INTERVAL,
     useAlphaBetaGamma: true,  // Enable new smooth animation system
   });
 
   // Train markers hook — schedule-based animation + alert modulation
-  const { getTrainPhase } = useTrainMarkers(map, mapLoaded, trainAnimsRef, trainMotionRef, lerp, {
+  const { getTrainPhase } = useTrainMarkers(map, mapLoaded, trainMarkersRef, lerp, {
     trains,
     selectedRouteIds,
     selectedTrainId,

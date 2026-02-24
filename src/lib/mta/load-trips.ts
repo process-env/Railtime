@@ -11,16 +11,20 @@ interface TripInfo {
   directionId: string;
 }
 
-// Cache: Map<tripId, TripInfo>
-// Stores both full trip IDs and suffix-based lookups
+/**
+ * In-process caches for parsed GTFS trips.txt data.
+ * Safe to keep in-process: these are immutable static GTFS data loaded from
+ * disk at startup. They never change at runtime and have no cross-instance
+ * consistency concern — every instance loads the same file.
+ */
+
+/** Primary index: Map<tripId, TripInfo> — stores both full trip IDs and suffix-based lookups */
 let tripsCache: Map<string, TripInfo> | null = null;
 
-// Secondary index: Map<"routeId:shapeId", headsign>
-// Used for fallback when exact trip ID match fails
+/** Secondary index: Map<"routeId:shapeId", headsign> — fallback when exact trip ID match fails */
 let shapeIndex: Map<string, string> | null = null;
 
-// Tertiary index: Map<"routeId:N" or "routeId:S", headsign>
-// Used for direction-only fallback when shape doesn't match (e.g., 7 train)
+/** Tertiary index: Map<"routeId:N" or "routeId:S", headsign> — direction-only fallback */
 let directionIndex: Map<string, string> | null = null;
 
 /**

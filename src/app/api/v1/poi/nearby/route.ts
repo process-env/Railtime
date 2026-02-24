@@ -6,19 +6,20 @@ import {
   createRateLimitKey,
   RATE_LIMITS,
 } from '@/lib/api/rate-limit';
+import { getCache, setCache } from '@/lib/redis';
 import type { POI, TomTomSearchResponse, POISearchResponse } from '@/types/poi';
 
 const TOMTOM_API_KEY = process.env.TOMTOM_ADMIN_KEY;
-const CACHE_TTL = 3600; // 1 hour in seconds
+const CACHE_TTL_SECONDS = 3600; // 1 hour
 
-// In-memory cache for POI results
-const poiCache = new Map<string, { data: POISearchResponse; expires: number }>();
-
+/**
+ * Build a Redis cache key for POI queries.
+ * Rounds coordinates to 4 decimal places (~11m precision) for cache efficiency.
+ */
 function getCacheKey(lat: number, lon: number, radius: number, category?: string): string {
-  // Round coordinates to 4 decimal places (~11m precision) for cache efficiency
   const roundedLat = Math.round(lat * 10000) / 10000;
   const roundedLon = Math.round(lon * 10000) / 10000;
-  return `${roundedLat},${roundedLon},${radius},${category || 'all'}`;
+  return `poi:${roundedLat},${roundedLon},${radius},${category || 'all'}`;
 }
 
 export async function GET(request: NextRequest) {
@@ -62,11 +63,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Check cache
+  // Check Redis cache
   const cacheKey = getCacheKey(lat, lon, radius, category);
-  const cached = poiCache.get(cacheKey);
-  if (cached && cached.expires > Date.now()) {
-    return NextResponse.json(cached.data, {
+  const cached = await getCache<POISearchResponse>(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached, {
       headers: {
         'Cache-Control': 'public, max-age=300', // Browser cache for 5 min
         'X-Cache': 'HIT',
@@ -125,21 +126,8 @@ export async function GET(request: NextRequest) {
       total: data.summary.totalResults,
     };
 
-    // Cache the result
-    poiCache.set(cacheKey, {
-      data: responseData,
-      expires: Date.now() + CACHE_TTL * 1000,
-    });
-
-    // Clean up old cache entries periodically
-    if (poiCache.size > 1000) {
-      const now = Date.now();
-      for (const [key, value] of poiCache.entries()) {
-        if (value.expires < now) {
-          poiCache.delete(key);
-        }
-      }
-    }
+    // Cache the result in Redis (fire-and-forget)
+    setCache(cacheKey, responseData, CACHE_TTL_SECONDS).catch(() => {});
 
     return NextResponse.json(responseData, {
       headers: {

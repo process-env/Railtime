@@ -6,7 +6,12 @@ import { getRouteColor } from '@/lib/constants';
 import { getTrackIndex, type RouteTrack, haversineDistance } from '@/lib/map/track-index';
 import type { TripPlan, TripSegment } from '@/lib/trip-planner/types';
 
-// Cache for raw GeoJSON route geometries (all segments)
+/**
+ * Client-side cache for raw GeoJSON route geometries (all segments).
+ * Safe to keep in-process: this is immutable GeoJSON data fetched once from a
+ * static file in the browser. It never changes at runtime. No cross-instance
+ * concern (each browser tab is its own instance).
+ */
 let rawGeoJSONCache: Map<string, [number, number][][]> | null = null;
 let rawGeoJSONLoadPromise: Promise<Map<string, [number, number][][]>> | null = null;
 

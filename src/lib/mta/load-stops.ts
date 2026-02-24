@@ -7,7 +7,12 @@ import { isParentStation } from './station-utils';
 const DATA_DIR = path.join(process.cwd(), 'public', 'data');
 const STOPS_CSV = path.join(DATA_DIR, 'stops.txt');
 
-// Cache
+/**
+ * In-process cache for parsed GTFS stops.txt data.
+ * Safe to keep in-process: this is immutable static GTFS data loaded from disk
+ * at startup. It never changes at runtime and has no cross-instance consistency
+ * concern — every instance loads the same file.
+ */
 let stopsCache: {
   dict: Record<string, Stop>;
   parentNames: Record<string, string>;
