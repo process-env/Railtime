@@ -209,11 +209,40 @@ export function useTrainMarkers(
   }, [selectedRouteIds]);
 
   // Effect 3: Sync trains (dispatch to reducer)
+  // Pre-filter: at each terminal, keep only the lead train (soonest departure).
+  // Queued trains (2nd–Nth) stack visually and add no information.
   useEffect(() => {
     if (trains.length === 0) return;
+
+    // Group trains sitting at their first stop by route+direction
+    const firstStopGroups = new Map<string, TrainPosition[]>();
+    const passThroughTrains: TrainPosition[] = [];
+
+    for (const train of trains) {
+      if (isAtFirstStop(train.routeId, train.prevStopId ?? '')) {
+        const dirId = directionIdFromSuffix(train.prevStopId ?? '');
+        const key = `${train.routeId}-${dirId}`;
+        let group = firstStopGroups.get(key);
+        if (!group) {
+          group = [];
+          firstStopGroups.set(key, group);
+        }
+        group.push(train);
+      } else {
+        passThroughTrains.push(train);
+      }
+    }
+
+    // From each terminal group, keep only the train departing soonest
+    const filtered = [...passThroughTrains];
+    for (const group of firstStopGroups.values()) {
+      group.sort((a, b) => (a.nextTimeMs ?? Infinity) - (b.nextTimeMs ?? Infinity));
+      filtered.push(group[0]);
+    }
+
     dispatch({
       type: 'SYNC_TRAINS',
-      trains,
+      trains: filtered,
       nowMs: Date.now(),
       isAtLastStop,
     });
