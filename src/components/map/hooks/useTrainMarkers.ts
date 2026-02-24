@@ -280,6 +280,10 @@ export function useTrainMarkers(
     const map = mapRef.current;
     if (!mapLoaded || !map) return;
 
+    // Skip processing when train data is empty — keeps existing markers visible
+    // during data transitions (socket handoff, polling gaps, initial load)
+    if (trains.length === 0) return;
+
     // Increment generation to cancel stale async chains from previous renders
     const generation = ++processingGenRef.current;
 

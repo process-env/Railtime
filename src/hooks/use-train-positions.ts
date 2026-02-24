@@ -174,10 +174,14 @@ export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
 
   // --- Return the same shape regardless of data source ---
   if (socketActive) {
+    // Use polling data as seed while waiting for first socket push
+    const trains = socketTrains.length > 0
+      ? socketTrains
+      : (query.data?.trains || []) as TrainPosition[];
     return {
-      trains: socketTrains,
-      updatedAt: socketUpdatedAt,
-      isLoading: socketTrains.length === 0 && !socketUpdatedAt,
+      trains,
+      updatedAt: socketUpdatedAt ?? query.data?.updatedAt,
+      isLoading: trains.length === 0,
       error: null,
       refetch,
     };
