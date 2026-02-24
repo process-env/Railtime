@@ -179,9 +179,6 @@ export function useTrainMarkers(
   // Ref to hold latest API data for animation loop (no re-render on update)
   const latestApiDataRef = useRef<Map<string, ApiDataEntry>>(new Map());
 
-  // Dedup stability: persist previous poll's winners to prevent flip-flopping
-  const dedupWinnersRef = useRef(new Map<string, string>()); // dedupKey → tripId
-
   // Track markers that are mid-fade-out so we can cancel if train reappears
   const fadingOutRef = useRef(new Map<string, FadingMarker>());
 
@@ -293,42 +290,17 @@ export function useTrainMarkers(
       ? trains.filter((t) => routeMatchesFilter(t.routeId, filterSet))
       : trains;
 
-    // Deduplicate trains on the same segment — show max 1 per route per segment.
-    // Key includes prevStopId so trains on different segments (approaching same stop
-    // from different directions) are NOT deduped.
-    const prevWinners = dedupWinnersRef.current;
-    const newWinners = new Map<string, string>();
-    const stopExclude = new Set<string>();
-
-    // First pass: group trains by dedup key
-    const keyGroups = new Map<string, string[]>(); // key → tripIds
+    // Deduplicate by tripId — keep first occurrence of each unique trip.
+    // This eliminates true duplicates (stale feed data) while preserving
+    // legitimately bunched trains on the same segment.
+    const seenTrips = new Set<string>();
+    const displayTrains: TrainPosition[] = [];
     for (const train of filteredTrains) {
-      const key = `${train.routeId}:${train.prevStopId ?? ''}:${train.nextStopId}`;
-      const group = keyGroups.get(key);
-      if (group) {
-        group.push(train.tripId);
-      } else {
-        keyGroups.set(key, [train.tripId]);
+      if (!seenTrips.has(train.tripId)) {
+        seenTrips.add(train.tripId);
+        displayTrains.push(train);
       }
     }
-
-    // Second pass: pick winner per key, preferring previous winner for stability
-    for (const [key, tripIds] of keyGroups) {
-      const prevWinner = prevWinners.get(key);
-      const winner = (prevWinner && tripIds.includes(prevWinner))
-        ? prevWinner
-        : tripIds[0];
-      newWinners.set(key, winner);
-      for (const tripId of tripIds) {
-        if (tripId !== winner) stopExclude.add(tripId);
-      }
-    }
-
-    dedupWinnersRef.current = newWinners;
-
-    const displayTrains = stopExclude.size > 0
-      ? filteredTrains.filter(t => !stopExclude.has(t.tripId))
-      : filteredTrains;
 
     // Calculate clustering offsets for overlapping trains
     const trainsWithPosition: TrainWithPosition[] = displayTrains.map(t => ({
@@ -622,9 +594,9 @@ export function useTrainMarkers(
     trainMarkersRef.current.forEach((entry) => {
       const el = entry.marker.getElement();
       if (filterSet.size === 0) {
-        el.style.display = '';
+        el.style.display = 'flex';
       } else {
-        el.style.display = routeMatchesFilter(entry.routeId ?? '', filterSet) ? '' : 'none';
+        el.style.display = routeMatchesFilter(entry.routeId ?? '', filterSet) ? 'flex' : 'none';
       }
     });
 
@@ -632,26 +604,21 @@ export function useTrainMarkers(
     if (filterSet.size > 0) {
       fadingOutRef.current.forEach(({ marker, unifiedState }) => {
         const matches = routeMatchesFilter(unifiedState.routeId ?? '', filterSet);
-        marker.getElement().style.display = matches ? '' : 'none';
+        marker.getElement().style.display = matches ? 'flex' : 'none';
       });
     }
-  }, [selectedRouteIds, trainMarkersRef]);
+  }, [selectedRouteIds, trainMarkersRef, trains]);
 
-  // Memoize visible train count (subtract deduped trains)
-  // Replicates the dedup grouping logic to count exclusions without accessing refs during render
+  // Memoize visible train count — count unique tripIds after route filtering
   const visibleTrainCount = useMemo(() => {
     const countFilterSet = buildRouteFilterSet(selectedRouteIds);
     const filteredTrains = countFilterSet.size === 0
       ? trains
       : trains.filter((t) => routeMatchesFilter(t.routeId, countFilterSet));
 
-    // Count unique dedup keys — each key keeps one train, rest are excluded
-    const dedupKeys = new Set<string>();
-    for (const train of filteredTrains) {
-      dedupKeys.add(`${train.routeId}:${train.prevStopId ?? ''}:${train.nextStopId}`);
-    }
-
-    return dedupKeys.size;
+    // Count unique tripIds
+    const uniqueTrips = new Set(filteredTrains.map((t) => t.tripId));
+    return uniqueTrips.size;
   }, [trains, selectedRouteIds]);
 
   // Get current phase for a train from motion state
