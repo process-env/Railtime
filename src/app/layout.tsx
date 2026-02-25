@@ -33,20 +33,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://tiles.basemaps.cartocdn.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
         <link rel="dns-prefetch" href="https://tiles.basemaps.cartocdn.com" />
-        {/* Preload map style JSON — starts download before MapLibre initializes */}
-        <link
-          rel="preload"
-          href="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-          as="fetch"
-          crossOrigin="anonymous"
-        />
-        {/* Preload subway lines GeoJSON — starts download before map.on('load') */}
-        <link
-          rel="preload"
-          href="/map/nyc-subway-lines.geojson"
-          as="fetch"
-          crossOrigin="anonymous"
-        />
+        {/* Map preloads moved to (dashboard)/map/layout.tsx to avoid warnings on non-map pages */}
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

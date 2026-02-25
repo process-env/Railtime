@@ -273,11 +273,26 @@ describe('GET /api/v1/trains', () => {
     expect(data.error.code).toBe('INTERNAL_ERROR');
   });
 
-  it('returns 500 when single-group fetchFeed throws (no catch wrapper)', async () => {
+  it('returns stale data when single-group fetchFeed throws but stale cache exists', async () => {
+    const stalePositions = [createMockTrainPosition({ tripId: 'stale-1', routeId: 'A' })];
+    vi.mocked(getCache)
+      .mockResolvedValueOnce(null)            // primary cache miss
+      .mockResolvedValueOnce(stalePositions);  // stale cache hit
+    vi.mocked(fetchFeed).mockRejectedValue(new Error('MTA API down'));
+
+    const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.source).toBe('stale');
+    expect(data.trains).toEqual(stalePositions);
+  });
+
+  it('returns 500 when single-group fetchFeed throws and no stale cache', async () => {
     vi.mocked(getCache).mockResolvedValue(null);
     vi.mocked(fetchFeed).mockRejectedValue(new Error('MTA API down'));
 
-    // Single-group path does NOT have .catch() wrapper, so error propagates
     const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
     const response = await GET(request);
     const data = await response.json();
@@ -321,5 +336,57 @@ describe('GET /api/v1/trains', () => {
     const response = await GET(request);
 
     expect(response.headers.get('Cache-Control')).toBe('s-maxage=10, stale-while-revalidate=5');
+  });
+
+  // --- Stale fallback cache ---
+
+  it('writes stale fallback cache with 120s TTL for single group', async () => {
+    vi.mocked(getCache).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
+    await GET(request);
+
+    expect(setCache).toHaveBeenCalledWith(
+      'feed:ACE:positions:stale',
+      mockPositions,
+      120
+    );
+  });
+
+  it('uses stale fallback for failed groups in all-groups path', async () => {
+    const cachedPositions = [createMockTrainPosition({ tripId: 'cached-1', routeId: 'A' })];
+    const stalePositions = [createMockTrainPosition({ tripId: 'stale-1', routeId: 'G' })];
+
+    // ACE cached, rest miss; then stale fallback for failed group
+    vi.mocked(getCache)
+      .mockResolvedValueOnce(cachedPositions) // ACE
+      .mockResolvedValueOnce(null)            // BDFM
+      .mockResolvedValueOnce(null)            // G
+      .mockResolvedValueOnce(null)            // JZ
+      .mockResolvedValueOnce(null)            // NQRW
+      .mockResolvedValueOnce(null)            // L
+      .mockResolvedValueOnce(null)            // SI
+      .mockResolvedValueOnce(null)            // 1234567
+      .mockResolvedValueOnce(stalePositions); // stale fallback for G
+
+    // G feed fails, rest succeed with empty entities
+    vi.mocked(fetchFeed).mockImplementation(async (gid: string) => {
+      if (gid === 'G') throw new Error('MTA API down');
+      return [];
+    });
+
+    const freshPositions = [createMockTrainPosition({ tripId: 'fresh-1', routeId: '1' })];
+    vi.mocked(calculateTrainPositions).mockResolvedValue(freshPositions);
+
+    const request = new NextRequest('http://localhost/api/v1/trains');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.source).toBe('partial-stale');
+    expect(data.trains).toHaveLength(3);
+    expect(data.trains.some((t: TrainPosition) => t.tripId === 'cached-1')).toBe(true);
+    expect(data.trains.some((t: TrainPosition) => t.tripId === 'fresh-1')).toBe(true);
+    expect(data.trains.some((t: TrainPosition) => t.tripId === 'stale-1')).toBe(true);
   });
 });

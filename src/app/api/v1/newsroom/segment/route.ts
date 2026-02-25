@@ -12,6 +12,8 @@ import { badRequest, internalError, rateLimited } from "@/lib/api/errors";
 import { getCache, setCache, zaddToSet } from "@/lib/redis";
 import { NEWSROOM_CHAT_MODEL } from "../constants";
 
+export const maxDuration = 30;
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------

@@ -15,6 +15,9 @@ import { useArrivals } from '@/hooks/use-arrivals';
 import { useUIStore } from '@/stores';
 import { getRouteColor } from '@/lib/constants';
 import { getFeedGroupForRoute } from '@/lib/mta/feed-groups';
+import stationRoutesData from '../../../../../public/data/station-routes.json';
+
+const stationRoutes: Record<string, string[]> = stationRoutesData.stationRoutes;
 
 export default function StationDetailPage() {
   const params = useParams();
@@ -25,7 +28,7 @@ export default function StationDetailPage() {
   const { setSelectedStation } = useUIStore();
 
   const station = stations[stationId];
-  const routes = station?.routes?.split(/[,\s]+/).filter(Boolean) || [];
+  const routes = stationRoutes[stationId] ?? station?.routes?.split(/[,\s]+/).filter(Boolean) ?? [];
 
   // Derive feed group from the station's first route
   const feedGroup = useMemo(() => {

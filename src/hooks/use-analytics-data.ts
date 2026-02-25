@@ -8,6 +8,7 @@ import {
   ON_ROUTE_METRIC_UPDATE,
   GET_TRIP_EVENTS,
 } from '@/lib/graphql/queries';
+import { isAppSyncConfigured } from '@/lib/graphql/client';
 import type {
   GetRouteMetricsData,
   GetDailyRollupsData,
@@ -26,7 +27,7 @@ import type {
 export function useRouteMetrics(routeId: string, from: number, to: number, direction?: string) {
   return useQuery<GetRouteMetricsData>(GET_ROUTE_METRICS, {
     variables: { routeId, direction: direction ?? null, from, to },
-    skip: !routeId || !from || !to,
+    skip: !isAppSyncConfigured || !routeId || !from || !to,
   });
 }
 
@@ -40,7 +41,7 @@ export function useRouteMetrics(routeId: string, from: number, to: number, direc
 export function useDailyRollups(from: string, to: string, routeId?: string, direction?: string) {
   return useQuery<GetDailyRollupsData>(GET_DAILY_ROLLUPS, {
     variables: { routeId: routeId ?? null, direction: direction ?? null, from, to },
-    skip: !from || !to,
+    skip: !isAppSyncConfigured || !from || !to,
   });
 }
 
@@ -50,6 +51,7 @@ export function useDailyRollups(from: string, to: string, routeId?: string, dire
 export function useSystemHealth() {
   return useQuery<GetLatestSystemHealthData>(GET_LATEST_SYSTEM_HEALTH, {
     pollInterval: 60_000,
+    skip: !isAppSyncConfigured,
   });
 }
 
@@ -60,6 +62,7 @@ export function useSystemHealth() {
 export function useRouteMetricSubscription(routeId?: string) {
   return useSubscription<OnRouteMetricUpdateData>(ON_ROUTE_METRIC_UPDATE, {
     variables: { routeId: routeId ?? null },
+    skip: !isAppSyncConfigured,
   });
 }
 
@@ -75,6 +78,6 @@ export function useTripEvents(routeId: string, from: number, to: number, directi
       to,
       eventType: eventType ?? null,
     },
-    skip: !routeId || !from || !to,
+    skip: !isAppSyncConfigured || !routeId || !from || !to,
   });
 }

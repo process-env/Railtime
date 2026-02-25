@@ -108,7 +108,7 @@ export function RouteFilter({ compact = false }: RouteFilterProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2.5">
+      <div className="grid grid-cols-6 gap-1.5 justify-items-center">
         {ALL_ROUTES.map((routeId) => {
           const color = getRouteColor(routeId);
           const isSelected = selectedRouteIds.includes(routeId);

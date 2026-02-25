@@ -32,6 +32,21 @@ function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+/** Convert a data: URL to a blob: URL for more reliable Audio playback. */
+function dataUrlToBlobUrl(dataUrl: string): string {
+  const commaIndex = dataUrl.indexOf(',');
+  const header = dataUrl.substring(0, commaIndex);
+  const base64 = dataUrl.substring(commaIndex + 1);
+  const mimeMatch = header.match(/data:([^;]+)/);
+  const mime = mimeMatch ? mimeMatch[1] : 'audio/mpeg';
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: mime }));
+}
+
 // ---------------------------------------------------------------------------
 // Clock-aligned broadcast schedule
 // ---------------------------------------------------------------------------
@@ -79,17 +94,27 @@ async function fetchSegment(
   const body: Record<string, unknown> = { type };
   if (alerts) body.alerts = alerts;
 
-  const res = await fetch('/api/v1/newsroom/segment', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const doFetch = async () => {
+    const res = await fetch('/api/v1/newsroom/segment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-  if (!res.ok) {
-    throw new Error(`Segment API returned ${res.status}`);
+    if (!res.ok) {
+      throw new Error(`Segment API returned ${res.status}`);
+    }
+
+    return res.json();
+  };
+
+  try {
+    return await doFetch();
+  } catch (err) {
+    console.warn(`[Newsroom] Segment "${type}" fetch failed, retrying once:`, err);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    return doFetch();
   }
-
-  return res.json();
 }
 
 // ---------------------------------------------------------------------------
@@ -162,26 +187,47 @@ export function NewsroomProvider({ children }: NewsroomProviderProps) {
       }
 
       isPlayingRef.current = true;
-      const audio = new Audio(audioUrl);
+
+      // Convert data: URLs to blob: URLs for reliable Audio playback
+      let src = audioUrl;
+      if (audioUrl.startsWith('data:')) {
+        try {
+          src = dataUrlToBlobUrl(audioUrl);
+        } catch (err) {
+          console.error('[Newsroom] Failed to convert data URL to blob:', err);
+          isPlayingRef.current = false;
+          resolve();
+          return;
+        }
+      }
+
+      const audio = new Audio(src);
       audio.volume = volumeRef.current;
       audioRef.current = audio;
 
-      audio.onended = () => {
+      let settled = false;
+
+      const settle = () => {
+        if (settled) return;
+        settled = true;
         isPlayingRef.current = false;
         audioRef.current = null;
+        if (src.startsWith('blob:')) {
+          URL.revokeObjectURL(src);
+        }
         resolve();
       };
 
-      audio.onerror = () => {
-        isPlayingRef.current = false;
-        audioRef.current = null;
-        resolve();
+      audio.onended = () => settle();
+
+      audio.onerror = (e) => {
+        console.error('[Newsroom] Audio playback error:', e);
+        settle();
       };
 
-      audio.play().catch(() => {
-        isPlayingRef.current = false;
-        audioRef.current = null;
-        resolve();
+      audio.play().catch((err) => {
+        console.error('[Newsroom] Audio play() rejected:', err);
+        settle();
       });
     });
   }, []);
@@ -388,8 +434,11 @@ export function NewsroomProvider({ children }: NewsroomProviderProps) {
       document.removeEventListener('click', startOnInteraction);
       document.removeEventListener('keydown', startOnInteraction);
 
-      // Pause any playing audio
+      // Pause any playing audio and revoke blob URLs
       if (audioRef.current) {
+        if (audioRef.current.src.startsWith('blob:')) {
+          URL.revokeObjectURL(audioRef.current.src);
+        }
         audioRef.current.pause();
         audioRef.current = null;
       }

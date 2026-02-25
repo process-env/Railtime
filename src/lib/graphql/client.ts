@@ -11,6 +11,9 @@ import {
 const APPSYNC_URL = process.env.NEXT_PUBLIC_APPSYNC_URL ?? '';
 const APPSYNC_API_KEY = process.env.NEXT_PUBLIC_APPSYNC_API_KEY ?? '';
 
+/** True when AppSync env vars are set — use to skip queries in dev. */
+export const isAppSyncConfigured = !!APPSYNC_URL;
+
 /** When AppSync is not configured, short-circuit all requests. */
 const noopLink = new ApolloLink(() => {
   return new Observable((observer) => {

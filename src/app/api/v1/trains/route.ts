@@ -14,9 +14,18 @@ import type { TrainPosition } from '@/types/mta';
 
 const FEED_GROUP_IDS = ['ACE', 'BDFM', 'G', 'JZ', 'NQRW', 'L', 'SI', '1234567'];
 const CACHE_TTL = 20; // seconds (15s poll cycle + 5s grace)
+const STALE_FALLBACK_TTL = 120; // 2 minutes - used when MTA fetch fails
 const CACHE_HEADERS = {
   'Cache-Control': 's-maxage=10, stale-while-revalidate=5',
 };
+
+/** Possible values for the `source` field in trains API responses. */
+type TrainSource = 'mta' | 'cache' | 'partial-cache' | 'partial-stale' | 'stale';
+
+/** Redis key for the stale fallback cache of a feed group. */
+function staleCacheKey(groupId: string): string {
+  return `feed:${groupId}:positions:stale`;
+}
 
 /**
  * Try reading pre-computed positions from Redis for a single feed group.
@@ -62,8 +71,9 @@ async function tryRedisCachePartial(): Promise<{
  */
 function writeBackToCache(positions: TrainPosition[], groupId: string | null): void {
   if (groupId) {
-    // Single group fetch — write directly
+    // Single group fetch — write directly (fresh + stale fallback)
     setCache(`feed:${groupId}:positions`, positions, CACHE_TTL).catch(() => {});
+    setCache(staleCacheKey(groupId), positions, STALE_FALLBACK_TTL).catch(() => {});
   } else {
     // All groups — partition positions by feed group and write each
     const byGroup = new Map<string, TrainPosition[]>();
@@ -76,6 +86,7 @@ function writeBackToCache(positions: TrainPosition[], groupId: string | null): v
     }
     for (const [group, trains] of byGroup) {
       setCache(`feed:${group}:positions`, trains, CACHE_TTL).catch(() => {});
+      setCache(staleCacheKey(group), trains, STALE_FALLBACK_TTL).catch(() => {});
     }
   }
 }
@@ -108,14 +119,27 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const feedEntities = await fetchFeed(groupId);
-      const positions = await calculateTrainPositions(feedEntities);
-      writeBackToCache(positions, groupId);
+      try {
+        const feedEntities = await fetchFeed(groupId);
+        const positions = await calculateTrainPositions(feedEntities);
+        writeBackToCache(positions, groupId);
 
-      return NextResponse.json(
-        { trains: positions, updatedAt: new Date().toISOString(), source: 'mta' },
-        { headers: CACHE_HEADERS }
-      );
+        return NextResponse.json(
+          { trains: positions, updatedAt: new Date().toISOString(), source: 'mta' },
+          { headers: CACHE_HEADERS }
+        );
+      } catch (err) {
+        // MTA fetch failed — try stale fallback
+        const stale = await getCache<TrainPosition[]>(staleCacheKey(groupId));
+        if (stale) {
+          console.warn(`[trains] Using stale fallback for ${groupId} (${stale.length} trains)`);
+          return NextResponse.json(
+            { trains: stale, updatedAt: new Date().toISOString(), source: 'stale' },
+            { headers: CACHE_HEADERS }
+          );
+        }
+        throw err; // No fallback available — let outer catch handle it
+      }
     }
 
     // --- All-groups path: partial cache with selective MTA fetch ---
@@ -129,12 +153,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch only the missing groups from MTA
+    // Fetch only the missing groups from MTA, tracking failures
+    const failedGroups: string[] = [];
     const freshEntities = (
       await Promise.all(
         missingGroups.map((gid) =>
           fetchFeed(gid).catch((err) => {
             console.error(`Error fetching ${gid}:`, err.message);
+            failedGroups.push(gid);
             return [];
           })
         )
@@ -146,10 +172,23 @@ export async function GET(request: NextRequest) {
     // Write fresh positions back to Redis (fire-and-forget)
     writeBackToCache(freshPositions, null);
 
-    // Merge cached + fresh
-    const positions = [...cached, ...freshPositions];
+    // If any groups failed, try their stale fallback keys
+    let staleFallback: TrainPosition[] = [];
+    if (failedGroups.length > 0) {
+      const fallbacks = await Promise.all(
+        failedGroups.map((gid) => getCache<TrainPosition[]>(staleCacheKey(gid)))
+      );
+      staleFallback = fallbacks.filter((f): f is TrainPosition[] => f !== null).flat();
+      if (staleFallback.length > 0) {
+        console.warn(`[trains] Using stale fallback for: ${failedGroups.join(', ')} (${staleFallback.length} trains)`);
+      }
+    }
 
-    const source =
+    // Merge cached + fresh + stale fallback
+    const positions = [...cached, ...freshPositions, ...staleFallback];
+
+    const source: TrainSource =
+      staleFallback.length > 0 ? 'partial-stale' :
       cached.length > 0 ? 'partial-cache' : 'mta';
 
     return NextResponse.json(

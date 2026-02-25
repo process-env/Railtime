@@ -143,6 +143,23 @@ export async function getArrivalBoard(
     row = board[parentId];
   }
 
+  // If parent station ID (e.g., "101") not found, merge child platforms ("101N" + "101S")
+  if (!row && !stopId.endsWith('N') && !stopId.endsWith('S')) {
+    const nRow = board[`${stopId}N`];
+    const sRow = board[`${stopId}S`];
+    if (nRow || sRow) {
+      const merged = [...(nRow?.arrivals ?? []), ...(sRow?.arrivals ?? [])];
+      merged.sort((a, b) => new Date(a.whenISO).getTime() - new Date(b.whenISO).getTime());
+      row = {
+        stopId,
+        stopName: nRow?.stopName || sRow?.stopName || stopId,
+        updatedAt: nRow?.updatedAt || sRow?.updatedAt || new Date().toISOString(),
+        now: new Date().toISOString(),
+        arrivals: merged.slice(0, 8),
+      };
+    }
+  }
+
   if (!row) {
     const { dict: stops } = await loadStops();
     return {
