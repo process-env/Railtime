@@ -24,7 +24,6 @@
 import type { Server, Namespace, Socket } from "socket.io";
 import type { TrainPosition } from "../types.js";
 import { FEED_GROUPS, type FeedUpdateCallback } from "../ingestion/feed-loop.js";
-import { getCachedPositions } from "../lib/cache.js";
 import { authMiddleware } from "../lib/auth.js";
 import { createLogger } from "../lib/logger.js";
 
@@ -123,15 +122,16 @@ function isInViewport(train: TrainPosition, vp: ViewportState): boolean {
 // Full snapshot for ghost cleanup
 // ---------------------------------------------------------------------------
 
-/** Get all current train positions across all feed groups. */
-async function getFullSnapshot(): Promise<TrainPosition[]> {
-  const results = await Promise.all(
-    FEED_GROUPS.map(async (group) => {
-      const positions = await getCachedPositions(group.id);
-      return positions ?? [];
-    })
-  );
-  return results.flat();
+/** Get all current train positions from in-memory state (always authoritative). */
+function getFullSnapshot(): TrainPosition[] {
+  const all: TrainPosition[] = [];
+  for (const group of FEED_GROUPS) {
+    const groupPositions = lastEmitted.get(group.id);
+    if (groupPositions) {
+      all.push(...groupPositions.values());
+    }
+  }
+  return all;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,20 +152,13 @@ export function setupTrainsNamespace(io: Server): FeedUpdateCallback {
     // --- Subscribe to all trains (full map view) ---
     socket.on("subscribe:all", () => {
       socket.join("all-trains");
-      log.debug({ socketId: socket.id, room: 'all-trains' }, 'joined room');
 
-      // Send full snapshot on subscribe (covers reconnection ghost cleanup)
-      (async () => {
-        try {
-          const allTrains = await getFullSnapshot();
-          socket.emit("trains:snapshot", {
-            trains: allTrains,
-            updatedAt: new Date().toISOString(),
-          });
-        } catch (err) {
-          log.error({ socketId: socket.id, err: err instanceof Error ? err.message : err }, 'failed to send snapshot');
-        }
-      })();
+      const allTrains = getFullSnapshot();
+      socket.emit("trains:snapshot", {
+        trains: allTrains,
+        updatedAt: new Date().toISOString(),
+      });
+      log.debug({ socketId: socket.id, trainCount: allTrains.length }, 'snapshot sent');
     });
 
     // --- Subscribe to a specific route ---
