@@ -259,7 +259,11 @@ function onFeedUpdate(
     // For viewport-subscribed sockets, filter and throttle
     const allTrainsRoom = trainsNsp.to("all-trains");
 
-    // Get all sockets in all-trains room for viewport filtering
+    // Broadcast full delta to all-trains room.
+    // Note: viewport filtering was removed because a shared socket serves
+    // both the map (with viewport) and analytics (needs all trains).
+    // Filtering caused the train count to silently shrink over time.
+    // Adaptive push *frequency* (throttling) is still applied below.
     const socketsInRoom = trainsNsp.adapter.rooms?.get("all-trains");
 
     if (socketsInRoom) {
@@ -267,34 +271,17 @@ function onFeedUpdate(
         const vp = socketViewports.get(socketId);
 
         if (vp) {
-          // Adaptive push: check cycle counter
+          // Adaptive frequency: skip cycles at low zoom
           const counter = (socketCycleCounters.get(socketId) ?? 0) + 1;
           socketCycleCounters.set(socketId, counter);
 
           const interval = cyclesPerPush(vp.zoom);
           if (counter % interval !== 0) continue; // Skip this cycle
-
-          // Filter to viewport
-          const vpAdded = delta.added.filter((t) => isInViewport(t, vp));
-          const vpUpdated = delta.updated.filter((t) => isInViewport(t, vp));
-
-          if (vpAdded.length > 0 || vpUpdated.length > 0 || delta.removed.length > 0) {
-            trainsNsp.to(socketId).emit("trains:delta", {
-              feedGroupId,
-              added: vpAdded,
-              updated: vpUpdated,
-              removed: delta.removed,
-              updatedAt,
-              stale,
-            });
-          }
-        } else {
-          // No viewport — send full delta
-          trainsNsp.to(socketId).emit("trains:delta", deltaPayload);
         }
+
+        trainsNsp.to(socketId).emit("trains:delta", deltaPayload);
       }
     } else {
-      // Fallback: broadcast to entire room
       allTrainsRoom.emit("trains:delta", deltaPayload);
     }
   }
@@ -314,6 +301,7 @@ function onFeedUpdate(
   // --- Fan out to per-route rooms ---
   const byRoute = new Map<string, TrainPosition[]>();
   for (const t of trains) {
+    if (!t.routeId) continue;
     const key = t.routeId.toUpperCase();
     if (!byRoute.has(key)) byRoute.set(key, []);
     byRoute.get(key)!.push(t);
