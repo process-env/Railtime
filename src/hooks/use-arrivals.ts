@@ -155,14 +155,17 @@ export function useArrivals(
     };
   }, [socket, socketActive, stopId]);
 
-  // --- React Query polling (disabled when socket is active) ---
-  const usePolling = enabled && !socketActive;
+  // --- React Query polling ---
+  // Always do an initial fetch so we have data immediately. Only disable
+  // *refetch interval* once the socket is pushing updates, so we don't
+  // show loading skeletons while waiting for the first WS broadcast.
+  const hasSocketData = socketActive && socketArrivals !== null;
 
   const query = useQuery({
     queryKey: queryKeys.arrivals(groupId, stopId),
     queryFn: () => mtaApi.getArrivals(groupId, stopId),
-    enabled: usePolling && !!groupId && !!stopId,
-    refetchInterval: usePolling ? refreshInterval : false,
+    enabled: enabled && !!groupId && !!stopId,
+    refetchInterval: hasSocketData ? false : refreshInterval,
     staleTime: refreshInterval / 2,
   });
 
@@ -175,14 +178,13 @@ export function useArrivals(
     return query.refetch();
   }, [socketActive, socket, stopId, query]);
 
-  const arrivals = socketActive ? socketArrivals : query.data;
+  // Prefer socket data when available, fall back to polling data
+  const arrivals = hasSocketData ? socketArrivals : query.data;
 
   return {
     arrivals,
-    isLoading: socketActive
-      ? !socketArrivals
-      : query.isLoading,
-    error: socketActive ? null : query.error?.message || null,
+    isLoading: !arrivals && query.isLoading,
+    error: query.error?.message || null,
     refetch,
   };
 }
