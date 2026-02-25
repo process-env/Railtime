@@ -73,6 +73,7 @@ export function useAnalytics() {
     ALL_ROUTES.forEach((r) => routeCounts.set(r, 0));
 
     trains.forEach((train) => {
+      if (!train.routeId) return;
       const route = train.routeId.toUpperCase();
       if (routeCounts.has(route)) {
         routeCounts.set(route, (routeCounts.get(route) || 0) + 1);

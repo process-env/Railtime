@@ -64,6 +64,7 @@ export const ALL_ROUTES = [
 ];
 
 export function getRouteColor(routeId: string): string {
+  if (!routeId) return '#888888';
   return ROUTE_COLORS[routeId.toUpperCase()] || '#888888';
 }
 

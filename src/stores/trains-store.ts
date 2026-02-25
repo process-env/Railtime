@@ -50,7 +50,7 @@ export const useTrainsStore = create<TrainsState>((set, get) => ({
     const { trains } = get();
     const upperRoute = routeId.toUpperCase();
     return Object.values(trains).filter(
-      (t) => t.routeId.toUpperCase() === upperRoute
+      (t) => t.routeId?.toUpperCase() === upperRoute
     );
   },
 }));
