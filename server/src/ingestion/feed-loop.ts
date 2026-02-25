@@ -28,7 +28,11 @@ const log = createLogger('feed-loop');
 const POLL_INTERVAL_MS = 15_000;
 const FEED_TIMEOUT_MS = 12_000;
 const REDIS_TTL_SECONDS = 30; // slightly longer than poll interval for overlap
+const STALE_REDIS_TTL_SECONDS = 120; // 2 minutes stale fallback
 const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), '..', 'public', 'data');
+
+// ETag/Last-Modified tracking for conditional requests
+const lastModifiedHeaders = new Map<string, string>();
 
 export const FEED_GROUPS: FeedGroupConfig[] = [
   {
@@ -430,6 +434,7 @@ async function calculateTrainPositions(
 // ---------------------------------------------------------------------------
 
 const previousTripIds = new Map<string, Set<string>>();
+const previousTrainPositions = new Map<string, TrainPosition[]>();
 
 // ---------------------------------------------------------------------------
 // Single feed group fetch + process
@@ -453,11 +458,38 @@ async function fetchAndProcessFeed(
 
   try {
     const apiKey = process.env.MTA_API_KEY;
+
+    // Build headers with conditional request support (ETag/Last-Modified)
+    const headers: Record<string, string> = {};
+    if (apiKey) headers["x-api-key"] = apiKey;
+    const lastMod = lastModifiedHeaders.get(feedGroupId);
+    if (lastMod) headers["If-Modified-Since"] = lastMod;
+
     const resp = await axios.get(group.url, {
       responseType: "arraybuffer",
-      headers: apiKey ? { "x-api-key": apiKey } : undefined,
+      headers,
       timeout: FEED_TIMEOUT_MS,
+      validateStatus: (s) => s === 200 || s === 304,
     });
+
+    // 304 Not Modified — feed hasn't changed, reuse cached data
+    if (resp.status === 304) {
+      const latencyMs = Date.now() - start;
+      const prevTrains = previousTrainPositions.get(feedGroupId) ?? [];
+      log.debug({ feedGroupId, latencyMs }, 'feed unchanged (304)');
+      return {
+        feedGroupId,
+        trains: prevTrains,
+        entities: [],
+        removedTripIds: [],
+        latencyMs,
+        status: "success",
+      };
+    }
+
+    // Store Last-Modified for next conditional request
+    const lm = resp.headers["last-modified"];
+    if (lm) lastModifiedHeaders.set(feedGroupId, lm);
 
     const entities = await decodeFeed(resp.data);
     const trains = await calculateTrainPositions(entities);
@@ -476,8 +508,12 @@ async function fetchAndProcessFeed(
     }
     previousTripIds.set(feedGroupId, currentTripIds);
 
-    // Cache positions in Redis
+    // Store for 304 reuse
+    previousTrainPositions.set(feedGroupId, trains);
+
+    // Cache positions in Redis (primary + stale fallback)
     await setCache(`feed:${feedGroupId}:positions`, trains, REDIS_TTL_SECONDS);
+    setCache(`feed:${feedGroupId}:positions:stale`, trains, STALE_REDIS_TTL_SECONDS).catch(() => {});
 
     // Also cache raw entities for arrival computation
     await setCache(`feed:${feedGroupId}:entities`, entities, REDIS_TTL_SECONDS);

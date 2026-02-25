@@ -4,12 +4,36 @@ import type { TrainPosition, ArrivalItem, ServiceAlert } from './mta';
 // Trains namespace
 // ---------------------------------------------------------------------------
 
+/** Delta update payload — only changed trains instead of full array. */
+export interface TrainsDelta {
+  feedGroupId: string;
+  added: TrainPosition[];
+  updated: TrainPosition[];
+  removed: string[];
+  updatedAt: string;
+  stale: boolean;
+}
+
+/** Viewport bounds for adaptive push frequency. */
+export interface ViewportBounds {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+  zoom: number;
+}
+
 export interface TrainsServerToClientEvents {
   'trains:update': (data: {
     feedGroupId: string;
     trains: TrainPosition[];
     updatedAt: string;
     stale: boolean;
+  }) => void;
+  'trains:delta': (data: TrainsDelta) => void;
+  'trains:snapshot': (data: {
+    trains: TrainPosition[];
+    updatedAt: string;
   }) => void;
   'trains:remove': (data: {
     tripIds: string[];
@@ -26,6 +50,7 @@ export interface TrainsClientToServerEvents {
   'subscribe:all': () => void;
   'subscribe:route': (routeId: string) => void;
   'unsubscribe:route': (routeId: string) => void;
+  'subscribe:viewport': (bounds: ViewportBounds) => void;
 }
 
 // ---------------------------------------------------------------------------

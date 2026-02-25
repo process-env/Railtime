@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
+import msgpackParser from "socket.io-msgpack-parser";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { getPubClient, getSubClient, closeAll as closeRedis } from "./lib/redis.js";
 import { closeDriver as closeNeo4j } from "./lib/neo4j.js";
@@ -86,6 +87,7 @@ const io = new Server(httpServer, {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
   },
+  parser: msgpackParser,
 });
 
 // ---------------------------------------------------------------------------

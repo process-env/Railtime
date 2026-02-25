@@ -1,6 +1,7 @@
 'use client';
 
 import { io, type Socket } from 'socket.io-client';
+import msgpackParser from 'socket.io-msgpack-parser';
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
@@ -45,6 +46,7 @@ export function getSocket(): TypedSocket | null {
 
   socket = io(wsUrl, {
     transports: ['websocket', 'polling'],
+    parser: msgpackParser,
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
@@ -84,6 +86,8 @@ const namespaceSockets = new Map<string, Socket<any, any>>();
 
 const SOCKET_OPTIONS = {
   transports: ['websocket', 'polling'] as ('websocket' | 'polling')[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parser: msgpackParser as any,
   reconnection: true,
   reconnectionAttempts: Infinity,
   reconnectionDelay: 1000,

@@ -8,17 +8,19 @@ import { useSocket } from '@/components/providers/SocketProvider';
 import { connectNamespaceSocket, type TrainsSocket } from '@/lib/socket/client';
 import { useTrainsStore } from '@/stores';
 import type { TrainPosition } from '@/types/mta';
+import type { TrainsDelta, ViewportBounds } from '@/types/ws-events';
 
 interface UseTrainPositionsOptions {
   refreshInterval?: number;
   enabled?: boolean;
+  viewport?: ViewportBounds | null;
 }
 
 /** Threshold in ms before falling back to polling after socket disconnect */
 const FALLBACK_DELAY_MS = 5_000;
 
 export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
-  const { refreshInterval = 15000, enabled = true } = options;
+  const { refreshInterval = 15000, enabled = true, viewport = null } = options;
 
   // We only use the root socket context to check if WS is available at all
   const { isAvailable } = useSocket();
@@ -40,6 +42,9 @@ export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
   const [socketTrains, setSocketTrains] = useState<TrainPosition[]>([]);
   const [socketUpdatedAt, setSocketUpdatedAt] = useState<string | undefined>();
 
+  // Track whether we've received the initial snapshot (for ghost cleanup)
+  const hasSnapshotRef = useRef(false);
+
   // --- Connect to /trains namespace ---
   useEffect(() => {
     if (!isAvailable || !enabled) return;
@@ -53,6 +58,7 @@ export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
     }
     function onDisconnect() {
       setIsConnected(false);
+      hasSnapshotRef.current = false; // Will need fresh snapshot on reconnect
     }
 
     s.on('connect', onConnect);
@@ -83,8 +89,12 @@ export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
       }
       disconnectedAtRef.current = null;
 
-      // Subscribe to all train updates
-      socket.emit('subscribe:all');
+      // Subscribe — server will send snapshot immediately for ghost cleanup
+      if (viewport) {
+        socket.emit('subscribe:viewport', viewport);
+      } else {
+        socket.emit('subscribe:all');
+      }
       queueMicrotask(() => setSocketActive(true));
     } else {
       // Socket disconnected — start fallback timer
@@ -108,22 +118,77 @@ export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
         fallbackTimerRef.current = null;
       }
     };
-  }, [socket, isConnected, enabled, queryClient]);
+  }, [socket, isConnected, enabled, queryClient, viewport]);
+
+  // --- Send viewport updates when viewport changes ---
+  useEffect(() => {
+    if (!socket || !isConnected || !socketActive || !viewport) return;
+    socket.emit('subscribe:viewport', viewport);
+  }, [socket, isConnected, socketActive, viewport]);
 
   // --- Socket event listeners ---
   useEffect(() => {
     if (!socket || !socketActive) return;
 
+    // Full snapshot — used on initial connect and reconnect for ghost cleanup
+    function handleSnapshot(data: { trains: TrainPosition[]; updatedAt: string }) {
+      const snapshotMap = new Map(data.trains.map((t) => [t.tripId, t]));
+
+      // Ghost cleanup: remove local trains that aren't in the snapshot
+      setSocketTrains((prev) => {
+        if (prev.length > 0) {
+          const ghostIds = prev
+            .filter((t) => !snapshotMap.has(t.tripId))
+            .map((t) => t.tripId);
+          if (ghostIds.length > 0) {
+            removeTrains(ghostIds);
+          }
+        }
+        return data.trains;
+      });
+
+      updateTrains(data.trains);
+      setSocketUpdatedAt(data.updatedAt);
+      hasSnapshotRef.current = true;
+    }
+
+    // Delta update — incremental changes only
+    function handleDelta(data: TrainsDelta) {
+      if (!hasSnapshotRef.current) return; // Wait for snapshot first
+
+      // Apply additions and updates to Zustand
+      const changed = [...data.added, ...data.updated];
+      if (changed.length > 0) {
+        updateTrains(changed);
+      }
+
+      // Apply removals
+      if (data.removed.length > 0) {
+        removeTrains(data.removed);
+      }
+
+      // Update local reactive state
+      setSocketTrains((prev) => {
+        const map = new Map(prev.map((t) => [t.tripId, t]));
+
+        for (const train of data.added) map.set(train.tripId, train);
+        for (const train of data.updated) map.set(train.tripId, train);
+        for (const id of data.removed) map.delete(id);
+
+        return Array.from(map.values());
+      });
+      setSocketUpdatedAt(data.updatedAt);
+    }
+
+    // Legacy full update (fallback for route-specific rooms)
     function handleTrainsUpdate(data: {
       feedGroupId: string;
       trains: TrainPosition[];
       updatedAt: string;
       stale: boolean;
     }) {
-      // Update Zustand store (same path as polling)
       updateTrains(data.trains);
       setSocketTrains((prev) => {
-        // Merge incoming trains into existing array by tripId
         const map = new Map(prev.map((t) => [t.tripId, t]));
         for (const train of data.trains) {
           map.set(train.tripId, train);
@@ -141,10 +206,14 @@ export function useTrainPositions(options: UseTrainPositionsOptions = {}) {
       });
     }
 
+    socket.on('trains:snapshot', handleSnapshot);
+    socket.on('trains:delta', handleDelta);
     socket.on('trains:update', handleTrainsUpdate);
     socket.on('trains:remove', handleTrainsRemove);
 
     return () => {
+      socket.off('trains:snapshot', handleSnapshot);
+      socket.off('trains:delta', handleDelta);
       socket.off('trains:update', handleTrainsUpdate);
       socket.off('trains:remove', handleTrainsRemove);
     };

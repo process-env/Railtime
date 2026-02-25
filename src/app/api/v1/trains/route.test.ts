@@ -4,11 +4,24 @@ import { NextRequest } from 'next/server';
 import { createMockTrainPosition } from '@/test/factories';
 import type { TrainPosition } from '@/types/mta';
 
-// Mock Redis cache functions
+// CacheEnvelope shape (matches route.ts)
+interface CacheEnvelope {
+  data: TrainPosition[];
+  cachedAt: string;
+}
+
+function envelope(data: TrainPosition[], cachedAt?: string): CacheEnvelope {
+  return { data, cachedAt: cachedAt ?? new Date().toISOString() };
+}
+
+// Mock Redis cache functions (including new pipeline + lock utilities)
 vi.mock('@/lib/redis', () => ({
   getCache: vi.fn(),
   setCache: vi.fn().mockResolvedValue(undefined),
   deleteCache: vi.fn().mockResolvedValue(undefined),
+  pipelineGet: vi.fn(),
+  acquireLock: vi.fn().mockResolvedValue(true),
+  releaseLock: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock MTA feed fetching
@@ -47,7 +60,7 @@ vi.mock('@/lib/api/rate-limit', () => ({
   RATE_LIMITS: { realtime: { limit: 120, windowMs: 60000 } },
 }));
 
-import { getCache, setCache } from '@/lib/redis';
+import { getCache, setCache, pipelineGet, acquireLock } from '@/lib/redis';
 import { fetchFeed } from '@/lib/mta/fetch-feed';
 import { calculateTrainPositions } from '@/lib/mta/train-positions';
 import { checkRateLimit } from '@/lib/api/rate-limit';
@@ -62,18 +75,23 @@ describe('GET /api/v1/trains', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: cache miss (null for every group)
+    // Default: cache miss
     vi.mocked(getCache).mockResolvedValue(null);
     vi.mocked(setCache).mockResolvedValue(undefined);
     vi.mocked(fetchFeed).mockResolvedValue([]);
     vi.mocked(calculateTrainPositions).mockResolvedValue(mockPositions);
     vi.mocked(checkRateLimit).mockReturnValue({ success: true, remaining: 119, resetIn: 60000 });
+    vi.mocked(acquireLock).mockResolvedValue(true);
+    // Default: pipeline returns all nulls (cache miss)
+    vi.mocked(pipelineGet).mockResolvedValue(new Array(FEED_GROUP_IDS.length).fill(null));
   });
 
-  // --- Full cache hit (all groups) ---
+  // --- Full cache hit (all groups via pipeline) ---
 
   it('returns cached trains when all feed groups are in Redis', async () => {
-    vi.mocked(getCache).mockResolvedValue(mockPositions);
+    vi.mocked(pipelineGet).mockResolvedValue(
+      FEED_GROUP_IDS.map(() => envelope(mockPositions))
+    );
 
     const request = new NextRequest('http://localhost/api/v1/trains');
     const response = await GET(request);
@@ -81,17 +99,15 @@ describe('GET /api/v1/trains', () => {
 
     expect(response.status).toBe(200);
     expect(data.source).toBe('cache');
-    // getCache called once per feed group
-    expect(getCache).toHaveBeenCalledTimes(FEED_GROUP_IDS.length);
+    expect(pipelineGet).toHaveBeenCalledTimes(1);
     expect(data.updatedAt).toBeDefined();
-    // Should NOT fetch from MTA when cache hits
     expect(fetchFeed).not.toHaveBeenCalled();
   });
 
   // --- Single-group cache hit ---
 
   it('returns cached trains for a single group when groupId is provided', async () => {
-    vi.mocked(getCache).mockResolvedValue(mockPositions);
+    vi.mocked(getCache).mockResolvedValue(envelope(mockPositions));
 
     const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
     const response = await GET(request);
@@ -105,15 +121,12 @@ describe('GET /api/v1/trains', () => {
   // --- Full cache miss (all groups) ---
 
   it('fetches from MTA when cache misses and returns source=mta', async () => {
-    vi.mocked(getCache).mockResolvedValue(null);
-
     const request = new NextRequest('http://localhost/api/v1/trains');
     const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
     expect(data.source).toBe('mta');
-    // All 8 groups should be fetched individually
     expect(fetchFeed).toHaveBeenCalledTimes(FEED_GROUP_IDS.length);
     for (const gid of FEED_GROUP_IDS) {
       expect(fetchFeed).toHaveBeenCalledWith(gid);
@@ -124,8 +137,6 @@ describe('GET /api/v1/trains', () => {
   // --- Single-group cache miss ---
 
   it('fetches single feed group from MTA when groupId provided and cache misses', async () => {
-    vi.mocked(getCache).mockResolvedValue(null);
-
     const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
     const response = await GET(request);
     const data = await response.json();
@@ -139,10 +150,10 @@ describe('GET /api/v1/trains', () => {
   // --- Partial cache (some groups hit, some miss) ---
 
   it('returns partial-cache source when some groups are cached', async () => {
-    // ACE returns data, rest return null
-    vi.mocked(getCache)
-      .mockResolvedValueOnce(mockPositions)  // ACE -- hit
-      .mockResolvedValue(null);               // rest -- miss
+    vi.mocked(pipelineGet).mockResolvedValue([
+      envelope(mockPositions), // ACE hit
+      null, null, null, null, null, null, null, // rest miss
+    ]);
 
     const request = new NextRequest('http://localhost/api/v1/trains');
     const response = await GET(request);
@@ -150,9 +161,7 @@ describe('GET /api/v1/trains', () => {
 
     expect(response.status).toBe(200);
     expect(data.source).toBe('partial-cache');
-    // Should only fetch the missing groups (7 of 8)
     expect(fetchFeed).toHaveBeenCalledTimes(FEED_GROUP_IDS.length - 1);
-    // ACE should NOT be fetched since it was cached
     expect(fetchFeed).not.toHaveBeenCalledWith('ACE');
   });
 
@@ -160,10 +169,10 @@ describe('GET /api/v1/trains', () => {
     const cachedPositions = [createMockTrainPosition({ tripId: 'cached-1', routeId: 'A' })];
     const freshPositions = [createMockTrainPosition({ tripId: 'fresh-1', routeId: '1' })];
 
-    // ACE cached, rest miss
-    vi.mocked(getCache)
-      .mockResolvedValueOnce(cachedPositions) // ACE
-      .mockResolvedValue(null);                // rest
+    vi.mocked(pipelineGet).mockResolvedValue([
+      envelope(cachedPositions), // ACE
+      null, null, null, null, null, null, null,
+    ]);
 
     vi.mocked(calculateTrainPositions).mockResolvedValue(freshPositions);
 
@@ -171,7 +180,6 @@ describe('GET /api/v1/trains', () => {
     const response = await GET(request);
     const data = await response.json();
 
-    // Response should contain both cached and fresh
     expect(data.trains).toHaveLength(2);
     expect(data.trains.some((t: TrainPosition) => t.tripId === 'cached-1')).toBe(true);
     expect(data.trains.some((t: TrainPosition) => t.tripId === 'fresh-1')).toBe(true);
@@ -180,24 +188,19 @@ describe('GET /api/v1/trains', () => {
   // --- Cache write-back ---
 
   it('writes positions back to Redis after MTA fetch', async () => {
-    vi.mocked(getCache).mockResolvedValue(null);
-
     const request = new NextRequest('http://localhost/api/v1/trains');
     await GET(request);
 
-    // setCache should be called for write-back (fire-and-forget)
     expect(setCache).toHaveBeenCalled();
   });
 
-  it('writes single group to cache when groupId is provided', async () => {
-    vi.mocked(getCache).mockResolvedValue(null);
-
+  it('writes single group to cache with CacheEnvelope when groupId is provided', async () => {
     const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
     await GET(request);
 
     expect(setCache).toHaveBeenCalledWith(
       'feed:ACE:positions',
-      mockPositions,
+      expect.objectContaining({ data: mockPositions, cachedAt: expect.any(String) }),
       expect.any(Number)
     );
   });
@@ -221,6 +224,7 @@ describe('GET /api/v1/trains', () => {
       vi.mocked(fetchFeed).mockResolvedValue([]);
       vi.mocked(calculateTrainPositions).mockResolvedValue([]);
       vi.mocked(checkRateLimit).mockReturnValue({ success: true, remaining: 119, resetIn: 60000 });
+      vi.mocked(acquireLock).mockResolvedValue(true);
 
       const request = new NextRequest(`http://localhost/api/v1/trains?groupId=${groupId}`);
       const response = await GET(request);
@@ -246,23 +250,17 @@ describe('GET /api/v1/trains', () => {
   // --- Error handling ---
 
   it('handles individual feed group fetch failures gracefully', async () => {
-    vi.mocked(getCache).mockResolvedValue(null);
-    // All fetchFeed calls reject
     vi.mocked(fetchFeed).mockRejectedValue(new Error('MTA API down'));
 
     const request = new NextRequest('http://localhost/api/v1/trains');
     const response = await GET(request);
     const data = await response.json();
 
-    // Individual fetchFeed errors are caught inside .catch() and return [],
-    // so the request still succeeds with whatever calculateTrainPositions produces
     expect(response.status).toBe(200);
-    // The concatenated feed entities are empty, so calculateTrainPositions gets []
     expect(calculateTrainPositions).toHaveBeenCalledWith([]);
   });
 
   it('returns 500 when calculateTrainPositions throws', async () => {
-    vi.mocked(getCache).mockResolvedValue(null);
     vi.mocked(calculateTrainPositions).mockRejectedValue(new Error('Parse error'));
 
     const request = new NextRequest('http://localhost/api/v1/trains');
@@ -275,9 +273,13 @@ describe('GET /api/v1/trains', () => {
 
   it('returns stale data when single-group fetchFeed throws but stale cache exists', async () => {
     const stalePositions = [createMockTrainPosition({ tripId: 'stale-1', routeId: 'A' })];
+    // Call sequence when acquireLock returns true:
+    // 1. getCache('feed:ACE:positions') → null (primary cache miss)
+    // 2. fetchFeed throws → catch block
+    // 3. getCache('feed:ACE:positions:stale') → envelope (stale hit)
     vi.mocked(getCache)
-      .mockResolvedValueOnce(null)            // primary cache miss
-      .mockResolvedValueOnce(stalePositions);  // stale cache hit
+      .mockResolvedValueOnce(null)                       // primary cache miss
+      .mockResolvedValueOnce(envelope(stalePositions));  // stale cache hit
     vi.mocked(fetchFeed).mockRejectedValue(new Error('MTA API down'));
 
     const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
@@ -290,7 +292,10 @@ describe('GET /api/v1/trains', () => {
   });
 
   it('returns 500 when single-group fetchFeed throws and no stale cache', async () => {
-    vi.mocked(getCache).mockResolvedValue(null);
+    // getCache returns null for both primary and stale
+    vi.mocked(getCache)
+      .mockResolvedValueOnce(null)  // primary cache miss
+      .mockResolvedValueOnce(null); // stale cache miss
     vi.mocked(fetchFeed).mockRejectedValue(new Error('MTA API down'));
 
     const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
@@ -302,8 +307,8 @@ describe('GET /api/v1/trains', () => {
     expect(data.error.message).toBe('Failed to fetch trains');
   });
 
-  it('returns 500 when Redis getCache throws', async () => {
-    vi.mocked(getCache).mockRejectedValue(new Error('Redis connection lost'));
+  it('returns 500 when Redis pipelineGet throws', async () => {
+    vi.mocked(pipelineGet).mockRejectedValue(new Error('Redis connection lost'));
 
     const request = new NextRequest('http://localhost/api/v1/trains');
     const response = await GET(request);
@@ -316,8 +321,6 @@ describe('GET /api/v1/trains', () => {
   // --- Response shape ---
 
   it('includes updatedAt ISO timestamp in response', async () => {
-    vi.mocked(getCache).mockResolvedValue(null);
-
     const before = new Date().toISOString();
     const request = new NextRequest('http://localhost/api/v1/trains');
     const response = await GET(request);
@@ -330,8 +333,6 @@ describe('GET /api/v1/trains', () => {
   });
 
   it('sets cache-control headers', async () => {
-    vi.mocked(getCache).mockResolvedValue(null);
-
     const request = new NextRequest('http://localhost/api/v1/trains');
     const response = await GET(request);
 
@@ -340,15 +341,13 @@ describe('GET /api/v1/trains', () => {
 
   // --- Stale fallback cache ---
 
-  it('writes stale fallback cache with 120s TTL for single group', async () => {
-    vi.mocked(getCache).mockResolvedValue(null);
-
+  it('writes stale fallback cache with CacheEnvelope for single group', async () => {
     const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
     await GET(request);
 
     expect(setCache).toHaveBeenCalledWith(
       'feed:ACE:positions:stale',
-      mockPositions,
+      expect.objectContaining({ data: mockPositions, cachedAt: expect.any(String) }),
       120
     );
   });
@@ -357,19 +356,16 @@ describe('GET /api/v1/trains', () => {
     const cachedPositions = [createMockTrainPosition({ tripId: 'cached-1', routeId: 'A' })];
     const stalePositions = [createMockTrainPosition({ tripId: 'stale-1', routeId: 'G' })];
 
-    // ACE cached, rest miss; then stale fallback for failed group
-    vi.mocked(getCache)
-      .mockResolvedValueOnce(cachedPositions) // ACE
-      .mockResolvedValueOnce(null)            // BDFM
-      .mockResolvedValueOnce(null)            // G
-      .mockResolvedValueOnce(null)            // JZ
-      .mockResolvedValueOnce(null)            // NQRW
-      .mockResolvedValueOnce(null)            // L
-      .mockResolvedValueOnce(null)            // SI
-      .mockResolvedValueOnce(null)            // 1234567
-      .mockResolvedValueOnce(stalePositions); // stale fallback for G
+    // Pipeline returns ACE cached, rest miss
+    vi.mocked(pipelineGet)
+      .mockResolvedValueOnce([
+        envelope(cachedPositions), // ACE
+        null, null, null, null, null, null, null,
+      ])
+      .mockResolvedValueOnce([ // stale fallback pipeline for failed group (G)
+        envelope(stalePositions),
+      ]);
 
-    // G feed fails, rest succeed with empty entities
     vi.mocked(fetchFeed).mockImplementation(async (gid: string) => {
       if (gid === 'G') throw new Error('MTA API down');
       return [];
@@ -388,5 +384,29 @@ describe('GET /api/v1/trains', () => {
     expect(data.trains.some((t: TrainPosition) => t.tripId === 'cached-1')).toBe(true);
     expect(data.trains.some((t: TrainPosition) => t.tripId === 'fresh-1')).toBe(true);
     expect(data.trains.some((t: TrainPosition) => t.tripId === 'stale-1')).toBe(true);
+  });
+
+  // --- Cache stampede protection ---
+
+  it('acquires lock before fetching from MTA', async () => {
+    const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
+    await GET(request);
+
+    expect(acquireLock).toHaveBeenCalledWith(
+      'lock:feed:ACE:fetch',
+      expect.any(Number)
+    );
+  });
+
+  it('returns cached updatedAt from CacheEnvelope on cache hit', async () => {
+    const cachedAt = '2026-02-25T12:00:00.000Z';
+    vi.mocked(getCache).mockResolvedValue(envelope(mockPositions, cachedAt));
+
+    const request = new NextRequest('http://localhost/api/v1/trains?groupId=ACE');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(data.updatedAt).toBe(cachedAt);
+    expect(data.source).toBe('cache');
   });
 });

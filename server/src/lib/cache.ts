@@ -10,8 +10,10 @@ const log = createLogger('cache');
 export const CACHE_KEYS = {
   // Feed data (written every 15s by ingestion loop)
   feedPositions: (groupId: string) => `feed:${groupId}:positions`,
+  feedPositionsStale: (groupId: string) => `feed:${groupId}:positions:stale`,
   feedEntities: (groupId: string) => `feed:${groupId}:entities`,
   feedStatus: (groupId: string) => `feed:${groupId}:status`,
+  feedLastModified: (groupId: string) => `feed:${groupId}:lastModified`,
 
   // Arrival boards (computed from feed data)
   arrivals: (stationId: string) => `arrivals:${stationId}`,
@@ -36,8 +38,10 @@ export const CACHE_KEYS = {
 
 export const CACHE_TTLS = {
   feedPositions: 15,    // 15 seconds
+  feedPositionsStale: 120, // 2 minutes stale fallback
   feedEntities: 30,     // 30 seconds (kept a bit longer for arrival computation)
   feedStatus: 60,       // 1 minute
+  feedLastModified: 60, // 1 minute (for conditional requests)
   arrivals: 30,         // 30 seconds
   alerts: 60,           // 1 minute
   tripPlan: 300,        // 5 minutes
