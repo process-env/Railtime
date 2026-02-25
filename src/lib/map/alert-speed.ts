@@ -13,6 +13,7 @@ export function getRouteSpeedMultiplier(
   alerts: ServiceAlert[],
   routeId: string
 ): number {
+  if (!routeId) return 1.0;
   const routeAlerts = (alerts ?? []).filter(a =>
     (a.affectedRoutes ?? []).some(r => r.toUpperCase() === routeId.toUpperCase())
   );

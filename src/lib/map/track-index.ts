@@ -355,6 +355,7 @@ export async function getTrackIndex(): Promise<TrackIndex> {
  * Get a specific route's track data
  */
 export async function getRouteTrack(routeId: string): Promise<RouteTrack | undefined> {
+  if (!routeId) return undefined;
   const index = await getTrackIndex();
   return index.routes.get(routeId.toUpperCase());
 }

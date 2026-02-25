@@ -142,8 +142,9 @@ export function filterTrainsByRoute(
   positions: TrainPosition[],
   routeId: string
 ): TrainPosition[] {
+  if (!routeId) return [];
   const upperRoute = routeId.toUpperCase();
-  return positions.filter((p) => p.routeId.toUpperCase() === upperRoute);
+  return positions.filter((p) => p.routeId?.toUpperCase() === upperRoute);
 }
 
 /**

@@ -139,6 +139,7 @@ export function getHeadsignForDirection(
   routeId: string,
   direction: 'N' | 'S' | null
 ): string | null {
+  if (!routeId) return null;
   const terminals = ROUTE_TERMINALS[routeId.toUpperCase()];
   if (!terminals || !direction) return null;
   return terminals[direction];
@@ -165,7 +166,7 @@ export function validateHeadsign(
       }
 
       // Check if headsign matches the expected terminal (case-insensitive partial match)
-      const terminals = ROUTE_TERMINALS[routeId.toUpperCase()];
+      const terminals = routeId ? ROUTE_TERMINALS[routeId.toUpperCase()] : undefined;
       if (terminals) {
         // If headsign matches the OPPOSITE direction's terminal, it's wrong
         const oppositeDir = direction === 'N' ? 'S' : 'N';

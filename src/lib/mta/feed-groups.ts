@@ -78,6 +78,7 @@ export function getFeedGroupForRoute(routeId: string): string | null {
  * Handles express suffixes (6X -> 6) and shuttle aliases (GS, FS, H, SIR).
  */
 export function routeToFeedGroup(routeId: string): string | null {
+  if (!routeId) return null;
   const upper = routeId.toUpperCase().replace(/X$/, '');
   return _routeToGroupMap.get(upper) ?? null;
 }
